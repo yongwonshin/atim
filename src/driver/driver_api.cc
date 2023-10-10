@@ -417,6 +417,8 @@ std::pair<IRModule, IRModule> SplitMixedModule(IRModule mod_mixed, const Target&
 
   IRModule device_mod = ApplyPasses(mod_mixed, DeviceModulePassManager(mod_mixed, target));
 
+  VLOG(2) << "[DEVICE]\n" << device_mod;
+
   auto keys = target->GetKeys();
 
   CheckAndUpdateHostConsistency(&target, &target_host);
