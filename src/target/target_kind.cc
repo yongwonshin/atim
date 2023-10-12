@@ -442,6 +442,12 @@ TVM_REGISTER_TARGET_KIND("hexagon", kDLHexagon)
     .add_attr_option<Integer>("vtcm-capacity")
     .set_default_keys({"hexagon", "cpu"});
 
+TVM_REGISTER_TARGET_KIND("upmem", kDLUPMEM)
+    .set_default_keys({"upmem", "pim"});
+
+TVM_REGISTER_TARGET_KIND("hbmpim", kDLHBMPIM)
+    .set_default_keys({"hbmpim", "pim"});
+
 TVM_REGISTER_TARGET_KIND("stackvm", kDLCPU)  // line break
     .set_default_keys({"cpu"});
 

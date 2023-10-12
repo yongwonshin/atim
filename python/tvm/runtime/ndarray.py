@@ -503,6 +503,12 @@ def metal(dev_id=0):
     """
     return Device(Device.kDLMetal, dev_id)
 
+def upmem(dev_id=0):
+    return Device(Device.kDLUPMEM, dev_id)
+
+def hbmpim(dev_id=0):
+    return Device(Device.kDLHBMPIM, dev_id)
+
 
 def vpi(dev_id=0):
     """Construct a VPI simulated device

@@ -287,6 +287,10 @@ inline const char* DeviceName(int type) {
       return "opengl";
     case kDLMicroDev:
       return "microdev";
+    case kDLUPMEM:
+      return "upmem";
+    case kDLHBMPIM:
+      return "hbmpim";
     default:
       LOG(FATAL) << "unknown type =" << type;
   }

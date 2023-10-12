@@ -217,6 +217,12 @@ class RPCSession(object):
         """Construct Metal device."""
         return self.device(Device.kDLMetal, dev_id)
 
+    def upmem(self, dev_id=0):
+        return self.device(Device.kDLUPMEM, dev_id)
+    
+    def hbmpim(self, dev_id=0):
+        return self.device(Device.kDLHBMPIM, dev_id)
+
     def rocm(self, dev_id=0):
         """Construct ROCm device."""
         return self.device(Device.kDLROCM, dev_id)
@@ -232,6 +238,8 @@ class RPCSession(object):
     def webgpu(self, dev_id=0):
         """Construct WebGPU device."""
         return self.device(Device.kDLWebGPU, dev_id)
+    
+
 
 
 class LocalSession(RPCSession):

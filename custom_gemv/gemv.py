@@ -8,8 +8,7 @@ K = 2048
 bn = 32
 
 dtype = "float32"
-target = tvm.target.Target(target="cuda", host="llvm")
-dev = tvm.device(target.kind.name, 0)
+target = tvm.target.Target(target="upmem", host="llvm")
 
 k = te.reduce_axis((0, K), "k")
 A = te.placeholder((M, K), dtype, "A")
@@ -22,11 +21,13 @@ AL = s.cache_read(A, "local", [C])
 BL = s.cache_read(B, "local", [C])
 CL = s.cache_write(C, "local")
 
-yo, = s[C].op.axis
-yo, yi = s[C].split(yo, nparts=4)
+yb, = s[C].op.axis
+yb, yo = s[C].split(yb, nparts=4)
+yo, yi = s[C].split(yo, nparts=16)
 yi, yc = s[C].split(yi, 2)
 s[C].reorder(yo, yi, yc)
 
+s[C].bind(yb, te.thread_axis("blockIdx.x"))
 s[C].bind(yo, te.thread_axis("threadIdx.x"))
 
 s[CL].compute_at(s[C], yi)
@@ -35,11 +36,10 @@ s[CL].reorder(s[CL].op.axis[0], xo, xi)
 s[AL].compute_at(s[CL], xo)
 s[BL].compute_at(s[CL], xo)
 
-# func = tvm.build(s, [A, B, C], target=target, name="mmult")
+func = tvm.build(s, [A, B, C], target=target, name="mmult")
 # tvm.lower(s, [A, B, C], simple_mode=True)
-print(tvm.lower(s, [A, B, C], simple_mode=False))
 
-
+# dev = tvm.device(target.kind.name, 0)
 # a = tvm.nd.array(np.random.rand(M, K).astype(dtype), dev)
 # b = tvm.nd.array(np.random.rand(K,).astype(dtype), dev)
 # c = tvm.nd.array(np.zeros((M,), dtype=dtype), dev)

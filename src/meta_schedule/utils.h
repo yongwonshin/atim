@@ -517,6 +517,11 @@ inline bool IsGPUTarget(const std::string& target_name) {
   return gpu_targets.count(target_name);
 }
 
+inline bool IsPIMTarget(const std::string& target_name) {
+  static const std::unordered_set<std::string> pim_targets{"upmem", "hbmpim"};
+  return pim_targets.count(target_name);
+}
+
 /*!
  * \brief Create an AutoInline schedule rule for the given target.
  * \param target_name The name of the target ("llvm", "cuda", etc.)
