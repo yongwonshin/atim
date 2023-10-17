@@ -7,7 +7,7 @@ M = 2048
 K = 2048
 bn = 32
 
-dtype = "float32"
+dtype = "int32"
 target = tvm.target.Target(target="upmem", host="llvm")
 
 k = te.reduce_axis((0, K), "k")

@@ -164,3 +164,76 @@ int main() {
     mram_write(C_local, (__mram_ptr void*)(C + (tasklet_id * 32 + y_inner_outer * 2) * sizeof(float)), sizeof(float) * 2);   
   }                                         
 }
+
+#include <stdio.h>
+#include <defs.h>
+#include <mram.h>
+#include <alloc.h>
+#include <barrier.h>
+#include <seqread.h>
+
+BARRIER_INIT(barrier, NR_TASKLETS);
+__host void*A;
+__host void*B;
+__host void*C;
+
+int main() {
+  unsigned int tasklet_id = me();
+  if (tasklet_id == 0) mem_reset();
+  barrier_wait(&barrier);
+  float* C_local = (float*) mem_alloc(2* sizeof(float));
+  float* A_local = (float*) mem_alloc(64* sizeof(float));
+  float* B_local = (float*) mem_alloc(64* sizeof(float));
+  for (int32_t y_inner_inner_outer = 0; y_inner_inner_outer < 16; ++y_inner_inner_outer) {
+    for (int32_t y_c = 0; y_c < 2; ++y_c) {
+      C_local[y_c] = 0.000000e+00f;
+      for (int32_t k_outer = 0; k_outer < 32; ++k_outer) {
+        for (int32_t ax1 = 0; ax1 < 64; ++ax1) {
+          A_local[ax1] = ((float*)A)[((((((0 * 1048576) + (tasklet_id * 65536)) + (y_inner_inner_outer * 4096)) + (y_c * 2048)) + (k_outer * 64)) + ax1)];
+        }
+        for (int32_t ax0 = 0; ax0 < 64; ++ax0) {
+          B_local[ax0] = ((float*)B)[((k_outer * 64) + ax0)];
+        }
+        for (int32_t k_inner = 0; k_inner < 64; ++k_inner) {
+          C_local[y_c] = (C_local[y_c] + (A_local[k_inner] * B_local[k_inner]));
+        }
+      }
+    }
+    for (int32_t y_inner_inner_inner = 0; y_inner_inner_inner < 2; ++y_inner_inner_inner) {
+      ((float*)C)[((((0 * 512) + (tasklet_id * 32)) + (y_inner_inner_outer * 2)) + y_inner_inner_inner)] = C_local[y_inner_inner_inner];
+    }
+  }
+}
+#include <stdio.h>
+#include <defs.h>
+#include <mram.h>
+#include <alloc.h>
+#include <barrier.h>
+#include <seqread.h>
+
+BARRIER_INIT(barrier, NR_TASKLETS);
+__host void*A;
+__host void*B;
+__host void*C;
+
+int main() {
+  unsigned int tasklet_id = me();
+  if (tasklet_id == 0) mem_reset();
+  barrier_wait(&barrier);
+  int32_t* C_local = (int32_t *) mem_alloc(2 * sizeof(int32_t));
+  int32_t* A_local = (int32_t *) mem_alloc(64 * sizeof(int32_t));
+  int32_t* B_local = (int32_t *) mem_alloc(64 * sizeof(int32_t));
+  for (int32_t y_inner_inner_outer = 0; y_inner_inner_outer < 16; ++y_inner_inner_outer) {
+    for (int32_t y_c = 0; y_c < 2; ++y_c) {
+      C_local[y_c] = 0;
+      for (int32_t k_outer = 0; k_outer < 32; ++k_outer) {
+        mram_read((__mram_ptr void const*)(A + (((((tasklet_id * 65536) + (y_inner_inner_outer * 4096)) + (y_c * 2048)) + (k_outer * 64))) * sizeof(int32_t)), A_local, 64 * sizeof(int32_t));
+        mram_read((__mram_ptr void const*)(B + ((k_outer * 64)) * sizeof(int32_t)), B_local, 64 * sizeof(int32_t));
+        for (int32_t k_inner = 0; k_inner < 64; ++k_inner) {
+          C_local[y_c] = (C_local[y_c] + (A_local[k_inner] * B_local[k_inner]));
+        }
+      }
+    }
+    mram_write(C_local, (__mram_ptr void*)(C + (((tasklet_id * 32) + (y_inner_inner_outer * 2))) * sizeof(int32_t)), 2 * sizeof(int32_t));
+  }
+}

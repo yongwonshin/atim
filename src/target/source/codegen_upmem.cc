@@ -25,6 +25,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <sstream>
 
 // #include "../../runtime/upmem/upmem_module.h"
 #include "../../runtime/thread_storage_scope.h"
@@ -36,17 +37,43 @@ namespace codegen {
 
 CodeGenUpmem::CodeGenUpmem() {}
 
-void CodeGenUpmem::InitFuncState(const PrimFunc& f) {
-  CodeGenC::InitFuncState(f);
+void CodeGenUpmem::AddFunction(const PrimFunc& f) {
+  // clear previous generated state.
+  this->InitFuncState(f);
+
+  for (Var arg : f->params) {
+    this->stream << "__host ";
+    PrintType(arg.dtype(), this->stream);
+    std::string vid = AllocVarID(arg.get());
+    this->stream << " " << vid << ";\n";
+  }
+  // reserve keywords
+  ReserveKeywordsAsUnique();
+
+  stream << "int main() {\n";
+  this->PreFunctionBody(f);
+  int func_scope = this->BeginScope();
+  this->PrintStmt(f->body);
+  this->EndScope(func_scope);
+  this->PrintIndent();
+  this->stream << "}\n\n";
 }
 
-void CodeGenUpmem::PrintFuncPrefix(std::ostream& os) { os << "__kernel "; }
-
 void CodeGenUpmem::PreFunctionBody(const PrimFunc& f) {
+  stream << "  unsigned int tasklet_id = me();\n"
+         << "  if (tasklet_id == 0) mem_reset();\n"
+         << "  barrier_wait(&barrier);\n";
 }
 
 std::string CodeGenUpmem::Finish() {
-  decl_stream << "// finish\n";
+  decl_stream << "#include <stdint.h>\n"
+              << "#include <stdio.h>\n"
+              << "#include <defs.h>\n"
+              << "#include <mram.h>\n"
+              << "#include <alloc.h>\n"
+              << "#include <barrier.h>\n"
+              << "#include <seqread.h>\n"
+              << "\nBARRIER_INIT(barrier, NR_TASKLETS);\n";
   return CodeGenC::Finish();
 }
 
@@ -55,350 +82,141 @@ void CodeGenUpmem::BindThreadIndex(const IterVar& iv) {
   runtime::ThreadScope ts = runtime::ThreadScope::Create(iv->thread_tag);
   std::ostringstream os;
   if (ts.rank == 1) {
-    os << "get_local_id(" << ts.dim_index << ")";
+    var_idmap_[iv->var.get()] = "tasklet_id";
   } else {
-    os << "get_group_id(" << ts.dim_index << ")";
-  }
-  var_idmap_[iv->var.get()] = CastFromTo(os.str(), DataType::UInt(64), iv->var.dtype());
-}
-
-void CodeGenUpmem::PrintType(DataType t, std::ostream& os) {  // NOLINT(*)
-  int lanes = t.lanes();
-  if (t.is_handle()) {
-    ICHECK_EQ(lanes, 1) << "do not yet support vector types";
-    os << "void*";
-    return;
-  }
-  if (t.is_void()) {
-    os << "void";
-    return;
-  }
-  if (t == DataType::Bool()) {
-    os << "bool";
-    return;
-  }
-  bool fail = false;
-  if (t.is_float()) {
-    switch (t.bits()) {
-      case 16:
-        os << "half";
-        enable_fp16_ = true;
-        break;
-      case 32:
-        os << "float";
-        break;
-      case 64:
-        os << "double";
-        enable_fp64_ = true;
-        break;
-      default:
-        fail = true;
-        break;
-    }
-    if (!fail && lanes == 1) return;
-    if (!fail && ((lanes >= 2 && lanes <= 4) || lanes == 8 || lanes == 16)) {
-      os << lanes;
-      return;
-    }
-  } else if (t.is_uint() || t.is_int()) {
-    if (t.is_uint()) {
-      os << 'u';
-    }
-    if (t.bits() == 8 && t.lanes() == 4) {
-      // directly 4 8 bit int in integer.
-      os << "int";
-      return;
-    }
-    switch (t.bits()) {
-      case 8:
-        os << "char";
-        break;
-      case 16:
-        os << "short";
-        break;
-      case 32:
-        os << "int";
-        break;
-      case 64:
-        os << "long";
-        break;
-      case 1:
-        os << "int";
-        break;
-      default:
-        fail = true;
-        break;
-    }
-    if (!fail && lanes == 1) return;
-    if (!fail && ((lanes >= 2 && lanes <= 4) || lanes == 8 || lanes == 16)) {
-      os << lanes;
-      return;
-    }
-  }
-  LOG(FATAL) << "Cannot convert type " << t << " to UPMEM type";
-}
-
-void CodeGenUpmem::PrintType(const Type& type, std::ostream& os) {  // NOLINT(*)
-  if (auto* ptr = type.as<PrimTypeNode>()) {
-    return PrintType(ptr->dtype, os);
-  } else if (auto* ptr = type.as<PointerTypeNode>()) {
-      PrintType(ptr->element_type, os);
-      os << '*';
-  } else if (IsVoidType(type)) {
-    os << "void";
-  } else {
-    LOG(FATAL) << "Type " << type << " does not have a corresponding C Type";
-  }
-}
-
-void CodeGenUpmem::PrintVecAddr(const BufferNode* buffer, DataType t, PrimExpr base,
-                                 std::ostream& os) {  // NOLINT(*)
-  const VarNode* buffer_var = buffer->data.get();
-  if (!HandleTypeMatch(buffer_var, t.element_of())) {
-    os << '(';
-    auto it = alloc_storage_scope_.find(buffer_var);
-    if (it != alloc_storage_scope_.end()) {
-      PrintStorageScope(it->second, os);
-    }
-    PrintType(t.element_of(), os);
-    os << "*)";
-  }
-  os << GetVarID(buffer_var) << " + ";
-  PrintExpr(base, os);
-}
-std::string CodeGenUpmem::GetVecLoad(DataType t, const BufferNode* buffer, PrimExpr base) {
-  std::ostringstream os;
-  os << "vload" << t.lanes() << "(0, ";
-  PrintVecAddr(buffer, t, base, os);
-  os << ")";
-  return os.str();
-}
-
-void CodeGenUpmem::PrintVecStore(const BufferNode* buffer, DataType t, PrimExpr base,
-                                  const std::string& value) {
-  this->PrintIndent();
-  stream << "vstore" << t.lanes() << "(" << value << ", 0, ";
-  PrintVecAddr(buffer, t, base, stream);
-  stream << ");\n";
-}
-
-void CodeGenUpmem::PrintVecElemLoadExpr(DataType t, int i, const std::string& value,
-                                         std::ostream& os) {  // NOLINT(*)
-  ICHECK_GT(t.lanes(), 1);
-  if (t.bits() == 8 && (t.is_int() || t.is_uint())) {
-    if (i != 0) {
-      os << "|";
-    }
-    os << "((0x000000ff << " << i * 8 << ") & (" << value << " << " << i * 8 << "))";
-    return;
-  }
-  if (i == 0) {
-    // NOTE: upmem print things as (float2)(v0, v1)
-    os << "((";
-    PrintType(t, os);
-    os << ")(";
-  }
-  os << value;
-  if (i != t.lanes() - 1) {
-    os << ",";
-  } else {
-    os << "))";
-  }
-  return;
-}
-
-void CodeGenUpmem::PrintStorageSync(const CallNode* op) {
-  const std::string& sync = op->args[0].as<StringImmNode>()->value;
-  if (sync == "warp") {
-    this->PrintIndent();
-    this->stream << "barrier(CLK_LOCAL_MEM_FENCE);\n";
-  } else if (sync == "shared") {
-    this->PrintIndent();
-    this->stream << "barrier(CLK_LOCAL_MEM_FENCE);\n";
-  } else if (sync == "global") {
-    LOG(FATAL) << "not supported";
-  }
-}
-
-void CodeGenUpmem::PrintStorageScope(const std::string& scope, std::ostream& os) {  // NOLINT(*)
-  if (scope == "global") {
-    os << "__global ";
-  } else if (scope == "shared") {
-    os << "__local ";
-  } else if (scope == "texture_read") {
-    os << "__read_only ";
-  } else if (scope == "texture_write") {
-    os << "__write_only ";
-  }
-}
-
-void CodeGenUpmem::PrintRestrict(const Var& v, std::ostream& os) {
-}
-
-std::string CodeGenUpmem::CastFromTo(std::string value, DataType from, DataType target) {
-  if (from == target) return value;
-  return CastTo(value, target);
-}
-
-std::string CodeGenUpmem::CastTo(std::string value, DataType target) {
-  std::ostringstream os;
-  if (target == DataType::Bool()) {
-    os << "(";
-    os << "(";
-    this->PrintType(target, os);
-    os << ")" << value << ")";
-    return os.str();
-  } else {
-    os << "(";
-    os << "convert_";
-    this->PrintType(target, os);
-    os << "(" << value << "))";
-    return os.str();
+    var_idmap_[iv->var.get()] = "0"; // TODO
   }
 }
 
 void CodeGenUpmem::VisitStmt_(const AllocateNode* op) {
   allocation_size_.insert({op->buffer_var.get(), op->ConstantAllocationSize() * op->dtype.lanes()});
+
+  ICHECK(!is_zero(op->condition));
+  std::string vid = AllocVarID(op->buffer_var.get());
+
+  this->PrintIndent();
+  size_t constant_size = op->ConstantAllocationSize();
+  ICHECK_GT(constant_size, 0) << "Can only handle constant size stack allocation for now";
+
+  auto scope = GetPtrStorageScope(op->buffer_var);
+  alloc_storage_scope_[op->buffer_var.get()] = scope;
+  PrintStorageScope(scope, stream);
+
+  PrintType(op->dtype, stream);
+  stream << "* " << vid << " = (";
+  PrintType(op->dtype, stream);
+  stream << "*) mem_alloc(" << constant_size << " * sizeof(";
+  PrintType(op->dtype, stream);
+  stream << "));\n";
+
+  RegisterHandleType(op->buffer_var.get(), op->dtype);
+  this->PrintStmt(op->body);
+}
+
+const VarNode* GetIndexFlatVar(const PrimExpr &expr) {
+  if (const VarNode* v = expr.as<VarNode>())
+    return v;
+  else if (const AddNode* v = expr.as<AddNode>()) {
+    if (const VarNode* n = v->a.as<VarNode>()) return n;
+    if (const VarNode* n = v->b.as<VarNode>()) return n;
+    if (const VarNode* n = GetIndexFlatVar(v->a)) return n;
+    if (const VarNode* n = GetIndexFlatVar(v->b)) return n;
+  }
+  return nullptr;
+}
+
+const PrimExpr GetIndexStrided(const PrimExpr &expr) {
+  if (expr.as<VarNode>() || expr.as<IntImmNode>())
+    return PrimExpr();
+  else if (const AddNode* v = expr.as<AddNode>()) {
+    const PrimExpr a = GetIndexStrided(v->a);
+    if (!a.defined()) return v->b;
+    const PrimExpr b = GetIndexStrided(v->b);
+    if (!b.defined()) return v->a;
+    return v->a + v->b;
+  }
+  return expr;
+}
+
+const bool isFlatEqual(const PrimExpr &a, const PrimExpr &b, std::string lvar) {
+  if (const VarNode* va = GetIndexFlatVar(a)) {
+    if (const VarNode* vb = GetIndexFlatVar(b)) {
+      return va->name_hint == lvar && vb->name_hint == lvar;
+    }
+  }
+  return false;
+}
+
+void CodeGenUpmem::VisitStmt_(const ForNode* op) {
+    PrintIndent();
+    std::string lvar = op->loop_var->name_hint;
+    ICHECK(is_zero(op->min));
+    if (const BufferStoreNode* store = op->body.as<BufferStoreNode>()) {
+      if (const BufferLoadNode* load = store->value.as<BufferLoadNode>()) {
+        if (isFlatEqual(store->indices[0], load->indices[0], lvar)) {
+          std::string lscope = GetPtrStorageScope(load->buffer->data);
+          std::string sscope = GetPtrStorageScope(store->buffer->data);
+          std::string sid = GetVarID(store->buffer->data.get());
+          std::string lid = GetVarID(load->buffer->data.get());
+
+          std::stringstream size_stream;
+          size_stream << "sizeof(";
+          PrintType(load->buffer->dtype, size_stream);
+          size_stream << ")";
+          std::string size = size_stream.str();
+
+          if (sscope == "local" && (lscope  == ""|| lscope == "global")) {
+            stream << "mram_read((__mram_ptr void const*)(" << lid << " + (" << PrintExpr(GetIndexStrided(load->indices[0]));
+            stream << ") * " <<  size << "), " << sid << ", " << op->extent << " * " << size << ");\n";
+            return;
+          }
+          else if ((sscope == "" || sscope == "global") && lscope == "local") {
+            stream << "mram_write(" << lid << ", (__mram_ptr void*)(" << sid << " + (" << PrintExpr(GetIndexStrided(store->indices[0]));
+            stream << ") * " << size << "), " << op->extent << " * " << size << ");\n";
+            return;
+          }
+        }
+      }
+    }
+
+    std::string extent = PrintExpr(op->extent);
+    std::string vid = AllocVarID(op->loop_var.get());
+    stream << "for (";
+    PrintType(op->loop_var.dtype(), stream);
+    stream << ' ' << vid << " = 0; " << vid << " < " << extent << "; ++" << vid << ") {\n";
+    int for_scope = BeginScope();
+    for_tags.push(vid);
+    PrintStmt(op->body);
+    // check if body is mram_read or mram_write
+    for_tags.pop();
+    this->EndScope(for_scope);
+    PrintIndent();
+    stream << "}\n";
+}
+
+void CodeGenUpmem::PrintStorageScope(const std::string& scope, std::ostream& os) {
+}
+
+void CodeGenUpmem::VisitStmt_(const BufferStoreNode* op) {
   CodeGenC::VisitStmt_(op);
 }
 
-void CodeGenUpmem::VisitExpr_(const CallNode* op, std::ostream& os) {
-  if (op->op.same_as(builtin::address_of())) {
-    // Overload tvm_address_of to add storage scope (e.g. __global).
-    const BufferLoadNode* load = op->args[0].as<BufferLoadNode>();
-    ICHECK(op->args.size() == 1 && load);
-    ICHECK_EQ(load->indices.size(), 1) << "CodeGenUpmem only supports flat memory allocations.";
-    os << "((";
-    auto it = alloc_storage_scope_.find(load->buffer->data.get());
-    if (it != alloc_storage_scope_.end()) {
-      PrintStorageScope(it->second, os);
-    }
-    this->PrintType(load->dtype.element_of(), os);
-    os << " *)" << this->GetVarID(load->buffer->data.get()) << " + ";
-    this->PrintExpr(load->indices[0], os);
-    os << ')';
-  } else if (op->op.same_as(builtin_call_extern_)) {
-    auto func = Downcast<StringImm>(op->args[0]);
-    // Enable atomics extension if used.
-    if (func->value == "atomic_add") {
-      enable_atomics_ = true;
-    }
-    CodeGenC::VisitExpr_(op, os);
-  } else {
-    CodeGenC::VisitExpr_(op, os);
+void CodeGenUpmem::VisitExpr_(const MulNode* op, std::ostream& os) {
+  std::string pa = PrintExpr(op->a);
+  std::string pb = PrintExpr(op->b);
+  if (pa == "0" || pb == "0") os << "0";
+  else {
+    os << "(" << pa << " * " << pb << ")";
   }
 }
 
-void CodeGenUpmem::VisitExpr_(const BroadcastNode* op, std::ostream& os) {  // NOLINT(*)
-  std::string v = PrintExpr(op->value);
-  os << "((";
-  PrintType(op->dtype, os);
-  os << ")(";
-  for (int i = 0; i < op->lanes; ++i) {
-    if (i != 0) os << ", ";
-    os << v;
-  }
-  os << "))";
-}
-
-void CodeGenUpmem::VisitExpr_(const RampNode* op, std::ostream& os) {  // NOLINT(*)
-  os << "((";
-  PrintType(op->dtype, os);
-  os << ")(";
-  for (int i = 0; i < op->lanes; i++) {
-    os << "(" << PrintExpr(op->base) << ")"
-       << "+(" << PrintExpr(op->stride) << "*" << i << ")";
-    if (i != op->lanes - 1) os << ", ";
-  }
-  os << "))";
-}
-
-void CodeGenUpmem::VisitExpr_(const FloatImmNode* op, std::ostream& os) {  // NOLINT(*)
-  if (std::isinf(op->value)) {
-    if (op->value < 0) {
-      os << "-";
-    }
-    os << "INFINITY";
-  } else if (std::isnan(op->value)) {
-    os << "NAN";
-  } else {
-    CodeGenC::VisitExpr_(op, os);
-  }
-}
-
-template <typename T>
-inline void PrintBinaryExpr(const T* op, const char* opstr, std::ostream& os, CodeGenUpmem* p) {
-  if (op->dtype.lanes() == 1) {
-    os << opstr << "((";
-    p->PrintType(op->a->dtype, os);
-    os << ")";
-    p->PrintExpr(op->a, os);
-    os << ", (";
-    p->PrintType(op->b->dtype, os);
-    os << ")";
-    p->PrintExpr(op->b, os);
-    os << ')';
-  } else {
-    p->PrintVecBinaryOp(opstr, op->dtype, op->a, op->b, os);
-  }
-}
-
-void CodeGenUpmem::VisitExpr_(const MinNode* op, std::ostream& os) {
-  PrintBinaryExpr(op, "min", os, this);
-}
-
-void CodeGenUpmem::VisitExpr_(const MaxNode* op, std::ostream& os) {
-  PrintBinaryExpr(op, "max", os, this);
-}
-
-void CodeGenUpmem::VisitExpr_(const AndNode* op, std::ostream& os) {
-  std::ostringstream oss;
-  os << "(";
-  this->PrintExpr(op->a, oss);
-  os << CastTo(oss.str(), op->dtype);
-  oss.str("");
-  os << " && ";
-  this->PrintExpr(op->b, oss);
-  os << CastTo(oss.str(), op->dtype);
-  os << ")";
-}
-
-void CodeGenUpmem::VisitExpr_(const OrNode* op, std::ostream& os) {
-  std::ostringstream oss;
-  os << "(";
-  this->PrintExpr(op->a, oss);
-  os << CastTo(oss.str(), op->dtype);
-  oss.str("");
-  os << " || ";
-  this->PrintExpr(op->b, oss);
-  os << CastTo(oss.str(), op->dtype);
-  os << ")";
-}
-
-void CodeGenUpmem::VisitExpr_(const SelectNode* op, std::ostream& os) {
-  std::ostringstream oss;
-  os << "select(";
-  PrintExpr(op->false_value, oss);
-  os << CastFromTo(oss.str(), op->false_value.dtype(), op->dtype);
-  oss.str("");
-  os << ", ";
-  PrintExpr(op->true_value, oss);
-  os << CastFromTo(oss.str(), op->true_value.dtype(), op->dtype);
-  oss.str("");
-  os << ", ";
-  PrintExpr(op->condition, oss);
-  if (op->dtype.is_float()) {
-    os << CastTo(oss.str(), DataType::Int(op->dtype.bits(), op->dtype.lanes()));
-  } else {
-    os << CastFromTo(oss.str(), op->condition.dtype(), op->dtype);
-  }
-  os << ")";
-}
-
-void CodeGenUpmem::SetTextureScope(
-    const std::unordered_map<const VarNode*, std::string>& scope) {  // NOLINT(*)
-  for (auto& texture : scope) {
-    alloc_storage_scope_.insert(texture);
+void CodeGenUpmem::VisitExpr_(const AddNode* op, std::ostream& os) {
+  std::string pa = PrintExpr(op->a);
+  std::string pb = PrintExpr(op->b);
+  if (pa == "0") os << pb;
+  else if (pb == "0") os << pa;
+  else {
+    os << "(" << pa << " + " << pb << ")";
   }
 }
 
