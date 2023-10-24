@@ -5,7 +5,11 @@ import numpy as np
 
 M = 2048
 K = 2048
-bn = 32
+
+N_XB = 4
+N_YB = 4
+N_YT = 16
+N_CACHE = 64
 
 dtype = "int32"
 target = tvm.target.Target(target="upmem", host="llvm")
@@ -17,24 +21,25 @@ C = te.compute((M,), lambda y: te.sum(A[y, k] * B[k], axis=k), name="C")
 
 s = te.create_schedule(C.op)
 
-xb, _ = s[C].split(C.op.reduce.axis[0], nparts = 4)
+xb, _ = s[C].split(k, nparts = N_XB)
 CF = s.rfactor(C, xb)
 
-AL = s.cache_read(A, "local", [C])
-BL = s.cache_read(B, "local", [C])
-CL = s.cache_write(C, "local")
+AL = s.cache_read(A, "local", [CF])
+BL = s.cache_read(B, "local", [CF])
+CL = s.cache_write(CF, "local")
 
-yb, = s[C].op.axis
-yb, yo = s[C].split(yb, nparts=4)
-yo, yi = s[C].split(yo, nparts=16)
-yi, yc = s[C].split(yi, 2)
-s[C].reorder(yo, yi, yc)
+xb, yb = s[CF].op.axis
+yb, yo = s[CF].split(yb, nparts=N_YB)
+yo, yi = s[CF].split(yo, nparts=N_YT)
+yi, yc = s[CF].split(yi, 2) # 8 / sizeof(dtype)
+s[CF].reorder(yo, yi, yc)
 
-s[C].bind(yb, te.thread_axis("blockIdx.x"))
-s[C].bind(yo, te.thread_axis("threadIdx.x"))
+s[CF].bind(yb, te.thread_axis("blockIdx.x"))
+s[CF].bind(xb, te.thread_axis("blockIdx.y"))
+s[CF].bind(yo, te.thread_axis("threadIdx.x"))
 
-s[CL].compute_at(s[C], yi)
-xo, xi = s[CL].split(s[CL].op.reduce_axis[0], 64)
+s[CL].compute_at(s[CF], yi)
+xo, xi = s[CL].split(s[CL].op.reduce_axis[0], N_CACHE)
 s[CL].reorder(s[CL].op.axis[0], xo, xi)
 s[AL].compute_at(s[CL], xo)
 s[BL].compute_at(s[CL], xo)
@@ -42,8 +47,8 @@ s[BL].compute_at(s[CL], xo)
 func = tvm.build(s, [A, B, C], target=target, name="mmult")
 # tvm.lower(s, [A, B, C], simple_mode=True)
 
-# dev = tvm.device(target.kind.name, 0)
-# a = tvm.nd.array(np.random.rand(M, K).astype(dtype), dev)
+dev = tvm.device(target.kind.name, 0)
+a = tvm.nd.array(np.random.rand(M, K).astype(dtype), dev)
 # b = tvm.nd.array(np.random.rand(K,).astype(dtype), dev)
 # c = tvm.nd.array(np.zeros((M,), dtype=dtype), dev)
 # func(a, b, c)
