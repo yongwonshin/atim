@@ -218,6 +218,9 @@ class BufferFlattener : public arith::IRMutatorWithAnalyzer {
   }
 
   Array<PrimExpr> GetSimplifiedElemOffset(const Buffer& buffer, const Array<PrimExpr>& indices) {
+    if (indices.size() == 0) {
+      return Array<PrimExpr>();
+    }
     auto flattened_indices = buffer->ElemOffset(indices);
     // Use IterMapSimplify to enable constant fold of fused indices
     // IterMapSimplify is more powerful and time-consuming than normal
@@ -237,11 +240,13 @@ class BufferFlattener : public arith::IRMutatorWithAnalyzer {
   Node VisitBufferAccess(Node node) {
     ICHECK(node->buffer.defined());
     auto flattened_indices = GetSimplifiedElemOffset(node->buffer, node->indices);
+    auto flattened_global_indices = GetSimplifiedElemOffset(node->buffer, node->global_indices);
     Buffer flattened_buffer = GetFlattenedBuffer(node->buffer);
 
     auto writer = node.CopyOnWrite();
     writer->buffer = flattened_buffer;
     writer->indices = flattened_indices;
+    writer->global_indices = flattened_global_indices;
     return node;
   }
 

@@ -28,6 +28,7 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
+#include "../../arith/ir_mutator_with_analyzer.h"
 #include "../ir/functor_common.h"
 #include "ir_utils.h"
 
@@ -96,6 +97,12 @@ class MatchBufferLower : public StmtExprMutator {
 
       auto n = CopyOnWrite(op);
       n->indices = ConvertIndices(MatchBufferRegion(buffer, source), op->indices);
+      if (op->buffer.scope() == "local") {
+        auto it = match_buffers_global_.find(op->buffer);
+        const Buffer& buffer = (*it).first;
+        const BufferRegion& source = (*it).second;
+        n->global_indices = ConvertIndices(MatchBufferRegion(buffer, source), op->global_indices);
+      }
       n->buffer = source->buffer;
       return Stmt(n);
     }
@@ -113,6 +120,14 @@ class MatchBufferLower : public StmtExprMutator {
       const Buffer& buffer = (*it).first;
       const BufferRegion& source = (*it).second;
       Array<PrimExpr> indices = ConvertIndices(MatchBufferRegion(buffer, source), op->indices);
+      if (op->buffer.scope() == "local") {
+        auto it = match_buffers_global_.find(op->buffer);
+        const Buffer& buffer = (*it).first;
+        const BufferRegion& source = (*it).second;
+        Array<PrimExpr> global_indices =
+            ConvertIndices(MatchBufferRegion(buffer, source), op->global_indices);
+        return BufferLoad(source->buffer, global_indices);
+      }
       return BufferLoad(source->buffer, indices);
     }
   }
@@ -129,12 +144,26 @@ class MatchBufferLower : public StmtExprMutator {
     }
   }
 
+  BufferRegion VisitBufferGlobalRegion(const BufferRegion& buffer_region) {
+    const Buffer& buffer = buffer_region->buffer;
+    auto it = match_buffers_global_.find(buffer);
+    if (it == match_buffers_global_.end()) {
+      return buffer_region;
+    } else {
+      const BufferRegion& source = (*it).second;
+      Region region = ConvertRegion(MatchBufferRegion(buffer, source), buffer_region->region);
+      return BufferRegion(source->buffer, std::move(region));
+    }
+  }
+
  private:
   void CheckAndUpdateVarMap(const MatchBufferRegion& match_buffer) {
     // Step.1. Check
     const Buffer& buffer = match_buffer->buffer;
     const BufferRegion& source = VisitBufferRegion(match_buffer->source);
+    const BufferRegion& global_source = VisitBufferGlobalRegion(match_buffer->global_source);
     const Buffer& source_buffer = source->buffer;
+    const Buffer& global_source_buffer = global_source->buffer;
 
     // Step.1.1. Check scope & dtype
     ICHECK_EQ(buffer.scope(), source_buffer.scope())
@@ -159,6 +188,7 @@ class MatchBufferLower : public StmtExprMutator {
 
     // Step.2. Update
     match_buffers_.Set(buffer, source);
+    match_buffers_global_.Set(buffer, global_source);
     // Step.2.1. Update buffer data
     Bind(buffer->data, source_buffer->data, buffer->name + ".data");
 
@@ -182,6 +212,32 @@ class MatchBufferLower : public StmtExprMutator {
         // If needed in the future, will require `Array<PrimExpr>
         // elem_offsets`, with one offset for each flattened index.
         Bind(buffer->elem_offset, make_const(buffer->elem_offset.dtype(), 0));
+      }
+    }
+
+    // Step.2.2. Update element offset
+    // We use the ElemOffset method to avoid duplicating the index calculation.
+    {
+      Array<PrimExpr> indices;
+      indices.reserve(global_source->region.size());
+      for (const Range& range : global_source->region) {
+        indices.push_back(range->min);
+      }
+
+      Array<PrimExpr> buffer_start_indices = source_buffer->InBankElemOffset(indices);
+      tvm::tir::Var var("test");
+      tvm::tir::Let b(var, buffer_start_indices[0], var);
+      test.Set(var, buffer->name);
+      if (buffer_start_indices.size() == 1) {
+        Bind(buffer->in_bank_elem_offset, b, buffer->name + ".in_bank_elem_offset");
+        // CHECK(analyzer_.CanProve(truncmod(buffer->elem_offset, buffer->offset_factor) == 0))
+        //     << "The source elem_offset " << buffer_start_indices[0]
+        //     << " does not satisfy the offset_factor " << buffer->offset_factor << ".";
+      } else {
+        // Non-zero elem_offset is ill-defined for non-flat memory.
+        // If needed in the future, will require `Array<PrimExpr>
+        // elem_offsets`, with one offset for each flattened index.
+        Bind(buffer->in_bank_elem_offset, make_const(buffer->in_bank_elem_offset.dtype(), 0));
       }
     }
 
@@ -239,18 +295,218 @@ class MatchBufferLower : public StmtExprMutator {
                                           << " unmet: " << lhs << "==" << rhs << ".";
   }
 
+ public:
+  Map<Var, String> test;
+
  private:
   /*! \brief Buffer region mapping. */
   Map<Buffer, BufferRegion> match_buffers_;
+  Map<Buffer, BufferRegion> match_buffers_global_;
   /*! \brief Var mapping for buffer signature (data, strides, element_offset, etc.) */
   Map<Var, PrimExpr> var_map_;
   /*! \brief The analyzer */
   arith::Analyzer analyzer_;
 };
 
+class TermSeparator : public ExprVisitor {
+ public:
+  PrimExpr Assembler() {
+    PrimExpr e;
+    for (auto t : terms) {
+      if (!e.defined())
+        e = t.first * t.second;
+      else
+        e += t.first * t.second;
+    }
+    return e;
+  }
+  void VisitExpr_(const AddNode* op) final {
+    // Extract and store the terms
+    this->VisitExpr(op->a);
+    this->VisitExpr(op->b);
+  }
+
+  void VisitExpr_(const MulNode* op) final {
+    // apply distribution law if possible
+    if (op->a.as<AddNode>()) {
+      auto l = Downcast<Add>(op->a)->a * op->b;
+      auto r = Downcast<Add>(op->a)->b * op->b;
+      this->VisitExpr(l + r);
+    } else if (op->b.as<AddNode>()) {
+      auto l = op->a * Downcast<Add>(op->b)->a;
+      auto r = op->a * Downcast<Add>(op->b)->b;
+      this->VisitExpr(l + r);
+    } else if (op->a.as<MulNode>()) {
+      // evaluate constants on the right
+      auto e = Downcast<Mul>(op->a)->a;
+      auto c1 = Downcast<IntImm>(Downcast<Mul>(op->a)->b);
+      auto c2 = Downcast<IntImm>(op->b);
+      auto c = IntImm(c1.dtype(), c1->value * c2->value);
+      this->VisitExpr(e * c);
+    } else {
+      terms.Set(Downcast<Var>(op->a), op->b.as<IntImmNode>()->value);
+    }
+  }
+
+  void VisitExpr_(const VarNode* op) final {
+    Var v = GetRef<Var>(op);
+    terms.Set(v, 1);
+  }
+
+ public:
+  Map<Var, Integer> terms;
+};
+
+class Test : public StmtExprMutator {
+ public:
+  explicit Test(Map<Var, String>& test) : StmtExprMutator() { this->test = std::move(test); }
+  PrimExpr VisitExpr_(const LetNode* op) final {
+    Let l = GetRef<Let>(op);
+    auto it = test.find(op->var);
+    if (it != test.end()) {
+      TermSeparator sep;
+      sep(op->value);
+
+      String buffer_name = (*it).second;
+      auto it2 = alloc_loop_level_.find(buffer_name);
+      if (it2 != alloc_loop_level_.end()) {
+        int loop_level = (*it2).second->value;
+        ICHECK(buffer_size_.count(buffer_name));
+        int scale = buffer_size_[buffer_name].IntValue();
+        for (int i = loop_level - 1; i >= 0; i--) {
+          const ForNode* op = loop_order_[i];
+          if (op->annotations.find("bank") != op->annotations.end()) {
+            if (sep.terms.count(op->loop_var) > 0) {
+              sep.terms.Set(op->loop_var, 0);
+            }
+          } else {
+            if (sep.terms.find(op->loop_var) != sep.terms.end()) {
+              sep.terms.Set(op->loop_var, scale);
+              scale *= Downcast<IntImm>(loop_range_[i].max() + 1)->value;
+            }
+          }
+        }
+      }
+      return sep.Assembler();
+    } else {
+      return std::move(l);
+    }
+  }
+
+  void RewriteBufferAccess(String buffer_name, int64_t ndim, Array<PrimExpr>* global_indices,
+                           const PrimExpr& flattened) {
+    Array<PrimExpr> new_global_indices;
+
+    TermSeparator sep;
+    sep(flattened);
+    auto it2 = alloc_loop_level_.find(buffer_name);
+    if (it2 != alloc_loop_level_.end()) {
+      int loop_level = (*it2).second->value;
+      ICHECK(buffer_size_.count(buffer_name));
+      int scale = buffer_size_[buffer_name].IntValue();
+      for (int i = loop_level - 1; i >= 0; i--) {
+        const ForNode* op = loop_order_[i];
+        if (op->annotations.find("bank") != op->annotations.end() ||
+            op->kind == ForKind::kThreadBinding) {
+          if (sep.terms.count(op->loop_var) > 0) {
+            sep.terms.Set(op->loop_var, 0);
+          }
+        } else {
+          if (sep.terms.find(op->loop_var) != sep.terms.end()) {
+            sep.terms.Set(op->loop_var, scale);
+            scale *= Downcast<IntImm>(loop_range_[i].max() + 1)->value;
+          }
+        }
+      }
+    }
+    for (int i = 0; i < ndim - 1; i++) {
+      new_global_indices.push_back(0);
+    }
+    new_global_indices.push_back(sep.Assembler());
+    *(global_indices) = std::move(new_global_indices);
+  }
+
+  Stmt VisitStmt_(const BufferStoreNode* _op) final {
+    BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_op));
+    BufferStoreNode* op = store.CopyOnWrite();
+    if (op->buffer.scope() != "local") {
+      return std::move(store);
+    }
+    const Buffer& buffer = op->buffer;
+    auto ndim = buffer->shape.size();
+    PrimExpr flattened = op->global_indices[0];
+
+    for (int i = 1; i < ndim; i++) {
+      flattened = flattened * buffer->shape[i] + op->global_indices[i];
+    }
+    RewriteBufferAccess(buffer->name, ndim, &op->global_indices, flattened);
+
+    return std::move(store);
+  }
+
+  PrimExpr VisitExpr_(const BufferLoadNode* _op) final {
+    BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_op));
+    BufferLoadNode* op = load.CopyOnWrite();
+    if (op->buffer.scope() != "local") {
+      return std::move(load);
+    }
+    const Buffer& buffer = op->buffer;
+    auto ndim = buffer->shape.size();
+    PrimExpr flattened = op->global_indices[0];
+
+    for (int i = 1; i < ndim; i++) {
+      flattened = flattened * buffer->shape[i] + op->global_indices[i];
+    }
+    RewriteBufferAccess(buffer->name, ndim, &op->global_indices, flattened);
+
+    return std::move(load);
+  }
+
+  Stmt VisitStmt_(const BlockNode* op) final {
+    for (auto buffer : op->alloc_buffers) {
+      alloc_loop_level_.Set(buffer->name, loop_order_.size());
+      size_t size = 1;
+      for (PrimExpr dim : buffer->shape) {
+        int64_t pval = Downcast<IntImm>(dim)->value;
+        size *= pval;
+      }
+      buffer_size_.Set(buffer->name, size);
+    }
+    Stmt stmt = StmtExprMutator::VisitStmt_(op);
+    return stmt;
+  }
+
+  Stmt VisitStmt_(const ForNode* op) final {
+    PrimExpr extent = op->extent;
+    if (op->annotations.find("bank") != op->annotations.end()) {
+      extent = IntImm(DataType::Int(32), 1);
+    }
+    if (op->kind == ForKind::kThreadBinding) {
+      extent = IntImm(DataType::Int(32), 1);
+    }
+    Range loop_range = Range::FromMinExtent(op->min, extent);
+    loop_range_.push_back(arith::IntSet::FromRange(loop_range));
+    loop_order_.push_back(op);
+    Stmt res = StmtExprMutator::VisitStmt_(op);
+    loop_range_.pop_back();
+    loop_order_.pop_back();
+    return res;
+  }
+
+ private:
+  Map<Var, String> test;
+  std::vector<arith::IntSet> loop_range_;
+  std::vector<const ForNode*> loop_order_;
+  Map<String, Integer> alloc_loop_level_;
+  Map<String, Integer> buffer_size_;
+  Map<Buffer, PrimExpr> global_indices_map_;
+};
+
 PrimFunc LowerMatchBuffer(PrimFunc func) {
   auto fptr = func.CopyOnWrite();
-  fptr->body = MatchBufferLower(func)(std::move(fptr->body));
+  auto pass = MatchBufferLower(func);
+  fptr->body = pass(std::move(fptr->body));
+  fptr->body = Test(pass.test)(std::move(func->body));
   return func;
 }
 

@@ -116,6 +116,16 @@ void ArgBinder::BindBuffer(const Buffer& arg, const Buffer& value, const std::st
                         &asserts_);
       }
     }
+    if (Bind_(arg->in_bank_elem_offset, value->elem_offset, arg_name + ".in_bank_elem_offset",
+              false)) {
+      if (arg->offset_factor > 1) {
+        PrimExpr offset = value->elem_offset;
+        PrimExpr factor = make_const(offset.dtype(), arg->offset_factor);
+        PrimExpr zero = make_zero(offset.dtype());
+        BinderAddAssert(&analyzer_, truncmod(offset, factor) == zero,
+                        arg_name + ".in_bank_elem_offset", &asserts_);
+      }
+    }
   }
 
   if (arg->shape.size() < value->shape.size()) {
@@ -290,6 +300,19 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
         PrimExpr zero = make_zero(offset.dtype());
         BinderAddAssert(&analyzer_, truncmod(offset, factor) == zero, arg_name + ".elem_offset",
                         &asserts_);
+      }
+    }
+    if (Bind_(buffer->in_bank_elem_offset,
+              cast(buffer->in_bank_elem_offset.dtype(),
+                   (TVMArrayGet(DataType::UInt(64), handle, builtin::kArrByteOffset) /
+                    make_const(DataType::UInt(64), data_bytes))),
+              arg_name + ".in_bank_elem_offset", true)) {
+      if (buffer->offset_factor > 1) {
+        PrimExpr offset = buffer->in_bank_elem_offset;
+        PrimExpr factor = make_const(offset.dtype(), buffer->offset_factor);
+        PrimExpr zero = make_zero(offset.dtype());
+        BinderAddAssert(&analyzer_, truncmod(offset, factor) == zero,
+                        arg_name + ".in_bank_elem_offset", &asserts_);
       }
     }
   }

@@ -142,6 +142,7 @@ class IRConvertSSA final : public StmtExprMutator {
           check_expr(stride);
         }
         check_expr(buffer->elem_offset);
+        check_expr(buffer->in_bank_elem_offset);
       }
     }
 
@@ -270,6 +271,7 @@ class IRConvertSSA final : public StmtExprMutator {
     // buffer var is unchanged.
     Var new_buffer_var = GetRemappedVar(buf->data);
     PrimExpr elem_offset = VisitExpr(buf->elem_offset);
+    PrimExpr in_bank_elem_offset = VisitExpr(buf->in_bank_elem_offset);
     auto visit_expr = [this](const PrimExpr& expr) { return VisitExpr(expr); };
     Array<PrimExpr> shape = buf->shape.Map(visit_expr);
     Array<PrimExpr> strides = buf->strides.Map(visit_expr);
@@ -299,6 +301,7 @@ class IRConvertSSA final : public StmtExprMutator {
       write_ptr->shape = shape;
       write_ptr->strides = strides;
       write_ptr->elem_offset = elem_offset;
+      write_ptr->in_bank_elem_offset = in_bank_elem_offset;
     }
     buffers.push_back(new_buf);
     return new_buf;

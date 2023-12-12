@@ -250,6 +250,10 @@ Array<PrimExpr> Buffer::OffsetOf(Array<PrimExpr> input_indices) const {
   return (*this)->ElemOffset(std::move(input_indices));
 }
 
+Array<PrimExpr> Buffer::InBankOffsetOf(Array<PrimExpr> input_indices) const {
+  return (*this)->InBankElemOffset(std::move(input_indices));
+}
+
 // The buffer offset in convention of number of elements of
 // original data ignoring number of lanes.
 // We also perform optimization to simplify the indexing expression.
@@ -271,6 +275,70 @@ Array<PrimExpr> BufferNode::ElemOffset(Array<PrimExpr> input_indices) const {
   Array<PrimExpr> elem_offsets = {};
   if (elem_offset.defined() && !is_zero(elem_offset)) {
     elem_offsets = {elem_offset};
+  }
+
+  if (elem_offsets.size()) {
+    ICHECK_EQ(elem_offsets.size(), axis_separators.size() + 1)
+        << "If element offsets are defined, "
+        << "there must be one element offset for each output index.";
+  }
+
+  Array<PrimExpr> output_indices(axis_separators.size() + 1, 0);
+
+  size_t current_output_axis = 0;
+
+  arith::Analyzer ana;
+
+  for (size_t i = 0; i < input_indices.size(); i++) {
+    if ((current_output_axis < axis_separators.size()) &&
+        (i == size_t(axis_separators[current_output_axis]->value))) {
+      current_output_axis++;
+    }
+
+    PrimExpr output_index = output_indices[current_output_axis];
+    if (strides.size()) {
+      output_index = output_index + input_indices[i] * strides[i];
+    } else {
+      output_index = output_index * this->shape[i] + input_indices[i];
+    }
+
+    if (i > 0) {
+      output_index = MergeMulMod(&ana, output_index);
+    }
+
+    output_indices.Set(current_output_axis, output_index);
+  }
+
+  if (elem_offsets.size()) {
+    for (size_t i = 0; i < output_indices.size(); i++) {
+      output_indices.Set(i, output_indices[i] + elem_offsets[i]);
+    }
+  }
+
+  return SimplifyArray(&ana, output_indices);
+}
+
+// The buffer offset in convention of number of elements of
+// original data ignoring number of lanes.
+// We also perform optimization to simplify the indexing expression.
+Array<PrimExpr> BufferNode::InBankElemOffset(Array<PrimExpr> input_indices) const {
+  ICHECK_EQ(shape.size(), input_indices.size())
+      << "Buffer " << this->name << " is " << shape.size()
+      << "-dimensional, cannot be indexed with the " << input_indices.size()
+      << "-dimensional indices provided.";
+
+  if (strides.size()) {
+    ICHECK_EQ(this->strides.size(), input_indices.size())
+        << "If strides are defined, "
+        << "the index's dimensionality must match the dimensionality of the index given.";
+  }
+
+  // TODO(Lunderberg): Better handling for cases where there is more
+  // than one output index.  Currently, this only allows in_bank_elem_offset
+  // to be non-zero for flat memory allocations.
+  Array<PrimExpr> elem_offsets = {};
+  if (in_bank_elem_offset.defined() && !is_zero(in_bank_elem_offset)) {
+    elem_offsets = {in_bank_elem_offset};
   }
 
   if (elem_offsets.size()) {
@@ -568,6 +636,9 @@ Buffer::Buffer(Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> 
   n->name = std::move(name);
   if (!elem_offset.defined()) {
     elem_offset = make_const(n->DefaultIndexType(), 0);
+    n->in_bank_elem_offset = make_const(n->DefaultIndexType(), 0);
+  } else {
+    n->in_bank_elem_offset = tvm::tir::Var("in_bank_elem_offset", elem_offset.dtype());
   }
   if (data_alignment <= 0) {
     data_alignment = runtime::kAllocAlignment;
@@ -630,6 +701,8 @@ TVM_REGISTER_GLOBAL("tir.BufferAccessPtr").set_body_method(&Buffer::access_ptr);
 TVM_REGISTER_GLOBAL("tir.BufferGetFlattenedBuffer").set_body_method(&Buffer::GetFlattenedBuffer);
 
 TVM_REGISTER_GLOBAL("tir.BufferOffsetOf").set_body_method(&Buffer::OffsetOf);
+
+TVM_REGISTER_GLOBAL("tir.BufferInBankOffsetOf").set_body_method(&Buffer::InBankOffsetOf);
 
 TVM_REGISTER_GLOBAL("tir.BufferVLoad").set_body_method(&Buffer::vload);
 

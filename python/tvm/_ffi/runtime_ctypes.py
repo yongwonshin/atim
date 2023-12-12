@@ -72,7 +72,11 @@ class DataTypeCode(object):
 class DataType(ctypes.Structure):
     """TVM datatype structure"""
 
-    _fields_ = [("type_code", ctypes.c_uint8), ("bits", ctypes.c_uint8), ("lanes", ctypes.c_uint16)]
+    _fields_ = [
+        ("type_code", ctypes.c_uint8),
+        ("bits", ctypes.c_uint8),
+        ("lanes", ctypes.c_uint16),
+    ]
     CODE2STR = {
         DataTypeCode.INT: "int",
         DataTypeCode.UINT: "uint",
@@ -186,7 +190,9 @@ class DataType(ctypes.Structure):
         else:
             import tvm.runtime._ffi_api
 
-            type_name = "custom[%s]" % tvm.runtime._ffi_api._datatype_get_type_name(self.type_code)
+            type_name = "custom[%s]" % tvm.runtime._ffi_api._datatype_get_type_name(
+                self.type_code
+            )
         x = "%s%d" % (type_name, self.bits)
         if self.lanes != 1:
             x += "x%d" % self.lanes
@@ -293,7 +299,7 @@ class Device(ctypes.Structure):
         "hexagon": kDLHexagon,
         "webgpu": kDLWebGPU,
         "upmem": kDLUPMEM,
-        "hbmpim": kDLHBMPIM,
+        "hbmpim": kDLOpenCL,
     }
 
     def __init__(self, device_type, device_id):
@@ -516,7 +522,9 @@ class Device(ctypes.Structure):
             The created runtime stream.
         """
         stream = ctypes.c_void_p()
-        check_call(_LIB.TVMStreamCreate(self.device_type, self.device_id, ctypes.byref(stream)))
+        check_call(
+            _LIB.TVMStreamCreate(self.device_type, self.device_id, ctypes.byref(stream))
+        )
         return stream
 
     def free_raw_stream(self, stream):
@@ -566,7 +574,11 @@ class Device(ctypes.Structure):
         if self.device_type >= RPC_SESS_MASK:
             tbl_id = self.device_type / RPC_SESS_MASK - 1
             dev_type = self.device_type % RPC_SESS_MASK
-            return "remote[%d]:%s(%d)" % (tbl_id, Device.MASK2STR[dev_type], self.device_id)
+            return "remote[%d]:%s(%d)" % (
+                tbl_id,
+                Device.MASK2STR[dev_type],
+                self.device_id,
+            )
         return "%s(%d)" % (Device.MASK2STR[self.device_type], self.device_id)
 
 

@@ -177,6 +177,23 @@ class Buffer(Object, Scriptable):
         """
         return _ffi_api.BufferOffsetOf(self, indices)  # type: ignore
 
+    def in_bank_offset_of(self, indices):
+        """Determine the offset of the provided indices in the flattened buffer.
+
+        Parameters
+        ----------
+        indices : Union[PrimExpr, List[PrimExpr]]
+
+            The indices of the element in the original buffer.
+
+        Returns
+        -------
+        flattened_indices: List[PrimExpr]
+
+            The offset indices of the element in the flattened buffer.
+        """
+        return _ffi_api.BufferInBankOffsetOf(self, indices)  # type: ignore
+
     def __getitem__(self, indices):
         from ..arith import Analyzer  # pylint: disable=import-outside-toplevel
         from .expr import BufferLoad, Ramp, const  # pylint: disable=import-outside-toplevel

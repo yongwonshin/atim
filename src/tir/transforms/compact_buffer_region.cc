@@ -582,14 +582,14 @@ class BufferCompactor : public StmtExprMutator {
   Stmt VisitStmt_(const BufferStoreNode* _op) final {
     BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(_op));
     BufferStoreNode* op = store.CopyOnWrite();
-    RewriteBufferAccess(&op->buffer, &op->indices);
+    RewriteBufferAccess(&op->buffer, &op->indices, &op->global_indices);
     return std::move(store);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* _op) final {
     BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_op));
     BufferLoadNode* op = load.CopyOnWrite();
-    RewriteBufferAccess(&op->buffer, &op->indices);
+    RewriteBufferAccess(&op->buffer, &op->indices, &op->global_indices);
     return std::move(load);
   }
 
@@ -646,7 +646,11 @@ class BufferCompactor : public StmtExprMutator {
     return buffer;
   }
 
-  void RewriteBufferAccess(Buffer* buffer, Array<PrimExpr>* indices) const {
+  void RewriteBufferAccess(Buffer* buffer, Array<PrimExpr>* indices,
+                           Array<PrimExpr>* global_indices) const {
+    if (buffer->scope() == "local") {
+      *global_indices = *indices;
+    }
     auto it = buffer_info_.find((*buffer)->data);
     if (it == buffer_info_.end()) {
       return;
@@ -699,8 +703,9 @@ class BufferCompactor : public StmtExprMutator {
     for (const auto& match_buffer : *match_buffers) {
       const BufferRegion& buffer_region = match_buffer->source;
       auto p = make_object<BufferRegionNode>(*buffer_region.get());
+      BufferRegion global_region = buffer_region;
       RewriteBufferRegion(&p->buffer, &p->region);
-      result.push_back(MatchBufferRegion(match_buffer->buffer, BufferRegion(p)));
+      result.push_back(MatchBufferRegion(match_buffer->buffer, BufferRegion(p), global_region));
     }
     *match_buffers = std::move(result);
   }

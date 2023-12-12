@@ -630,6 +630,8 @@ class BufferLoadNode : public PrimExprNode {
   Buffer buffer;
   /*! \brief The indices location to be loaded. */
   Array<PrimExpr> indices;
+  /*! \brief The indices location to be stored before CompactBufferAllocation pass. */
+  Array<PrimExpr> global_indices;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dtype", &(this->dtype));
@@ -676,6 +678,8 @@ class BufferLoadNode : public PrimExprNode {
 class BufferLoad : public PrimExpr {
  public:
   TVM_DLL explicit BufferLoad(Buffer buffer, Array<PrimExpr> indices, Span span = Span());
+  TVM_DLL explicit BufferLoad(Buffer buffer, Array<PrimExpr> indices,
+                              Array<PrimExpr> global_indices, Span span = Span());
   TVM_DEFINE_OBJECT_REF_METHODS(BufferLoad, PrimExpr, BufferLoadNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BufferLoadNode);
 };

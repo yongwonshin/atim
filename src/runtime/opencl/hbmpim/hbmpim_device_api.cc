@@ -18,19 +18,39 @@
  */
 
 /*!
- *  Optional module when build upmem is switched to off
+ * \file hbmpim_device_api.cc
  */
-#include "../source/codegen_source_base.h"
+#include <dmlc/thread_local.h>
+#include <tvm/runtime/registry.h>
+
+#include "hbmpim_common.h"
 
 namespace tvm {
 namespace runtime {
+namespace cl {
 
-Module UpmemModuleCreate(std::unordered_map<std::string, std::string> smap,
-                         std::unordered_map<std::string, FunctionInfo> fmap, std::string fmt,
-                         std::string source) {
-  LOG(WARNING) << "Upmem runtime not enabled, return a source module...";
-  return codegen::DeviceSourceModuleCreate(source, fmt, fmap, "upmem");
+OpenCLThreadEntry* HBMPIMWorkspace::GetThreadEntry() { return HBMPIMThreadEntry::ThreadLocal(); }
+
+OpenCLWorkspace* HBMPIMWorkspace::Global() {
+  static OpenCLWorkspace* inst = new HBMPIMWorkspace();
+  return inst;
 }
 
+void HBMPIMWorkspace::Init() { OpenCLWorkspace::Init("hbmpim", "gpu"); }
+
+bool HBMPIMWorkspace::IsOpenCLDevice(Device dev) {
+  return dev.device_type == static_cast<DLDeviceType>(kDLHBMPIM);
+}
+
+typedef dmlc::ThreadLocalStore<HBMPIMThreadEntry> HBMPIMThreadStore;
+
+HBMPIMThreadEntry* HBMPIMThreadEntry::ThreadLocal() { return HBMPIMThreadStore::Get(); }
+
+TVM_REGISTER_GLOBAL("device_api.hbmpim").set_body([](TVMArgs args, TVMRetValue* rv) {
+  DeviceAPI* ptr = HBMPIMWorkspace::Global();
+  *rv = static_cast<void*>(ptr);
+});
+
+}  // namespace cl
 }  // namespace runtime
 }  // namespace tvm

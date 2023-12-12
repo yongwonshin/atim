@@ -596,6 +596,60 @@ MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source) {
   ObjectPtr<MatchBufferRegionNode> node = make_object<MatchBufferRegionNode>();
   node->buffer = std::move(buffer);
   node->source = std::move(source);
+  node->global_source = node->source;
+  data_ = std::move(node);
+}
+
+// MatchBufferRegion
+MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source,
+                                     BufferRegion global_source) {
+  const Buffer& source_buffer = source->buffer;
+  arith::Analyzer analyzer;
+  // Check scope and dtype
+  CHECK_EQ(buffer.scope(), source_buffer.scope())
+      << "MatchBuffer " << buffer << " scope mismatch:" << buffer.scope() << " vs. "
+      << source_buffer.scope();
+  CHECK_EQ(buffer->dtype, source_buffer->dtype)
+      << "MatchBuffer " << buffer << " data type mismatch:" << buffer->dtype << " vs. "
+      << source_buffer->dtype;
+
+  // Check data_alignment
+  CHECK(source_buffer->data_alignment % buffer->data_alignment == 0)
+      << "Trying to match buffer to another one with lower alignment requirement "
+      << " required_alignment=" << buffer->data_alignment
+      << ", provided_alignment=" << source_buffer->data_alignment;
+
+  // Check BufferType. AutoBroadcast is not allowed for now.
+  CHECK(buffer->buffer_type == BufferType::kDefault &&
+        source_buffer->buffer_type == BufferType::kDefault)
+      << "AutoBroadcast is not allowed in MatchBuffer";
+
+  // Validate shape
+  CHECK(source->region.size() >= buffer->shape.size())
+      << "Dimension of source Region expected to be larger or equal than target buffer shape, but "
+         "got "
+      << source->region.size() << " vs. " << buffer->shape.size();
+  size_t offset = source->region.size() - buffer->shape.size();
+  for (size_t i = 0; i < offset; ++i) {
+    CHECK(analyzer.CanProve(source->region[i]->extent == 1))
+        << "The higher dimension should be 1, but got " << source->region[i]->extent << ".";
+  }
+  for (size_t i = 0; i < buffer->shape.size(); ++i) {
+    const Range& source_range = source->region[i + offset];
+    const PrimExpr& buffer_shape = buffer->shape[i];
+    if (!buffer_shape->IsInstance<VarNode>()) {
+      CHECK(analyzer.CanProve(source_range->extent == buffer_shape))
+          << "The dimension mismatched between source region and target buffer shape, got "
+          << source_range->extent << " vs. " << buffer_shape << ".";
+    }
+  }
+  // Note that we do not check elem_offset and strides in this function
+
+  // Construction
+  ObjectPtr<MatchBufferRegionNode> node = make_object<MatchBufferRegionNode>();
+  node->buffer = std::move(buffer);
+  node->source = std::move(source);
+  node->global_source = std::move(global_source);
   data_ = std::move(node);
 }
 

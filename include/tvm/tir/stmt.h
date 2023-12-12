@@ -231,6 +231,8 @@ class BufferStoreNode : public StmtNode {
   PrimExpr value;
   /*! \brief The indices location to be stored. */
   Array<PrimExpr> indices;
+  /*! \brief The indices location to be stored before CompactBufferAllocation pass. */
+  Array<PrimExpr> global_indices;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("buffer", &buffer);
@@ -1197,6 +1199,8 @@ class MatchBufferRegionNode : public Object {
   Buffer buffer;
   /*! \brief The source buffer region. */
   BufferRegion source;
+  /*! \brief The global source buffer region. */
+  BufferRegion global_source;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("buffer", &buffer);
@@ -1225,6 +1229,8 @@ class MatchBufferRegionNode : public Object {
 class MatchBufferRegion : public ObjectRef {
  public:
   TVM_DLL explicit MatchBufferRegion(Buffer buffer, BufferRegion source);
+  TVM_DLL explicit MatchBufferRegion(Buffer buffer, BufferRegion source,
+                                     BufferRegion global_source);
 
   TVM_DEFINE_OBJECT_REF_METHODS(MatchBufferRegion, ObjectRef, MatchBufferRegionNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(MatchBufferRegionNode);

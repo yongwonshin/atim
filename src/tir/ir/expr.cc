@@ -728,6 +728,22 @@ BufferLoad::BufferLoad(Buffer buffer, Array<PrimExpr> indices, Span span) {
   data_ = std::move(node);
 }
 
+BufferLoad::BufferLoad(Buffer buffer, Array<PrimExpr> indices, Array<PrimExpr> global_indices,
+                       Span span) {
+  ICHECK_EQ(buffer->shape.size(), indices.size())
+      << "Buffer " << buffer->name << " is " << buffer->shape.size()
+      << "-dimensional, cannot be indexed with the " << indices.size()
+      << "-dimensional indices provided.";
+
+  ObjectPtr<BufferLoadNode> node = make_object<BufferLoadNode>();
+  node->buffer = std::move(buffer);
+  node->indices = std::move(indices);
+  node->global_indices = std::move(global_indices);
+  node->span = std::move(span);
+  node->LegalizeDType();
+  data_ = std::move(node);
+}
+
 TVM_REGISTER_GLOBAL("tir.BufferLoad")
     .set_body_typed([](Buffer buffer, Array<PrimExpr> indices, Span span) {
       return BufferLoad(buffer, indices, span);

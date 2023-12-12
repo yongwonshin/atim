@@ -69,6 +69,7 @@ void StmtVisitor::VisitStmt_(const DeclBufferNode* op) { this->VisitStmt(op->bod
 void StmtVisitor::VisitStmt_(const BufferStoreNode* op) {
   this->VisitExpr(op->value);
   VisitArray(op->indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  // VisitArray(op->global_indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
 }
 
 void StmtVisitor::VisitStmt_(const BufferRealizeNode* op) {
@@ -138,6 +139,8 @@ void StmtVisitor::VisitStmt_(const BlockNode* op) {
              [this, fvisit_buffer_region](const MatchBufferRegion& match_buffer_region) {
                fvisit_buffer_region(match_buffer_region->source);
                this->VisitExpr(match_buffer_region->buffer->elem_offset);
+               //  if (match_buffer_region->buffer->in_bank_elem_offset.defined())
+               //  this->VisitExpr(match_buffer_region->buffer->in_bank_elem_offset);
                VisitArray(match_buffer_region->buffer->strides,
                           [this](const PrimExpr& e) { this->VisitExpr(e); });
                VisitArray(match_buffer_region->buffer->shape,
@@ -247,6 +250,7 @@ class StmtMutator::Internal {
     auto fmutate = [self](const MatchBufferRegion& match_buffer_region) {
       const Buffer& buffer = match_buffer_region->buffer;
       Array<Range> region = Mutate(self, match_buffer_region->source->region);
+      Array<Range> global_region = Mutate(self, match_buffer_region->global_source->region);
       PrimExpr elem_offset = self->VisitExpr(buffer->elem_offset);
       Array<PrimExpr> strides = Mutate(self, buffer->strides);
       Array<PrimExpr> shape = Mutate(self, buffer->shape);
@@ -259,15 +263,17 @@ class StmtMutator::Internal {
         if (region.same_as(match_buffer_region->source->region)) {
           return match_buffer_region;
         } else {
-          return MatchBufferRegion(buffer,
-                                   BufferRegion(match_buffer_region->source->buffer, region));
+          return MatchBufferRegion(
+              buffer, BufferRegion(match_buffer_region->source->buffer, region),
+              BufferRegion(match_buffer_region->global_source->buffer, global_region));
         }
       } else {
         Buffer new_buffer(buffer->data, buffer->dtype, shape, strides, elem_offset, buffer->name,
                           buffer->data_alignment, buffer->offset_factor, buffer->buffer_type,
                           axis_separators, buffer->span);
-        return MatchBufferRegion(new_buffer,
-                                 BufferRegion(match_buffer_region->source->buffer, region));
+        return MatchBufferRegion(
+            new_buffer, BufferRegion(match_buffer_region->source->buffer, region),
+            BufferRegion(match_buffer_region->global_source->buffer, global_region));
       }
     };
     return MutateArray(self, arr, fmutate);
@@ -392,6 +398,7 @@ Stmt StmtMutator::VisitStmt_(const IfThenElseNode* op) {
 Stmt StmtMutator::VisitStmt_(const BufferStoreNode* op) {
   PrimExpr value = this->VisitExpr(op->value);
   Array<PrimExpr> indices = Internal::Mutate(this, op->indices);
+  Array<PrimExpr> global_indices = Internal::Mutate(this, op->global_indices);
 
   if (value.same_as(op->value) && indices.same_as(op->indices)) {
     return GetRef<Stmt>(op);
@@ -399,6 +406,7 @@ Stmt StmtMutator::VisitStmt_(const BufferStoreNode* op) {
     auto n = CopyOnWrite(op);
     n->value = std::move(value);
     n->indices = std::move(indices);
+    n->global_indices = std::move(global_indices);
     return Stmt(n);
   }
 }
@@ -732,6 +740,7 @@ class IRSubstitute : public StmtExprMutator {
 
     Var buffer_var = Downcast<Var>(new_buffer_var_expr);
     auto elem_offset = VisitExpr(buf->elem_offset);
+    auto in_bank_elem_offset = VisitExpr(buf->in_bank_elem_offset);
     auto shape = buf->shape.Map([this](const auto& expr) { return VisitExpr(expr); });
     auto strides = buf->strides.Map([this](const auto& expr) { return VisitExpr(expr); });
 
@@ -740,6 +749,7 @@ class IRSubstitute : public StmtExprMutator {
       auto writer = buf.CopyOnWrite();
       writer->data = buffer_var;
       writer->elem_offset = elem_offset;
+      writer->in_bank_elem_offset = in_bank_elem_offset;
       writer->shape = shape;
       writer->strides = strides;
     }

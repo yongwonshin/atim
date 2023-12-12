@@ -34,46 +34,46 @@
 namespace tvm {
 namespace codegen {
 
-class CodeGenOpenCL final : public CodeGenC {
+class CodeGenOpenCL : public CodeGenC {
  public:
   CodeGenOpenCL();
   std::string Finish();
 
   // override print thread tag.
-  void InitFuncState(const PrimFunc& f) final;
-  void PrintFuncPrefix(std::ostream& os) final;                              // NOLINT(*)
-  void PreFunctionBody(const PrimFunc& f) final;                             // NOLINT(*)
-  void BindThreadIndex(const IterVar& iv) final;                             // NOLINT(*)
-  void PrintStorageScope(const std::string& scope, std::ostream& os) final;  // NOLINT(*)
-  void PrintStorageSync(const CallNode* op) final;                           // NOLINT(*)
-  void PrintType(DataType t, std::ostream& os) final;                        // NOLINT(*)
-  void PrintType(const Type& type, std::ostream& os) final;                  // NOLINT(*)
-  std::string GetVecLoad(DataType t, const BufferNode* buffer, PrimExpr base) final;
+  void InitFuncState(const PrimFunc& f);
+  void PrintFuncPrefix(std::ostream& os);                              // NOLINT(*)
+  void PreFunctionBody(const PrimFunc& f);                             // NOLINT(*)
+  void BindThreadIndex(const IterVar& iv);                             // NOLINT(*)
+  void PrintStorageScope(const std::string& scope, std::ostream& os);  // NOLINT(*)
+  void PrintStorageSync(const CallNode* op);                           // NOLINT(*)
+  void PrintType(DataType t, std::ostream& os);                        // NOLINT(*)
+  void PrintType(const Type& type, std::ostream& os);                  // NOLINT(*)
+  std::string GetVecLoad(DataType t, const BufferNode* buffer, PrimExpr base);
   void PrintVecStore(const BufferNode* buffer, DataType t, PrimExpr base,
-                     const std::string& value) final;  // NOLINT(*)
+                     const std::string& value);  // NOLINT(*)
   void PrintVecElemLoadExpr(DataType t, int i, const std::string& value,
-                            std::ostream& os) final;  // NOLINT(*)
+                            std::ostream& os);  // NOLINT(*)
   // the address of load/store
   void PrintVecAddr(const BufferNode* buffer, DataType t, PrimExpr base,
                     std::ostream& os);                                           // NOLINT(*)
-  void PrintRestrict(const Var& v, std::ostream& os) final;                      // NOLINT(*)
+  void PrintRestrict(const Var& v, std::ostream& os);                            // NOLINT(*)
   std::string CastFromTo(std::string value, DataType from, DataType target);     // NOLINT(*)
   std::string CastTo(std::string value, DataType target);                        // NOLINT(*)
   void SetTextureScope(const std::unordered_map<const VarNode*, std::string>&);  // NOLINT(*)
 
   // overload visitor
-  void VisitStmt_(const AllocateNode* op) final;                     // NOLINT(*)
-  void VisitExpr_(const BroadcastNode* op, std::ostream& os) final;  // NOLINT(*)
-  void VisitExpr_(const RampNode* op, std::ostream& os) final;       // NOLINT(*)
-  void VisitExpr_(const CallNode* op, std::ostream& os) final;       // NOLINT(*)
-  void VisitExpr_(const FloatImmNode* op, std::ostream& os) final;   // NOLINT(*)
+  void VisitStmt_(const AllocateNode* op);                     // NOLINT(*)
+  void VisitExpr_(const BroadcastNode* op, std::ostream& os);  // NOLINT(*)
+  void VisitExpr_(const RampNode* op, std::ostream& os);       // NOLINT(*)
+  void VisitExpr_(const CallNode* op, std::ostream& os);       // NOLINT(*)
+  void VisitExpr_(const FloatImmNode* op, std::ostream& os);   // NOLINT(*)
 
   // overload min and max to avoid ambiguous call errors
-  void VisitExpr_(const MinNode* op, std::ostream& os) final;
-  void VisitExpr_(const MaxNode* op, std::ostream& os) final;
-  void VisitExpr_(const AndNode* op, std::ostream& os) final;
-  void VisitExpr_(const OrNode* op, std::ostream& os) final;
-  void VisitExpr_(const SelectNode* op, std::ostream& os) final;
+  void VisitExpr_(const MinNode* op, std::ostream& os);
+  void VisitExpr_(const MaxNode* op, std::ostream& os);
+  void VisitExpr_(const AndNode* op, std::ostream& os);
+  void VisitExpr_(const OrNode* op, std::ostream& os);
+  void VisitExpr_(const SelectNode* op, std::ostream& os);
 
  private:
   // whether enable fp16 and fp64 extension

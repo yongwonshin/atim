@@ -79,6 +79,7 @@ class BufferNode : public Object {
   Array<PrimExpr> strides;
   /*! \brief The offset in terms of number of dtype elements (including lanes) */
   PrimExpr elem_offset;
+  PrimExpr in_bank_elem_offset = tvm::tir::Var("in_bank_elem_offset", DataType::Int(32));
   // Meta data
   /*! \brief optional name of the buffer */
   String name;
@@ -106,6 +107,7 @@ class BufferNode : public Object {
     v->Visit("strides", &strides);
     v->Visit("axis_separators", &axis_separators);
     v->Visit("elem_offset", &elem_offset);
+    v->Visit("in_bank_elem_offset", &in_bank_elem_offset);
     v->Visit("name", &name);
     v->Visit("data_alignment", &data_alignment);
     v->Visit("offset_factor", &offset_factor);
@@ -146,6 +148,8 @@ class BufferNode : public Object {
    * float16x4 elements in a buffer of type float16x4.)
    */
   Array<PrimExpr> ElemOffset(Array<PrimExpr> index) const;
+
+  Array<PrimExpr> InBankElemOffset(Array<PrimExpr> index) const;
 
   static constexpr const char* _type_key = "tir.Buffer";
   static constexpr const bool _type_has_method_sequal_reduce = true;
@@ -218,6 +222,8 @@ class Buffer : public ObjectRef {
    * float16x4 elements in a buffer of type float16x4.)
    */
   Array<PrimExpr> OffsetOf(Array<PrimExpr> index) const;
+
+  Array<PrimExpr> InBankOffsetOf(Array<PrimExpr> index) const;
 
   /*!
    * \brief Return the storage scope associated with this buffer.
