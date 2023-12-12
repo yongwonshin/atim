@@ -197,10 +197,10 @@ def get_mac_intrin(dtype):
         with T.block("root"):
             T.reads(P_local[0:16], A_local[0:128], B_local[0:128])
             T.writes(P_local[0:16])
-        #     for k, r in T.grid(8, 16):
-        #         with T.block(""):
-        #             v_k, v_r = T.axis.remap("RS", [k, r])
-        #             P_local[v_r] = P_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
+            for k, r in T.grid(8, 16):
+                with T.block(""):
+                    v_k, v_r = T.axis.remap("RS", [k, r])
+                    P_local[v_r] = P_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
 
     return mac_desc, mac_impl
 

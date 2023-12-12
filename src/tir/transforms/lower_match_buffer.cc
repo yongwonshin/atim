@@ -126,7 +126,7 @@ class MatchBufferLower : public StmtExprMutator {
         const BufferRegion& source = (*it).second;
         Array<PrimExpr> global_indices =
             ConvertIndices(MatchBufferRegion(buffer, source), op->global_indices);
-        return BufferLoad(source->buffer, global_indices);
+        return BufferLoad(source->buffer, indices, global_indices);
       }
       return BufferLoad(source->buffer, indices);
     }
