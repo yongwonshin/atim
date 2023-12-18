@@ -60,13 +60,12 @@ class ThreadBindingUnifier : public StmtExprMutator {
     }
     Map<String, ObjectRef> annotations = op->annotations;
     Stmt stmt = UnifyThreadBindingImpl(op, op->loop_var, op->thread_binding.value(),
-                                       Range::FromMinExtent(op->min, op->extent));
+                                       Range::FromMinExtent(op->min, op->extent), annotations);
     if (annotations.empty()) {
       return stmt;
     }
     if (const auto* loop = stmt.as<ForNode>()) {
       For new_loop = GetRef<For>(loop);
-      new_loop.CopyOnWrite()->annotations = std::move(annotations);
       return std::move(new_loop);
     } else {
       // Create a new unit loop with the annotation.
@@ -75,14 +74,14 @@ class ThreadBindingUnifier : public StmtExprMutator {
                  /*min=*/IntImm(dtype, 0),         //
                  /*extent=*/IntImm(dtype, 1),      //
                  /*kind=*/ForKind::kSerial, stmt,  //
-                 /*thread_binding=*/NullOpt,       //
-                 /*annotation=*/std::move(annotations));
+                 /*thread_binding=*/NullOpt);
     }
   }
 
   template <typename Node>
   Stmt UnifyThreadBindingImpl(const Node* op, const Var& old_var, const IterVar& old_iter_var,
-                              const Range& dom) {
+                              const Range& dom,
+                              const TargetFeatures& annotations = TargetFeatures()) {
     // Step 1. Fetch the thread tag.
     IterVar new_iter_var{nullptr};
     const String& thread_tag = old_iter_var->thread_tag;
@@ -117,6 +116,7 @@ class ThreadBindingUnifier : public StmtExprMutator {
                              old_iter_var->thread_tag);
       thread_tag2iter_var_map_.Set(thread_tag, new_iter_var);
       launch_threads_.push_back(new_iter_var);
+      annotations_.push_back(annotations);
     }
 
     // Step 4. We will substitute the occurrences of the old variable in the old IterVar with the
@@ -147,13 +147,16 @@ class ThreadBindingUnifier : public StmtExprMutator {
     Stmt result = body;
     while (!launch_threads_.empty()) {
       const IterVar& thread_binding = launch_threads_.back();
+      const TargetFeatures& annotations = annotations_.back();
       // Recreate the IterVar as we don't duplicate `dom` in both For and IterVar. This is
       // necessary for unit tests.
       result = For(thread_binding->var, thread_binding->dom->min, thread_binding->dom->extent,
                    ForKind::kThreadBinding, result,
                    IterVar(NullValue<Range>(), Var(""), IterVarType::kThreadIndex,
-                           thread_binding->thread_tag));
+                           thread_binding->thread_tag),
+                   annotations);
       launch_threads_.pop_back();
+      annotations_.pop_back();
     }
     return result;
   }
@@ -181,6 +184,7 @@ class ThreadBindingUnifier : public StmtExprMutator {
   int thread_block_depth_ = 0;
   /*! \brief An analyzer used for equality proof */
   arith::Analyzer ana;
+  Array<TargetFeatures> annotations_;
 };
 
 PrimFunc UnifyThreadBinding(PrimFunc f) {
