@@ -27,6 +27,8 @@
 #include <vector>
 #include <sstream>
 
+#include <tvm/tir/stmt_functor.h>
+
 // #include "../../runtime/upmem/upmem_module.h"
 #include "../../runtime/thread_storage_scope.h"
 #include "../build_common.h"
@@ -147,13 +149,72 @@ const bool isFlatEqual(const PrimExpr &a, const PrimExpr &b, std::string lvar) {
   return false;
 }
 
+void CodeGenUpmem::VisitExpr_(const BufferLoadNode* op, std::ostream& os) {
+  ICHECK_EQ(op->indices.size(), 1) << "Load from non-flat memory not supported.";
+
+  DataType value_dtype = op->dtype;
+  DataType element_dtype = op->buffer->dtype;
+  ICHECK_EQ(value_dtype.lanes(), element_dtype.lanes()) << "Vectorization not supported.";
+  std::string scope = GetPtrStorageScope(op->buffer->data);
+
+  PrimExpr index;
+  if (alloc_global_index.defined()) {
+    ICHECK(scope == "" || scope == "global") << "In local<-global pattern, BufferLoad scope should be global.";
+    index = alloc_global_index;
+  } else {
+    ICHECK(scope == "local") << "BufferLoad scope should be local, except in local<-global pattern.";
+    index = op->indices[0];
+  }
+
+  Var buffer_var = op->buffer->data;
+  std::string ref = GetBufferRef(op->dtype, op->buffer.get(), index);
+  HandleVolatileLoads(ref, op, os);
+}
+  
+
+void CodeGenUpmem::VisitStmt_(const BufferStoreNode* op) {
+  ICHECK_EQ(op->indices.size(), 1) << "Store to non-flat memory not supported.";
+
+  DataType value_dtype = op->value.dtype();
+  DataType element_dtype = op->buffer->dtype;
+  ICHECK_EQ(value_dtype.lanes(), element_dtype.lanes()) << "Vectorization not supported.";
+
+  PrimExpr index_expr = op->indices[0];
+
+  // Most store<-load pattern should be intercepted in ForNode visit, using mram_read or mram_write.
+  // TODO: move mram_read/mram_write into LowerIntrinsic
+
+  if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
+    std::string lscope = GetPtrStorageScope(load->buffer->data);
+    std::string sscope = GetPtrStorageScope(op->buffer->data);
+    ICHECK(sscope == "local" || lscope == "local") << "Either source or destination must be local.";
+    if (sscope == "local" && (lscope == "" || lscope == "global")) { // local <- global
+      ICHECK(op->global_indices.size() == 1) << "In local->global pattern, BufferStore global_indices should be size 1.";
+      alloc_global_index = op->global_indices[0];
+    }
+    if (lscope == "local" && (sscope == "" || sscope == "global")) { // global <- local
+      ICHECK(load->global_indices.size() == 1) << "In global->local pattern, BufferLoad global_indices should be size 1.";
+      index_expr = load->global_indices[0];
+    }
+  }
+  std::string value = PrintExpr(op->value);
+  alloc_global_index = PrimExpr();
+
+  Var buffer_var = op->buffer->data;
+  std::string ref = this->GetBufferRef(value_dtype, op->buffer.get(), index_expr);
+  this->PrintIndent();
+  stream << ref << " = " << value << ";\n";
+}
+
 void CodeGenUpmem::VisitStmt_(const ForNode* op) {
     PrintIndent();
     std::string lvar = op->loop_var->name_hint;
     ICHECK(is_zero(op->min));
+
     if (const BufferStoreNode* store = op->body.as<BufferStoreNode>()) {
       if (const BufferLoadNode* load = store->value.as<BufferLoadNode>()) {
         if (isFlatEqual(store->indices[0], load->indices[0], lvar)) {
+          // mram_ pattern
           std::string lscope = GetPtrStorageScope(load->buffer->data);
           std::string sscope = GetPtrStorageScope(store->buffer->data);
           std::string sid = GetVarID(store->buffer->data.get());
@@ -166,12 +227,12 @@ void CodeGenUpmem::VisitStmt_(const ForNode* op) {
           std::string size = size_stream.str();
 
           if (sscope == "local" && (lscope  == ""|| lscope == "global")) {
-            stream << "mram_read((__mram_ptr void const*)(" << lid << " + (" << PrintExpr(GetIndexStrided(load->indices[0]));
+            stream << "mram_read((__mram_ptr void const*)(" << lid << " + (" << PrintExpr(GetIndexStrided(store->global_indices[0]));
             stream << ") * " <<  size << "), " << sid << ", " << op->extent << " * " << size << ");\n";
             return;
           }
           else if ((sscope == "" || sscope == "global") && lscope == "local") {
-            stream << "mram_write(" << lid << ", (__mram_ptr void*)(" << sid << " + (" << PrintExpr(GetIndexStrided(store->indices[0]));
+            stream << "mram_write(" << lid << ", (__mram_ptr void*)(" << sid << " + (" << PrintExpr(GetIndexStrided(load->global_indices[0]));
             stream << ") * " << size << "), " << op->extent << " * " << size << ");\n";
             return;
           }
@@ -195,29 +256,6 @@ void CodeGenUpmem::VisitStmt_(const ForNode* op) {
 }
 
 void CodeGenUpmem::PrintStorageScope(const std::string& scope, std::ostream& os) {
-}
-
-void CodeGenUpmem::VisitStmt_(const BufferStoreNode* op) {
-  CodeGenC::VisitStmt_(op);
-}
-
-void CodeGenUpmem::VisitExpr_(const MulNode* op, std::ostream& os) {
-  std::string pa = PrintExpr(op->a);
-  std::string pb = PrintExpr(op->b);
-  if (pa == "0" || pb == "0") os << "0";
-  else {
-    os << "(" << pa << " * " << pb << ")";
-  }
-}
-
-void CodeGenUpmem::VisitExpr_(const AddNode* op, std::ostream& os) {
-  std::string pa = PrintExpr(op->a);
-  std::string pb = PrintExpr(op->b);
-  if (pa == "0") os << pb;
-  else if (pb == "0") os << pa;
-  else {
-    os << "(" << pa << " + " << pb << ")";
-  }
 }
 
 runtime::Module BuildUpmem(IRModule mod, Target target) {

@@ -31,6 +31,7 @@
 #include "../../arith/ir_mutator_with_analyzer.h"
 #include "../ir/functor_common.h"
 #include "ir_utils.h"
+#include "../schedule/analysis.h"
 
 namespace tvm {
 namespace tir {
@@ -427,6 +428,12 @@ class Test : public StmtExprMutator {
     return std::move(l);
   }
 
+  bool IsBankBinded(const ForNode* op) {
+    return op->annotations.find("bank") != op->annotations.end() || 
+      (op->kind == ForKind::kThreadBinding && op->thread_binding.defined() && 
+        runtime::ThreadScope::Create(op->thread_binding.value()->thread_tag).rank == 0);
+  }
+
   void RewriteBufferAccess(String buffer_name, int64_t ndim, Array<PrimExpr>* global_indices,
                            const PrimExpr& flattened) {
     Array<PrimExpr> new_global_indices;
@@ -440,15 +447,16 @@ class Test : public StmtExprMutator {
       int scale = buffer_size_[buffer_name].IntValue();
       for (int i = loop_level - 1; i >= 0; i--) {
         const ForNode* op = loop_order_[i];
-        if (op->annotations.find("bank") != op->annotations.end() ||
-            op->kind == ForKind::kThreadBinding) {
+        if (IsBankBinded(op)) {
           if (sep.terms.count(op->loop_var) > 0) {
+            // VLOG(2) << "Banking " << op->loop_var << " for " << buffer_name;
             sep.terms.Set(op->loop_var, 0);
           }
         } else {
           if (sep.terms.find(op->loop_var) != sep.terms.end()) {
             sep.terms.Set(op->loop_var, scale);
             scale *= Downcast<IntImm>(loop_range_[i].max() + 1)->value;
+            // VLOG(2) << "Rewrite " << op->loop_var << " for " << buffer_name << " to " << scale;
           }
         }
       }
@@ -457,6 +465,7 @@ class Test : public StmtExprMutator {
       new_global_indices.push_back(0);
     }
     new_global_indices.push_back(sep.Assembler());
+    // VLOG(2) << "RewriteBufferAccess called for \n\t" << buffer_name << " with " << *global_indices << " to \n\t" << new_global_indices;
     *(global_indices) = std::move(new_global_indices);
   }
 

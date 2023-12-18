@@ -50,12 +50,12 @@ class CodeGenUpmem final : public CodeGenC {
   // the address of load/store
 
   // overload visitor
-  void VisitStmt_(const BufferStoreNode* op) final;
   void VisitStmt_(const AllocateNode* op) final;                     // NOLINT(*)
   void VisitStmt_(const ForNode* op) final;
 
-  void VisitExpr_(const MulNode* op, std::ostream& os) final;        // NOLINT(*)
-  void VisitExpr_(const AddNode* op, std::ostream& os) final;        // NOLINT(*)
+  void VisitExpr_(const BufferLoadNode* op, std::ostream& os) final;
+  void VisitStmt_(const BufferStoreNode* op) final;
+  
  private:
   // whether enable fp16 and fp64 extension
   bool enable_fp16_{false};
@@ -65,6 +65,8 @@ class CodeGenUpmem final : public CodeGenC {
   // Whether to enable sampler or sampler-less texture reads,
   // where the choice depends on the Upmem version used.
   bool enable_compliant_texture_reads_{false};
+
+  PrimExpr alloc_global_index;
 
   std::stack<std::string> for_tags;
   // Mapping from buffer to allocation size.
