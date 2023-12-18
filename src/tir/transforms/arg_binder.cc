@@ -128,6 +128,10 @@ void ArgBinder::BindBuffer(const Buffer& arg, const Buffer& value, const std::st
     }
   }
 
+  if (value->bank_index.defined()) {
+    this->Bind(arg->bank_index, value->bank_index, arg_name + ".bank_index");
+  }
+
   if (arg->shape.size() < value->shape.size()) {
     ICHECK(fuzzy_match) << "Argument " << arg_name << " size mismatch";
     size_t diff = value->shape.size() - arg->shape.size();
@@ -316,6 +320,10 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
       }
     }
   }
+  Bind_(buffer->bank_index,
+        cast(buffer->bank_index.dtype(),
+             TVMArrayGet(DataType::UInt(64), handle, builtin::kArrByteOffset)),
+        arg_name + ".bank_index", true);
   // device info.
   Bind_(device_type, TVMArrayGet(DataType::Int(32), handle, builtin::kArrDeviceType),
         arg_name + ".device_type", true);

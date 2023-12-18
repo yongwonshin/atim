@@ -254,6 +254,8 @@ Array<PrimExpr> Buffer::InBankOffsetOf(Array<PrimExpr> input_indices) const {
   return (*this)->InBankElemOffset(std::move(input_indices));
 }
 
+PrimExpr Buffer::BankIndex() const { return (*this)->BankIndex(); }
+
 // The buffer offset in convention of number of elements of
 // original data ignoring number of lanes.
 // We also perform optimization to simplify the indexing expression.
@@ -381,6 +383,8 @@ Array<PrimExpr> BufferNode::InBankElemOffset(Array<PrimExpr> input_indices) cons
 
   return SimplifyArray(&ana, output_indices);
 }
+
+inline PrimExpr BufferNode::BankIndex() const { return bank_index; }
 
 inline Array<PrimExpr> BufferOffset(const BufferNode* n, Array<PrimExpr> index, DataType dtype) {
   Array<PrimExpr> offsets = n->ElemOffset(index);
@@ -570,7 +574,7 @@ Buffer Buffer::MakeSlice(Array<PrimExpr> begins, Array<PrimExpr> extents) const 
 }
 
 PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lanes, PrimExpr offset,
-                            Optional<PrimExpr> input_extent) const {
+                            Optional<PrimExpr> input_extent, bool ignore_elem_offset) const {
   const BufferNode* self = operator->();
   ICHECK(self != nullptr);
   PrimExpr e_dtype;
@@ -585,7 +589,7 @@ PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lane
                    make_const(DataType::Int(32), 1), self->shape) -
              offset;
   }
-  PrimExpr elem_offset = self->elem_offset + offset;
+  PrimExpr elem_offset = ignore_elem_offset ? offset : self->elem_offset + offset;
   if (content_lanes > 1) {
     e_dtype = tir::TypeAnnotation(self->dtype.with_lanes(content_lanes));
     extent = extent / make_const(self->elem_offset.dtype(), content_lanes);
@@ -640,6 +644,7 @@ Buffer::Buffer(Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> 
   } else {
     n->in_bank_elem_offset = tvm::tir::Var("in_bank_elem_offset", elem_offset.dtype());
   }
+  n->bank_index = tvm::tir::Var("bank_index", DataType::Int(32));
   if (data_alignment <= 0) {
     data_alignment = runtime::kAllocAlignment;
   }
@@ -703,6 +708,8 @@ TVM_REGISTER_GLOBAL("tir.BufferGetFlattenedBuffer").set_body_method(&Buffer::Get
 TVM_REGISTER_GLOBAL("tir.BufferOffsetOf").set_body_method(&Buffer::OffsetOf);
 
 TVM_REGISTER_GLOBAL("tir.BufferInBankOffsetOf").set_body_method(&Buffer::InBankOffsetOf);
+
+TVM_REGISTER_GLOBAL("tir.BufferBankIndex").set_body_method(&Buffer::BankIndex);
 
 TVM_REGISTER_GLOBAL("tir.BufferVLoad").set_body_method(&Buffer::vload);
 

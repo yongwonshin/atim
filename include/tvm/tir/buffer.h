@@ -80,6 +80,7 @@ class BufferNode : public Object {
   /*! \brief The offset in terms of number of dtype elements (including lanes) */
   PrimExpr elem_offset;
   PrimExpr in_bank_elem_offset = tvm::tir::Var("in_bank_elem_offset", DataType::Int(32));
+  PrimExpr bank_index = tvm::tir::Var("bank_index", DataType::Int(32));
   // Meta data
   /*! \brief optional name of the buffer */
   String name;
@@ -108,6 +109,7 @@ class BufferNode : public Object {
     v->Visit("axis_separators", &axis_separators);
     v->Visit("elem_offset", &elem_offset);
     v->Visit("in_bank_elem_offset", &in_bank_elem_offset);
+    v->Visit("bank_index", &bank_index);
     v->Visit("name", &name);
     v->Visit("data_alignment", &data_alignment);
     v->Visit("offset_factor", &offset_factor);
@@ -150,6 +152,8 @@ class BufferNode : public Object {
   Array<PrimExpr> ElemOffset(Array<PrimExpr> index) const;
 
   Array<PrimExpr> InBankElemOffset(Array<PrimExpr> index) const;
+
+  PrimExpr BankIndex() const;
 
   static constexpr const char* _type_key = "tir.Buffer";
   static constexpr const bool _type_has_method_sequal_reduce = true;
@@ -196,7 +200,8 @@ class Buffer : public ObjectRef {
    */
   TVM_DLL PrimExpr access_ptr(int access_mask, DataType ptr_type = DataType::Handle(),
                               int content_lanes = 1, PrimExpr offset = IntImm(DataType::Int(32), 0),
-                              Optional<PrimExpr> input_extent = NullOpt) const;
+                              Optional<PrimExpr> input_extent = NullOpt,
+                              bool ignore_elem_offset = false) const;
   /*!
    * \brief Create an Expr that does a vector load at begin index.
    * \param begin The beginning index
@@ -224,6 +229,8 @@ class Buffer : public ObjectRef {
   Array<PrimExpr> OffsetOf(Array<PrimExpr> index) const;
 
   Array<PrimExpr> InBankOffsetOf(Array<PrimExpr> index) const;
+
+  PrimExpr BankIndex() const;
 
   /*!
    * \brief Return the storage scope associated with this buffer.

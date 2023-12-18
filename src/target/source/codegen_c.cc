@@ -119,6 +119,7 @@ void CodeGenC::AddFunction(const PrimFunc& f) {
     }
     stream << ' ' << vid;
   }
+  this->PrintExtraFuncParams(f);
   stream << ") {\n";
   this->PreFunctionBody(f);
   int func_scope = this->BeginScope();

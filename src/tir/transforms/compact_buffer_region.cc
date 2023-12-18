@@ -610,6 +610,18 @@ class BufferCompactor : public StmtExprMutator {
     return std::move(block);
   }
 
+  Stmt VisitStmt_(const ForNode* op) final {
+    Range loop_range = Range::FromMinExtent(op->min, op->extent);
+    if (op->annotations.Get("bank").as<Bool>()) {
+      loop_info_.emplace(op->loop_var.get(), arith::IntSet::FromRange(loop_range));
+    }
+    Stmt stmt = StmtExprMutator::VisitStmt_(op);
+    if (op->annotations.Get("bank").as<Bool>()) {
+      loop_info_.erase(op->loop_var.get());
+    }
+    return stmt;
+  }
+
   Stmt VisitStmt_(const DeclBufferNode* op) final {
     Buffer new_buffer = RewriteAllocBuffer(op->buffer);
     auto n = CopyOnWrite(op);
@@ -705,13 +717,24 @@ class BufferCompactor : public StmtExprMutator {
       auto p = make_object<BufferRegionNode>(*buffer_region.get());
       BufferRegion global_region = buffer_region;
       RewriteBufferRegion(&p->buffer, &p->region);
-      result.push_back(MatchBufferRegion(match_buffer->buffer, BufferRegion(p), global_region));
+      PrimExpr index = GetBankIndex();
+      result.push_back(
+          MatchBufferRegion(match_buffer->buffer, BufferRegion(p), global_region, index));
     }
     *match_buffers = std::move(result);
   }
 
+  PrimExpr GetBankIndex() const {
+    PrimExpr index = make_const(DataType::Int(32), 0);
+    for (auto kv : loop_info_) {
+      index = (kv.second.max() + 1) * index + GetRef<Var>(kv.first);
+    }
+    return index;
+  }
+
   /*! \brief Map buffer var to the allocation information about each buffer. */
   std::unordered_map<Var, BufferAllocInfo, ObjectPtrHash, ObjectPtrEqual> buffer_info_;
+  std::unordered_map<const VarNode*, arith::IntSet> loop_info_;
 };
 
 PrimFunc CompactBufferAllocation(PrimFunc f, bool is_strict) {

@@ -204,6 +204,7 @@ class PrimFuncSpecializer : public StmtExprMutator {
 
     PrimExpr elem_offset = VisitExpr(buffer->elem_offset);
     PrimExpr in_bank_elem_offset = VisitExpr(buffer->in_bank_elem_offset);
+    PrimExpr bank_index = VisitExpr(buffer->bank_index);
 
     if (buffer->elem_offset.same_as(elem_offset) && buffer->shape.same_as(shape) &&
         buffer->strides.same_as(strides)) {
@@ -212,6 +213,7 @@ class PrimFuncSpecializer : public StmtExprMutator {
       auto n = make_object<BufferNode>(*buffer.get());
       n->elem_offset = std::move(elem_offset);
       n->in_bank_elem_offset = std::move(in_bank_elem_offset);
+      n->bank_index = std::move(bank_index);
       n->shape = std::move(shape);
       n->strides = std::move(strides);
       return Buffer(n);
@@ -321,6 +323,7 @@ void UpdateSpecializeVarMap(const PrimFunc& func, const Var& param, const Buffer
   }
   build_var_mapping(specific_buf->elem_offset, buf_to_specialize->elem_offset);
   build_var_mapping(specific_buf->in_bank_elem_offset, buf_to_specialize->in_bank_elem_offset);
+  build_var_mapping(specific_buf->bank_index, buf_to_specialize->bank_index);
 
   // Check data_alignment and offset_factor.
   // These two signatures are int, so we do not need map them.

@@ -35,6 +35,9 @@ namespace tvm {
 namespace codegen {
 
 class CodeGenHBMPIM final : public CodeGenOpenCL {
+  void PreFunctionBody(const PrimFunc& f) final;                // NOLINT(*)
+  void PrintExtraFuncParams(const PrimFunc& f) final;           // NOLINT(*)
+  void VisitExpr_(const CallNode* op, std::ostream& os) final;  // NOLINT(*)
   void VisitStmt_(const ForNode* op) final;                     // NOLINT(*)
   void VisitStmt_(const BufferStoreNode* op) final;             // NOLINT(*)
   void VisitExpr_(const BufferLoadNode* op, std::ostream& os);  // NOLINT(*)
@@ -42,8 +45,11 @@ class CodeGenHBMPIM final : public CodeGenOpenCL {
   std::ostringstream& Stream();                                 // NOLINT(*)
   void PrintPIMPrologue();                                      // NOLINT(*)
   void PrintPIMEpilogue();                                      // NOLINT(*)
+  void PrintChangeGemvHabHabPim();                              // NOLINT(*)
+  void PrintChangeGemvHabPimHab();                              // NOLINT(*)
  private:
   int pim_scope_;
+  bool skip_scope_ = false;
   const int crf_size_ = 32;
 };
 

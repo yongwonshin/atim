@@ -28,6 +28,131 @@ from ..._ffi import register_func
 from ...runtime import convert
 from .. import Cast, IntImm, TensorIntrin
 
+CLK_LOCAL_MEM_FENCE = 0
+CLK_GLOBAL_MEM_FENCE = 1
+
+
+def R_CMD(dtype, addr, ptr=""):
+    return T.evaluate(T.R_CMD(addr, ptr=ptr, dtype=dtype))
+    return T.evaluate(T.vloadn(0, addr, ptr=ptr, dtype=dtype))
+
+
+def W_CMD(dtype, addr, ptr=""):
+    return T.evaluate(T.W_CMD(addr, ptr=ptr, dtype=dtype))
+    return T.evaluate(T.vstoren(0, 0, addr, ptr=ptr, dtype=dtype))
+
+
+def W_CMD_R(dtype, addr, src, ptr=""):
+    return T.evaluate(T.W_CMD_R(addr, src, ptr=ptr, dtype=dtype))
+    return T.evaluate(
+        T.vstoren(T.vloadn(0, src, ptr="", dtype=dtype), 0, addr, ptr="pim_ctr", dtype=dtype)
+    )
+
+
+def W_CMD_R_C(dtype, addr, src, ptr=""):
+    return T.evaluate(T.W_CMD_R_C(addr, src, ptr=ptr, dtype=dtype))
+    return T.evaluate(
+        T.vstoren(T.vloadn(0, src, ptr="", dtype=dtype), 0, addr, ptr="pim_ctr", dtype=dtype)
+    )
+
+
+def B_CMD(type):
+    return T.evaluate(T.B_CMD(type))
+    if type == CLK_LOCAL_MEM_FENCE:
+        return T.evaluate(T.barrier(CLK_LOCAL_MEM_FENCE))
+    else:
+        return T.evaluate(T.mem_fence(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE))
+
+
+# class Vega20_pbi:
+#     num_banks = 16
+#     num_bank_groups = 4
+#     num_rank_bit = 1
+#     num_row_bit = 14
+#     num_col_high_bit = 3
+#     num_bank_high_bit = 1
+#     num_bankgroup_bit = 2
+#     num_bank_low_bit = 1
+#     num_chan_bit = 6
+#     num_col_low_bit = 2
+#     num_offset_bit = 5
+#     num_grf = 8
+#     num_grf_A = 8
+#     num_grf_B = 8
+#     num_srf = 4
+#     num_col = 128
+#     num_row = 16384
+#     bl = 4
+#     num_pim_blocks = 8
+#     num_pim_rank = 1
+#     num_pim_chan = 64
+#     trans_size = 32
+#     num_out_per_grf = 16
+
+
+# def mask_by_bit(value, start, end):
+#     length = start - end + 1
+#     value >>= end
+#     return value & ((1 << length) - 1)
+
+
+# def addr_gen_safe(ch, ra, bg, bk, row, col, offset):
+#     while offset >= Vega20_pbi.trans_size:
+#         col += 1
+#         offset -= Vega20_pbi.trans_size
+
+#     while col >= Vega20_pbi.num_col // Vega20_pbi.bl:
+#         row += 1
+#         col -= Vega20_pbi.num_col // Vega20_pbi.bl
+
+#     return addr_gen(ch, ra, bg, bk, row, col, offset)
+
+
+# def addr_gen(ch, ra, bg, bk, row, col, offset):
+#     num_row_bit = Vega20_pbi.num_row_bit
+#     num_col_high_bit = Vega20_pbi.num_col_high_bit
+#     num_bank_high_bit = Vega20_pbi.num_bank_high_bit
+#     num_bankgroup_bit = Vega20_pbi.num_bankgroup_bit
+#     num_bank_low_bit = Vega20_pbi.num_bank_low_bit
+#     num_chan_bit = Vega20_pbi.num_chan_bit
+#     num_offset_bit = Vega20_pbi.num_offset_bit
+
+#     addr = 0
+
+#     addr = ra
+
+#     addr <<= num_row_bit
+#     addr |= row
+
+#     addr <<= num_col_high_bit
+#     addr |= mask_by_bit(col, 4, 2)
+
+#     addr <<= num_bank_high_bit
+#     addr |= mask_by_bit(bk, 1, 1)
+
+#     addr <<= num_bankgroup_bit
+#     addr |= bg
+
+#     addr <<= num_bank_low_bit
+#     addr |= mask_by_bit(bk, 0, 0)
+
+#     addr <<= num_chan_bit - 1
+#     addr |= mask_by_bit(ch, num_chan_bit - 1, 1)
+
+#     addr <<= 1
+#     addr |= mask_by_bit(col, 1, 1)
+
+#     addr <<= 1
+#     addr |= mask_by_bit(ch, 0, 0)
+
+#     addr <<= 1
+#     addr |= mask_by_bit(col, 0, 0)
+
+#     addr <<= num_offset_bit
+
+#     addr += offset
+#     return 0
+
 
 def get_input_intrin(dtype):
     @T.prim_func
@@ -57,40 +182,24 @@ def get_input_intrin(dtype):
 
     @T.prim_func
     def input_impl(a: T.handle, b: T.handle) -> None:
-        # B = T.match_buffer(a, (128,), dtype=dtype, offset_factor=1, scope="global")
-        # B_local = T.match_buffer(b, (128,), dtype=dtype, offset_factor=1, scope="local")
-        # with T.block("root"):
-        #     T.reads(B[0:128])
-        #     T.writes(B_local[0:128])
-        #     ch = T.env_thread("blockIdx.x")
-        #     T.launch_thread(ch, 64)
-        #     tx = T.env_thread("threadIdx.x")
-        #     T.launch_thread(tx, 16)
-        #     T.evaluate(
-        #         T.W_CMD_R(
-        #             "pim_ctr",
-        #             T.addr_gen(ch=ch, bk=B.bank_index() % 2, row=0x3FFF, col=0x8, offset=tx * 16),
-        #             B.access_ptr("r", offset=B.offset_of([tx * 16])[0]),
-        #         )
-        #     )
-        #     T.evaluate(
-        #         T.R_CMD(
-        #             T.addr_gen(ch=ch, bk=B.bank_index(), row=0x3FFF, col=0x8, offset=tx * 16),
-        #             ptr="pim_ctr",
-        #         )
-        #     )
-
         B = T.match_buffer(a, (128,), dtype=dtype, offset_factor=1, scope="global")
         B_local = T.match_buffer(b, (128,), dtype=dtype, offset_factor=1, scope="local")
         with T.block("root"):
             T.reads(B[0:128])
             T.writes(B_local[0:128])
+            ch = T.env_thread("blockIdx.x")
+            T.launch_thread(ch, 64)
             tx = T.env_thread("threadIdx.x")
             T.launch_thread(tx, 16)
-            for i in T.serial(0, 128):
-                with T.block(""):
-                    v_i = T.axis.remap("S", [i])
-                    B_local[v_i] = B[v_i]  # B.offset_of([tx * 16])[0]
+
+            addr = T.addr_gen(ch, 0, 0, B_local.bank_index() % 2, 0x3FFF, 0x8, tx * 16)
+            W_CMD_R("int32x4", addr, B.access_ptr("r", offset=tx * 8), ptr="pim_ctr")
+            R_CMD(
+                "int32x4",
+                addr,
+                ptr="pim_ctr",
+            )
+            B_CMD(1)
 
         # B = T.match_buffer(a, (1024,), dtype=dtype, scope="global")
         # B_local = T.match_buffer(b, (1024,), dtype=dtype, scope="local")
@@ -123,35 +232,46 @@ def get_weight_intrin(dtype):
 
     @T.prim_func
     def weight_impl(a: T.handle, b: T.handle) -> None:
-        # A = T.match_buffer(a, (128,), dtype=dtype, offset_factor=1, scope="global")
-        # A_local = T.match_buffer(b, (128,), dtype=dtype, offset_factor=1, scope="local")
-        # with T.block("root"):
-        #     T.reads(A[0:128])
-        #     T.writes(A_local[0:128])
-        #     ch = T.env_thread("blockIdx.x")
-        #     T.launch_thread(ch, 64)
-        #     tx = T.env_thread("threadIdx.x")
-        #     T.launch_thread(tx, 16)
-        #     T.evaluate(
-        #         T.R_CMD(
-        #             A.access_ptr(
-        #                 "r", offset=T.addr_gen(ch=ch, offset=A.in_bank_offset_of([tx * 16])[0])
-        #             )
-        #         )
-        #     )
-
         A = T.match_buffer(a, (128,), dtype=dtype, offset_factor=1, scope="global")
         A_local = T.match_buffer(b, (128,), dtype=dtype, offset_factor=1, scope="local")
         with T.block("root"):
             T.reads(A[0:128])
             T.writes(A_local[0:128])
+            ch = T.env_thread("blockIdx.x")
+            T.launch_thread(ch, 64)
             tx = T.env_thread("threadIdx.x")
             T.launch_thread(tx, 16)
-            for i in T.serial(0, 128):
-                with T.block(""):
-                    v_i = T.axis.remap("S", [i])
-                    A_local[v_i] = A[v_i]
-                    # A_local.in_bank_offset_of([tx * 16])[0]
+            R_CMD(
+                "int32x4",
+                A.access_ptr(
+                    "r",
+                    offset=T.addr_gen(
+                        ch,
+                        0,
+                        0,
+                        A_local.bank_index() % 2,
+                        0,
+                        0,
+                        offset=A_local.in_bank_offset_of([tx * 8])[0] * 2,
+                    )
+                    // 2,
+                    ignore_elem_offset=True,
+                ),
+            )
+            # B_CMD(1)  # TODO: optimize position
+
+        # A = T.match_buffer(a, (128,), dtype=dtype, offset_factor=1, scope="global")
+        # A_local = T.match_buffer(b, (128,), dtype=dtype, offset_factor=1, scope="local")
+        # with T.block("root"):
+        #     T.reads(A[0:128])
+        #     T.writes(A_local[0:128])
+        #     tx = T.env_thread("threadIdx.x")
+        #     T.launch_thread(tx, 16)
+        #     for i in T.serial(0, 128):
+        #         with T.block(""):
+        #             v_i = T.axis.remap("S", [i])
+        #             A_local[v_i] = A[v_i]
+        #             # A_local.in_bank_offset_of([tx * 16])[0]
 
     return weight_desc, weight_impl
 
@@ -197,28 +317,78 @@ def get_mac_intrin(dtype):
         with T.block("root"):
             T.reads(P_local[0:16], A_local[0:128], B_local[0:128])
             T.writes(P_local[0:16])
-            for k, r in T.grid(8, 16):
-                with T.block(""):
-                    v_k, v_r = T.axis.remap("RS", [k, r])
-                    P_local[v_r] = P_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
+            # for k, r in T.grid(8, 16):
+            #     with T.block(""):
+            #         v_k, v_r = T.axis.remap("RS", [k, r])
+            #         P_local[v_r] = P_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
 
     return mac_desc, mac_impl
+
+
+def get_partial_reduction_intrin(dtype):
+    @T.prim_func
+    def partial_reduction_desc(a: T.handle, b: T.handle) -> None:
+        P = T.match_buffer(a, (8, 16), dtype=dtype, offset_factor=1, scope="global")
+        P_local = T.match_buffer(b, (8, 16), dtype=dtype, offset_factor=1, scope="local")
+        with T.block("root"):
+            T.reads(P_local[0:8, 0:16])
+            T.writes(P[0:8, 0:16])
+            for k, r in T.grid(8, 16):
+                with T.block(""):
+                    v_k, v_r = T.axis.remap("SS", [k, r])
+                    P[v_k, v_r] = P_local[v_k, v_r]
+
+    @T.prim_func
+    def partial_reduction_impl(a: T.handle, b: T.handle) -> None:
+        P = T.match_buffer(a, (8, 16), dtype=dtype, offset_factor=1, scope="global")
+        P_local = T.match_buffer(b, (8, 16), dtype=dtype, offset_factor=1, scope="local")
+        with T.block("root"):
+            T.reads(P_local[0:8, 0:16])
+            T.writes(P[0:8, 0:16])
+            ch = T.env_thread("blockIdx.x")
+            T.launch_thread(ch, 64)
+            tx = T.env_thread("threadIdx.x")
+            T.launch_thread(tx, 16)
+            addr = (
+                T.addr_gen(
+                    ch,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                    offset=(P_local.in_bank_offset_of([0, 0])[0] + tx * 8) * 2,
+                )
+                // 2
+            )
+            W_CMD("int32x4", P.access_ptr("rw", offset=addr, ignore_elem_offset=True))
+            W_CMD("int32x4", P.access_ptr("rw", offset=addr, ignore_elem_offset=True))
+            R_CMD("int32x4", P.access_ptr("rw", offset=addr, ignore_elem_offset=True))
+            B_CMD(1)
+
+    return partial_reduction_desc, partial_reduction_impl
 
 
 HBMPIM_INPUT_INTRIN = "hbmpim_input_intrin"
 TensorIntrin.register(
     HBMPIM_INPUT_INTRIN,
-    *get_input_intrin("float32"),
+    *get_input_intrin("float16"),
 )
 
 HBMPIM_WEIGHT_INTRIN = "hbmpim_weight_intrin"
 TensorIntrin.register(
     HBMPIM_WEIGHT_INTRIN,
-    *get_weight_intrin("float32"),
+    *get_weight_intrin("float16"),
 )
 
 HBMPIM_MAC_INTRIN = "hbmpim_mac_intrin"
 TensorIntrin.register(
     HBMPIM_MAC_INTRIN,
-    *get_mac_intrin("float32"),
+    *get_mac_intrin("float16"),
+)
+
+HBMPIM_PARTIAL_REDUCTION_INTRIN = "hbmpim_partial_reduction_intrin"
+TensorIntrin.register(
+    HBMPIM_PARTIAL_REDUCTION_INTRIN,
+    *get_partial_reduction_intrin("float16"),
 )

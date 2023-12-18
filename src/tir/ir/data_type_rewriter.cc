@@ -388,6 +388,7 @@ Buffer IndexDataTypeRewriter::VisitBuffer(const Buffer& buffer) {
       buffer->strides.Map([&](const PrimExpr& e) { return this->VisitExpr(e); });
   auto new_elem_offset = VisitExpr(buffer->elem_offset);
   auto new_in_bank_elem_offset = VisitExpr(buffer->in_bank_elem_offset);
+  auto new_bank_index = VisitExpr(buffer->bank_index);
   is_enabled_ = is_enabled;
 
   if (!buffer->shape.same_as(new_shape) || !buffer->strides.same_as(new_strides) ||
@@ -398,6 +399,7 @@ Buffer IndexDataTypeRewriter::VisitBuffer(const Buffer& buffer) {
     new_buffer_node->strides = std::move(new_strides);
     new_buffer_node->elem_offset = std::move(new_elem_offset);
     new_buffer_node->in_bank_elem_offset = std::move(new_in_bank_elem_offset);
+    new_buffer_node->bank_index = std::move(new_bank_index);
     buffer_remap_.Set(buffer, new_buffer);
     return new_buffer;
   } else {

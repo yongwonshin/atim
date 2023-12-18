@@ -1868,6 +1868,16 @@ vectorlow = _dtype_forward(_tir_op.vectorlow)
 vectorhigh = _dtype_forward(_tir_op.vectorhigh)
 vectorcombine = _dtype_forward(_tir_op.vectorcombine)
 
+R_CMD = _dtype_forward(_tir_op.R_CMD)
+W_CMD = _dtype_forward(_tir_op.W_CMD)
+W_CMD_R = _dtype_forward(_tir_op.W_CMD_R)
+W_CMD_R_C = _dtype_forward(_tir_op.W_CMD_R_C)
+B_CMD = _dtype_forward(_tir_op.B_CMD)
+vloadn = _dtype_forward(_tir_op.vloadn)
+vstoren = _dtype_forward(_tir_op.vstoren)
+barrier = _dtype_forward(_tir_op.barrier)
+mem_fence = _dtype_forward(_tir_op.mem_fence)
+addr_gen = _dtype_forward(_tir_op.addr_gen)
 
 broadcast = Broadcast
 ramp = Ramp
@@ -2108,6 +2118,16 @@ __all__ = [
     "vectorlow",
     "vectorhigh",
     "vectorcombine",
+    "R_CMD",
+    "W_CMD",
+    "W_CMD_R",
+    "W_CMD_R_C",
+    "B_CMD",
+    "vloadn",
+    "vstoren",
+    "barrier",
+    "mem_fence",
+    "addr_gen",
     "assume",
     "undef",
     "tvm_call_packed",

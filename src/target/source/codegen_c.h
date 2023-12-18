@@ -104,6 +104,7 @@ class CodeGenC : public ExprFunctor<void(const PrimExpr&, std::ostream&)>,
    *  Example: stream << "void";
    */
   virtual void PrintFuncPrefix(std::ostream& os);  // NOLINT(*)
+  virtual void PrintExtraFuncParams(const PrimFunc& f){};
   /*!
    * \brief Print extra function attributes
    *

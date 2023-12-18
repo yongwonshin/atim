@@ -1201,6 +1201,7 @@ class MatchBufferRegionNode : public Object {
   BufferRegion source;
   /*! \brief The global source buffer region. */
   BufferRegion global_source;
+  PrimExpr bank_index;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("buffer", &buffer);
@@ -1229,8 +1230,8 @@ class MatchBufferRegionNode : public Object {
 class MatchBufferRegion : public ObjectRef {
  public:
   TVM_DLL explicit MatchBufferRegion(Buffer buffer, BufferRegion source);
-  TVM_DLL explicit MatchBufferRegion(Buffer buffer, BufferRegion source,
-                                     BufferRegion global_source);
+  TVM_DLL explicit MatchBufferRegion(Buffer buffer, BufferRegion source, BufferRegion global_source,
+                                     PrimExpr bank_index);
 
   TVM_DEFINE_OBJECT_REF_METHODS(MatchBufferRegion, ObjectRef, MatchBufferRegionNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(MatchBufferRegionNode);

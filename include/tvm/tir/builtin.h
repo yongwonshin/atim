@@ -797,6 +797,17 @@ TVM_DLL const Op& start_profile_intrinsic();
  */
 TVM_DLL const Op& end_profile_intrinsic();
 
+TVM_DLL const Op& R_CMD();
+TVM_DLL const Op& W_CMD();
+TVM_DLL const Op& W_CMD_R();
+TVM_DLL const Op& W_CMD_R_C();
+TVM_DLL const Op& B_CMD();
+TVM_DLL const Op& vloadn();
+TVM_DLL const Op& vstoren();
+TVM_DLL const Op& barrier();
+TVM_DLL const Op& mem_fence();
+TVM_DLL const Op& addr_gen();
+
 /*! \brief The kind of structure field info used in intrinsic */
 enum TVMStructFieldKind : int {
   // array head address

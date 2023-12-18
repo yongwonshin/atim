@@ -1390,6 +1390,46 @@ def ptx_wait_group(num):
     return call_intrin("", "tir.ptx_wait_group", num)
 
 
+def R_CMD(dtype, addr, ptr):
+    return call_intrin(dtype, "tir.R_CMD", addr, ptr)
+
+
+def W_CMD(dtype, addr, ptr):
+    return call_intrin(dtype, "tir.W_CMD", addr, ptr)
+
+
+def W_CMD_R(dtype, addr, src, ptr):
+    return call_intrin(dtype, "tir.W_CMD_R", addr, src, ptr)
+
+
+def W_CMD_R_C(dtype, addr, src, ptr):
+    return call_intrin(dtype, "tir.W_CMD_R_C", addr, src, ptr)
+
+
+def B_CMD(type):
+    return call_intrin("", "tir.B_CMD", type)
+
+
+def vloadn(dtype, offset, addr, ptr):
+    return call_intrin(dtype, "tir.vloadn", offset, addr, ptr)
+
+
+def vstoren(dtype, data, offset, addr, ptr):
+    return call_intrin(dtype, "tir.vstoren", data, offset, addr, ptr)
+
+
+def barrier(type):
+    return call_intrin("", "tir.barrier", type)
+
+
+def mem_fence(type):
+    return call_intrin("", "tir.mem_fence", type)
+
+
+def addr_gen(ch, ra, bg, bk, row, col, offset):
+    return call_intrin("int32", "tir.addr_gen", ch, ra, bg, bk, row, col, offset)
+
+
 def vectorlow(dtype, vec):
     """Get the low level half of the vector
 

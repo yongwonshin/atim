@@ -40,37 +40,212 @@ std::ostringstream& CodeGenHBMPIM::Stream() {
   return stream;
 }
 
+void CodeGenHBMPIM::PreFunctionBody(const PrimFunc& f) {
+  CodeGenOpenCL::PreFunctionBody(f);
+  pim_scope_ = this->BeginScope();
+  stream << "#ifdef EMULATOR\n";
+  Stream() << "emulator_trace->g_fba = (uint64_t)pim_ctr;\n";
+  Stream() << "emulator_trace->g_fmtd16 = fmtd16;\n";
+  Stream() << "emulator_trace->g_ridx[get_group_id(0)] = 0;\n";
+  Stream() << "emulator_trace->m_width = mt_width;\n";
+  Stream() << "barrier(CLK_LOCAL_MEM_FENCE);\n";
+  stream << "#endif\n";
+
+  stream << "#ifdef PREPARE_KERNEL\n";
+  Stream() << "int num_ba = 4;\n";
+  Stream() << "int w_idx = get_local_id(0) % 2;\n";
+  Stream() << "int gidx = get_local_id(0) >> 1;\n";
+  Stream() << "uint64_t offset = w_idx << 4;\n";
+  // temp
+  Stream() << "int grf_shift = 3;\n";
+  Stream() << "int ba_shift = 2;\n";
+  Stream() << "int num_col = 32;\n";
+  Stream() << "int col_shift = 5;\n";
+  Stream() << "int trans_shift = 5;\n";
+  Stream() << "int even_row, odd_row, row, col, loc;\n";
+  Stream() << "int ch = get_group_id(0);\n";
+  Stream() << "int teidx = get_local_id(0) * 16;\n";
+  Stream() << "uint64_t addr;\n";
+  stream << "#endif\n";
+  this->EndScope(pim_scope_);
+}
+
+void CodeGenHBMPIM::PrintChangeGemvHabHabPim() {
+  Stream() << "change_gemv_hab_habpim(pim_ctr, offset);\n";
+}
+
+void CodeGenHBMPIM::PrintChangeGemvHabPimHab() {
+  Stream() << "change_habpim_hab(pim_ctr, offset);\n";
+}
+
 void CodeGenHBMPIM::PrintPIMPrologue() {
   // park in
+  stream << "#if PARK_IN\n";
   Stream() << "if (get_local_id(0) < 32) {\n";
-  Stream() << "  // park_in(pim_ctr, gidx, num_ba, offset)\n";
+  Stream() << "  park_in(pim_ctr, gidx, num_ba, offset);\n";
   Stream() << "}\n";
+  stream << "#endif\n";
 
   // change SB mode to HAB mode
+  stream << "#if CHANGE_SB_HAB\n";
   Stream() << "if (get_local_id(0) < 2) {\n";
-  Stream() << "  // change_sb_hab(pim_ctr, offset);\n";
+  Stream() << "  change_sb_hab(pim_ctr, offset);\n";
   Stream() << "}\n";
   Stream() << "barrier(CLK_GLOBAL_MEM_FENCE);\n";
+  stream << "#endif\n";
 
   // program CRF
+  stream << "#if PROGRAM_CRF\n";
   Stream() << "if (get_local_id(0) < (" << crf_size_ << " >> 4)) {\n";
-  Stream() << "  // program_crf_mod(pim_ctr, gidx, crf_binary, offset);\n";
+  Stream() << "  program_crf_mod(pim_ctr, gidx, crf_binary, offset);\n";
   Stream() << "}\n";
   Stream() << "barrier(CLK_GLOBAL_MEM_FENCE);\n";
-
-  // change HAB mode to HAB_PIM mode
-  Stream() << "// change_hab_habpim(pim_ctr, offset);\n";
+  stream << "#endif\n";
 
   // Limit threads
+  stream << "#if COMPUTE_GEMM\n";
   Stream() << "if (get_local_id(0) < 16) {\n";
   pim_scope_ = this->BeginScope();
 }
 
+void CodeGenHBMPIM::PrintExtraFuncParams(const PrimFunc& f) {
+  stream << ", __global uint8_t* __restrict__ pim_ctr";
+}
+
 void CodeGenHBMPIM::PrintPIMEpilogue() {
   // change HAB_PIM mode to HAB_PIM mode
-  Stream() << "// change_habpim_hab(pim_ctr, offset);\n";
   this->EndScope(pim_scope_);
   Stream() << "}\n";
+  stream << "#endif\n";
+
+  stream << "#if CHANGE_HAB_SB\n";
+  Stream() << "if (get_local_id(0) < 4) {\n";
+  PrintIndent();
+  Stream() << "change_hab_sb(pim_ctr, gidx, offset);\n";
+  Stream() << "}\n";
+  Stream() << "barrier(CLK_GLOBAL_MEM_FENCE);\n";
+  stream << "#endif\n";
+
+  stream << "#if PARK_OUT\n";
+  Stream() << "if (get_local_id(0) < 32) {\n";
+  PrintIndent();
+  Stream() << "park_out(pim_ctr, gidx, num_ba, offset);\n";
+  Stream() << "}\n";
+  stream << "#endif\n";
+}
+
+void CodeGenHBMPIM::VisitExpr_(const CallNode* op, std::ostream& os) {
+  if (op->op.same_as(builtin::R_CMD())) {
+    std::string ptr = Downcast<StringImm>(op->args[1])->value;
+    if (ptr.empty()) {
+      os << "R_CMD(";
+      this->PrintExpr(op->args[0], os);
+      os << ")";
+    } else {
+      os << "R_CMD(&" << ptr << "[";
+      this->PrintExpr(op->args[0], os);
+      os << "])";
+    }
+  } else if (op->op.same_as(builtin::W_CMD())) {
+    std::string ptr = Downcast<StringImm>(op->args[1])->value;
+    if (ptr.empty()) {
+      os << "W_CMD(";
+      this->PrintExpr(op->args[0], os);
+      os << ")";
+    } else {
+      os << "W_CMD(&" << ptr << "[";
+      this->PrintExpr(op->args[0], os);
+      os << "])";
+    }
+  } else if (op->op.same_as(builtin::W_CMD_R())) {
+    std::string ptr = Downcast<StringImm>(op->args[2])->value;
+    if (ptr.empty()) {
+      os << "W_CMD_R(";
+      this->PrintExpr(op->args[0], os);
+      os << ", ";
+      this->PrintExpr(op->args[1], os);
+      os << ")";
+    } else {
+      os << "W_CMD_R(&" << ptr << "[";
+      this->PrintExpr(op->args[0], os);
+      os << "], ";
+      this->PrintExpr(op->args[1], os);
+      os << ")";
+    }
+  } else if (op->op.same_as(builtin::W_CMD_R_C())) {
+    std::string ptr = Downcast<StringImm>(op->args[2])->value;
+    if (ptr.empty()) {
+      os << "W_CMD_R_C(";
+      this->PrintExpr(op->args[0], os);
+      os << ", ";
+      this->PrintExpr(op->args[1], os);
+      os << ")";
+    } else {
+      os << "W_CMD_R(&" << ptr << "[";
+      this->PrintExpr(op->args[0], os);
+      os << "], ";
+      this->PrintExpr(op->args[1], os);
+      os << ")";
+    }
+  } else if (op->op.same_as(builtin::B_CMD())) {
+    int64_t type = Downcast<IntImm>(op->args[0])->value;
+    os << "B_CMD(" << type << ")";
+  } else if (op->op.same_as(builtin::vloadn())) {
+    int64_t offset = Downcast<IntImm>(op->args[0])->value;
+    std::string ptr = Downcast<StringImm>(op->args[2])->value;
+    ICHECK(op->args.size() == 3U);
+    ICHECK(op->dtype == DataType::Int(32).with_lanes(4));
+    if (ptr.empty()) {
+      os << "vload4(" << offset << ", (__global float*)";
+      this->PrintExpr(op->args[1], os);
+      os << ")";
+    } else {
+      os << "vload4(" << offset << ", &pim_ctr[";
+      this->PrintExpr(op->args[1], os);
+      os << "])";
+    }
+  } else if (op->op.same_as(builtin::vstoren())) {
+    int64_t offset = Downcast<IntImm>(op->args[1])->value;
+    std::string ptr = Downcast<StringImm>(op->args[3])->value;
+    ICHECK(op->args.size() == 4U);
+    ICHECK(op->dtype == DataType::Int(32).with_lanes(4));
+    if (ptr.empty()) {
+      os << "vstore4(";
+      this->PrintExpr(op->args[0], os);
+      os << ", " << offset << ", (__global float*)";
+      this->PrintExpr(op->args[2], os);
+      os << ")";
+    } else {
+      os << "vstore4(";
+      this->PrintExpr(op->args[0], os);
+      os << ", " << offset << ", &pim_ctr[";
+      this->PrintExpr(op->args[2], os);
+      os << "])";
+    }
+    std::cerr << "vstore is called!!!" << std::endl;
+  } else if (op->op.same_as(builtin::barrier())) {
+    os << "barrier(CLK_LOCAL_MEM_FENCE)";
+  } else if (op->op.same_as(builtin::mem_fence())) {
+    os << "mem_fence(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE)";
+  } else if (op->op.same_as(builtin::addr_gen())) {
+    os << "addr_gen_s(";
+    this->PrintExpr(op->args[0], os);
+    os << ", ";
+    this->PrintExpr(op->args[1], os);
+    os << ", ";
+    this->PrintExpr(op->args[2], os);
+    os << ", ";
+    this->PrintExpr(op->args[3], os);
+    os << ", ";
+    this->PrintExpr(op->args[4], os);
+    os << ", ";
+    this->PrintExpr(op->args[5], os);
+    os << ", ";
+    this->PrintExpr(op->args[6], os);
+    os << ")";
+  } else {
+    CodeGenOpenCL::VisitExpr_(op, os);
+  }
 }
 
 void CodeGenHBMPIM::VisitStmt_(const BufferStoreNode* op) {
@@ -96,10 +271,20 @@ void CodeGenHBMPIM::VisitStmt_(const ForNode* op) {
   PrintType(op->loop_var.dtype(), stream);
   stream << ' ' << vid << " = 0; " << vid << " < " << extent << "; ++" << vid << ") {\n";
   int for_scope = BeginScope();
+  if (op->annotations.Get("pim").as<Bool>()) {
+    PrintChangeGemvHabHabPim();
+  }
   PrintStmt(op->body);
+  if (op->annotations.Get("pim").as<Bool>()) {
+    PrintChangeGemvHabPimHab();
+  }
   this->EndScope(for_scope);
   PrintIndent();
   stream << "}\n";
+  if (op->annotations.Get("barrier").as<Bool>()) {
+    PrintIndent();
+    stream << "B_CMD(1);\n";
+  }
   if (op->annotations.Get("pim").as<Bool>()) {
     PrintPIMEpilogue();
   }

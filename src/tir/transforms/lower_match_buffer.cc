@@ -162,6 +162,7 @@ class MatchBufferLower : public StmtExprMutator {
     const Buffer& buffer = match_buffer->buffer;
     const BufferRegion& source = VisitBufferRegion(match_buffer->source);
     const BufferRegion& global_source = VisitBufferGlobalRegion(match_buffer->global_source);
+    const PrimExpr& bank_index = match_buffer->bank_index;
     const Buffer& source_buffer = source->buffer;
     const Buffer& global_source_buffer = global_source->buffer;
 
@@ -227,7 +228,7 @@ class MatchBufferLower : public StmtExprMutator {
       Array<PrimExpr> buffer_start_indices = source_buffer->InBankElemOffset(indices);
       tvm::tir::Var var("test");
       tvm::tir::Let b(var, buffer_start_indices[0], var);
-      test.Set(var, buffer->name);
+      in_bank_elem_offset_map_.Set(var, buffer->name);
       if (buffer_start_indices.size() == 1) {
         Bind(buffer->in_bank_elem_offset, b, buffer->name + ".in_bank_elem_offset");
         // CHECK(analyzer_.CanProve(truncmod(buffer->elem_offset, buffer->offset_factor) == 0))
@@ -239,6 +240,13 @@ class MatchBufferLower : public StmtExprMutator {
         // elem_offsets`, with one offset for each flattened index.
         Bind(buffer->in_bank_elem_offset, make_const(buffer->in_bank_elem_offset.dtype(), 0));
       }
+    }
+
+    {
+      tvm::tir::Var var("test");
+      tvm::tir::Let b(var, bank_index, var);
+      bank_index_map_.Set(var, buffer->name);
+      Bind(buffer->bank_index, b, buffer->name + ".bank_index");
     }
 
     // Step 2.3. Check and update strides
@@ -296,7 +304,8 @@ class MatchBufferLower : public StmtExprMutator {
   }
 
  public:
-  Map<Var, String> test;
+  Map<Var, String> in_bank_elem_offset_map_;
+  Map<Var, String> bank_index_map_;
 
  private:
   /*! \brief Buffer region mapping. */
@@ -359,38 +368,63 @@ class TermSeparator : public ExprVisitor {
 
 class Test : public StmtExprMutator {
  public:
-  explicit Test(Map<Var, String>& test) : StmtExprMutator() { this->test = std::move(test); }
+  explicit Test(Map<Var, String>& in_bank_elem_offset_map, Map<Var, String>& bank_index_map)
+      : StmtExprMutator() {
+    this->in_bank_elem_offset_map_ = std::move(in_bank_elem_offset_map);
+    this->bank_index_map_ = std::move(bank_index_map);
+  }
   PrimExpr VisitExpr_(const LetNode* op) final {
     Let l = GetRef<Let>(op);
-    auto it = test.find(op->var);
-    if (it != test.end()) {
-      TermSeparator sep;
-      sep(op->value);
+    {
+      auto it = in_bank_elem_offset_map_.find(op->var);
+      if (it != in_bank_elem_offset_map_.end()) {
+        TermSeparator sep;
+        sep(op->value);
 
-      String buffer_name = (*it).second;
-      auto it2 = alloc_loop_level_.find(buffer_name);
-      if (it2 != alloc_loop_level_.end()) {
-        int loop_level = (*it2).second->value;
-        ICHECK(buffer_size_.count(buffer_name));
-        int scale = buffer_size_[buffer_name].IntValue();
-        for (int i = loop_level - 1; i >= 0; i--) {
-          const ForNode* op = loop_order_[i];
-          if (op->annotations.find("bank") != op->annotations.end()) {
-            if (sep.terms.count(op->loop_var) > 0) {
-              sep.terms.Set(op->loop_var, 0);
-            }
-          } else {
-            if (sep.terms.find(op->loop_var) != sep.terms.end()) {
-              sep.terms.Set(op->loop_var, scale);
-              scale *= Downcast<IntImm>(loop_range_[i].max() + 1)->value;
+        String buffer_name = (*it).second;
+        auto it2 = alloc_loop_level_.find(buffer_name);
+        if (it2 != alloc_loop_level_.end()) {
+          int loop_level = (*it2).second->value;
+          ICHECK(buffer_size_.count(buffer_name));
+          int scale = buffer_size_[buffer_name].IntValue();
+          for (int i = loop_level - 1; i >= 0; i--) {
+            const ForNode* op = loop_order_[i];
+            if (op->annotations.find("bank") != op->annotations.end()) {
+              if (sep.terms.count(op->loop_var) > 0) {
+                sep.terms.Set(op->loop_var, 0);
+              }
+            } else {
+              if (sep.terms.find(op->loop_var) != sep.terms.end()) {
+                sep.terms.Set(op->loop_var, scale);
+                scale *= Downcast<IntImm>(loop_range_[i].max() + 1)->value;
+              }
             }
           }
         }
+        return sep.Assembler();
       }
-      return sep.Assembler();
-    } else {
-      return std::move(l);
     }
+    {
+      auto it = bank_index_map_.find(op->var);
+      if (it != in_bank_elem_offset_map_.end()) {
+        String buffer_name = (*it).second;
+        auto it2 = alloc_loop_level_.find(buffer_name);
+        if (it2 != alloc_loop_level_.end()) {
+          int loop_level = (*it2).second->value;
+          ICHECK(buffer_size_.count(buffer_name));
+          PrimExpr index = make_const(DataType::Int(32), 0);
+          for (int i = 0; i < loop_level; i++) {
+            const ForNode* op = loop_order_[i];
+            if (op->annotations.find("bank") != op->annotations.end()) {
+              index = op->extent * index + op->loop_var;
+            }
+          }
+          return index;
+          // return op->value;
+        }
+      }
+    }
+    return std::move(l);
   }
 
   void RewriteBufferAccess(String buffer_name, int64_t ndim, Array<PrimExpr>* global_indices,
@@ -494,7 +528,8 @@ class Test : public StmtExprMutator {
   }
 
  private:
-  Map<Var, String> test;
+  Map<Var, String> in_bank_elem_offset_map_;
+  Map<Var, String> bank_index_map_;
   std::vector<arith::IntSet> loop_range_;
   std::vector<const ForNode*> loop_order_;
   Map<String, Integer> alloc_loop_level_;
@@ -506,7 +541,7 @@ PrimFunc LowerMatchBuffer(PrimFunc func) {
   auto fptr = func.CopyOnWrite();
   auto pass = MatchBufferLower(func);
   fptr->body = pass(std::move(fptr->body));
-  fptr->body = Test(pass.test)(std::move(func->body));
+  fptr->body = Test(pass.in_bank_elem_offset_map_, pass.bank_index_map_)(std::move(func->body));
   return func;
 }
 

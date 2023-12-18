@@ -601,8 +601,8 @@ MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source) {
 }
 
 // MatchBufferRegion
-MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source,
-                                     BufferRegion global_source) {
+MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source, BufferRegion global_source,
+                                     PrimExpr bank_index) {
   const Buffer& source_buffer = source->buffer;
   arith::Analyzer analyzer;
   // Check scope and dtype
@@ -650,6 +650,7 @@ MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source,
   node->buffer = std::move(buffer);
   node->source = std::move(source);
   node->global_source = std::move(global_source);
+  node->bank_index = std::move(bank_index);
   data_ = std::move(node);
 }
 

@@ -43,7 +43,15 @@ class Buffer(Object, Scriptable):
     READ = 1
     WRITE = 2
 
-    def access_ptr(self, access_mask, ptr_type="handle", content_lanes=1, offset=0, extent=None):
+    def access_ptr(
+        self,
+        access_mask,
+        ptr_type="handle",
+        content_lanes=1,
+        offset=0,
+        extent=None,
+        ignore_elem_offset=False,
+    ):
         """Get an access pointer to the head of buffer.
 
         This is the recommended method to get buffer data
@@ -98,7 +106,7 @@ class Buffer(Object, Scriptable):
         offset = convert(offset)
         extent = convert(extent)
         return _ffi_api.BufferAccessPtr(
-            self, access_mask, ptr_type, content_lanes, offset, extent  # type: ignore
+            self, access_mask, ptr_type, content_lanes, offset, extent, ignore_elem_offset  # type: ignore
         )
 
     def vload(self, begin, dtype=None):
@@ -193,6 +201,9 @@ class Buffer(Object, Scriptable):
             The offset indices of the element in the flattened buffer.
         """
         return _ffi_api.BufferInBankOffsetOf(self, indices)  # type: ignore
+
+    def bank_index(self):
+        return _ffi_api.BufferBankIndex(self)
 
     def __getitem__(self, indices):
         from ..arith import Analyzer  # pylint: disable=import-outside-toplevel

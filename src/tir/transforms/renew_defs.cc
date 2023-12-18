@@ -209,6 +209,7 @@ class RenewDefMutator : public StmtExprMutator {
     // update elem_offset
     PrimExpr elem_offset = redefine_if_is_var(buffer->elem_offset);
     PrimExpr in_bank_elem_offset = redefine_if_is_var(buffer->in_bank_elem_offset);
+    PrimExpr bank_index = redefine_if_is_var(buffer->bank_index);
 
     auto n = make_object<BufferNode>(*buffer.get());
     n->data = std::move(data);
@@ -216,6 +217,7 @@ class RenewDefMutator : public StmtExprMutator {
     n->strides = std::move(strides);
     n->elem_offset = std::move(elem_offset);
     n->in_bank_elem_offset = std::move(in_bank_elem_offset);
+    n->bank_index = std::move(bank_index);
     Buffer new_buffer(n);
     this->AddDefRemap(buffer, new_buffer);
     return new_buffer;
@@ -250,6 +252,7 @@ class RenewDefMutator : public StmtExprMutator {
         buffer->strides.Map(std::bind(&RenewDefMutator::VisitExpr, this, std::placeholders::_1));
     PrimExpr elem_offset = VisitExpr(buffer->elem_offset);
     PrimExpr in_bank_elem_offset = VisitExpr(buffer->in_bank_elem_offset);
+    PrimExpr bank_index = VisitExpr(buffer->bank_index);
 
     auto n = make_object<BufferNode>(*buffer.get());
     n->data = std::move(data);
@@ -257,6 +260,7 @@ class RenewDefMutator : public StmtExprMutator {
     n->strides = std::move(strides);
     n->elem_offset = std::move(elem_offset);
     n->in_bank_elem_offset = std::move(in_bank_elem_offset);
+    n->bank_index = std::move(bank_index);
     Buffer new_buffer(n);
     this->AddDefRemap(buffer, new_buffer);
     return new_buffer;
