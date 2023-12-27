@@ -102,6 +102,12 @@ class OpaqueBlockLower : public StmtExprMutator {
       ICHECK(op->thread_binding.defined());
       String thread_tag = op->thread_binding.value()->thread_tag;
       body = MakeLaunchThread(min, extent, op->loop_var, thread_tag, body);
+      for (const auto& kv : new_annotations) {
+        const String& key = kv.first;
+        if (attr::IsBank(key)) {
+          body = AttrStmt(op->loop_var, key, ConvertAttrValue(key, kv.second), std::move(body));
+        }
+      }
     } else if (is_one(extent) && op->annotations.empty()) {
       // Case 2. Unit loop
       return body;
@@ -179,6 +185,8 @@ class OpaqueBlockLower : public StmtExprMutator {
       const String& key = kv.first;
       if (attr::IsPragmaKey(key)) {
         pragma_attrs->emplace_back(key, ConvertAttrValue(key, kv.second));
+      } else if (attr::IsBank(key)) {
+        preserved_annotations.Set(key, kv.second);
       } else if (!is_block) {
         // the loop annotation is preserved
         preserved_annotations.Set(key, kv.second);

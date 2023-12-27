@@ -1391,6 +1391,7 @@ class BlockRealize : public Stmt {
 /*! \brief namespace of possible attributes in AttrStmt.attr_key */
 namespace attr {
 // The above attr does not pass to ir stage.
+constexpr const char* bank = "bank";
 /*! \brief Mark launching extent of thread, used by device API. */
 constexpr const char* thread_extent = "thread_extent";
 /*! \brief Mark launching of a virtual thread. */
@@ -1675,6 +1676,8 @@ constexpr const char* meta_schedule_inline_rule = "meta_schedule.inline_rule";
 inline bool IsPragmaKey(const std::string& attr_key) {
   return attr_key.compare(0, 7, "pragma_") == 0;
 }
+
+inline bool IsBank(const std::string& attr_key) { return attr_key.compare(0, 4, "bank") == 0; }
 
 }  // namespace attr
 /*!

@@ -35,10 +35,99 @@
 namespace tvm {
 namespace codegen {
 
+CodeGenHBMPIM::CodeGenHBMPIM() { thread_vars_ = {IterVar(), IterVar(), IterVar()}; }
+
 std::ostringstream& CodeGenHBMPIM::Stream() {
   PrintIndent();
   return stream;
 }
+
+class ThreadReindexer : public StmtExprMutator {
+  Stmt VisitStmt_(const AttrStmtNode* op) {
+    if (op->attr_key == tir::attr::thread_extent) {
+      IterVar iv = Downcast<IterVar>(op->node);
+      if (iv->thread_tag.length() != 0) {
+        runtime::ThreadScope ts = runtime::ThreadScope::Create(iv->thread_tag);
+        if (ts.rank == 1) {
+          if (thread_vars_.size() <= ts.dim_index) {
+            thread_vars_.resize(ts.dim_index + 1);
+          }
+          thread_vars_.Set(ts.dim_index, iv);
+        } else if (ts.rank == 2) {
+          active_ = false;
+        } else if (ts.rank == 3) {
+          active_ = true;
+        }
+      }
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+  PrimExpr VisitExpr_(const BufferLoadNode* _op) {
+    if (_op->buffer->name == "P") {  // TODO[ywshin]
+      active2_ = true;
+    }
+    BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_op));
+    if (_op->buffer->name == "P") {  // TODO[ywshin]
+      active2_ = false;
+    }
+    return std::move(load);
+  }
+  PrimExpr VisitExpr_(const VarNode* op) {
+    Var v = GetRef<Var>(op);
+    if (active_ && active2_) {
+      for (auto tv : thread_vars_) {
+        if (v.get() == tv->var.get()) {
+          // std::cerr << tvm::truncmod(v, tv->dom->extent) << std::endl;
+          return tvm::truncmod(v, tv->dom->extent);
+        }
+      }
+    }
+    return std::move(v);
+  }
+  Array<IterVar> thread_vars_;
+  bool active_ = false;
+  bool active2_ = false;
+};
+
+class BankIndexInspector : public ExprVisitor {
+ public:
+  explicit BankIndexInspector(Map<Var, IntImm> bank_ordering_map, Map<Var, IntImm> bank_extent_map,
+                              Array<IterVar> thread_vars)
+      : bank_ordering_map_(bank_ordering_map),
+        bank_extent_map_(bank_extent_map),
+        thread_vars_(thread_vars) {}
+  PrimExpr Inspect(PrimExpr index) {
+    bank_index_ = IntImm(DataType::Int(32), 0);
+    ExprVisitor::VisitExpr(index);
+    return bank_index_;
+  }
+
+ private:
+  PrimExpr BankOrderingToBankIndex(PrimExpr bank_var, IntImm ordering) {
+    if (ordering->value == 1) {
+      return (thread_vars_[0] / thread_vars_[0]->dom->extent);
+    } else if (ordering->value == 2) {
+      return (thread_vars_[0] / thread_vars_[0]->dom->extent) * 2;
+    } else if (ordering->value == 3) {
+      return (thread_vars_[0] / thread_vars_[0]->dom->extent) * 2 + 1;
+    } else {
+      LOG(FATAL) << "Unknown bank ordering " << ordering->value << "!";
+    }
+  }
+  void VisitExpr_(const VarNode* op) {
+    Var v = GetRef<Var>(op);
+    if (bank_ordering_map_.find(v) != bank_ordering_map_.end()) {
+      bank_index_ = BankOrderingToBankIndex(v, bank_ordering_map_[v]);
+    }
+    // if (v.get() == thread_vars_[0]->var.get()) {
+    //   std::cerr << "MATCH1!!!" << std::endl;
+    // }
+  }
+  PrimExpr bank_index_ = IntImm(DataType::Int(32), 0);
+  Map<Var, IntImm> bank_ordering_map_;
+  Map<Var, IntImm> bank_extent_map_;
+  Array<IterVar> thread_vars_;
+};
 
 void CodeGenHBMPIM::PreFunctionBody(const PrimFunc& f) {
   CodeGenOpenCL::PreFunctionBody(f);
@@ -70,6 +159,17 @@ void CodeGenHBMPIM::PreFunctionBody(const PrimFunc& f) {
   this->EndScope(pim_scope_);
 }
 
+void CodeGenHBMPIM::PostFunctionBody(const PrimFunc& f) {
+  pim_scope_ = this->BeginScope();
+  stream << "#ifdef EMULATOR\n";
+  Stream() << "if (get_group_id(0) == 0 && get_local_id(0) == 0) {\n";
+  PrintIndent();
+  Stream() << "frd_size[0] = emulator_trace->g_ridx[0];\n";
+  Stream() << "}\n";
+  stream << "#endif\n";
+  this->EndScope(pim_scope_);
+}
+
 void CodeGenHBMPIM::PrintChangeGemvHabHabPim() {
   Stream() << "change_gemv_hab_habpim(pim_ctr, offset);\n";
 }
@@ -82,14 +182,16 @@ void CodeGenHBMPIM::PrintPIMPrologue() {
   // park in
   stream << "#if PARK_IN\n";
   Stream() << "if (get_local_id(0) < 32) {\n";
-  Stream() << "  park_in(pim_ctr, gidx, num_ba, offset);\n";
+  PrintIndent();
+  Stream() << "park_in(pim_ctr, gidx, num_ba, offset);\n";
   Stream() << "}\n";
   stream << "#endif\n";
 
   // change SB mode to HAB mode
   stream << "#if CHANGE_SB_HAB\n";
   Stream() << "if (get_local_id(0) < 2) {\n";
-  Stream() << "  change_sb_hab(pim_ctr, offset);\n";
+  PrintIndent();
+  Stream() << "change_sb_hab(pim_ctr, offset);\n";
   Stream() << "}\n";
   Stream() << "barrier(CLK_GLOBAL_MEM_FENCE);\n";
   stream << "#endif\n";
@@ -97,7 +199,8 @@ void CodeGenHBMPIM::PrintPIMPrologue() {
   // program CRF
   stream << "#if PROGRAM_CRF\n";
   Stream() << "if (get_local_id(0) < (" << crf_size_ << " >> 4)) {\n";
-  Stream() << "  program_crf_mod(pim_ctr, gidx, crf_binary, offset);\n";
+  PrintIndent();
+  Stream() << "program_crf_mod(pim_ctr, gidx, crf_binary, offset);\n";
   Stream() << "}\n";
   Stream() << "barrier(CLK_GLOBAL_MEM_FENCE);\n";
   stream << "#endif\n";
@@ -132,6 +235,17 @@ void CodeGenHBMPIM::PrintPIMEpilogue() {
   Stream() << "park_out(pim_ctr, gidx, num_ba, offset);\n";
   Stream() << "}\n";
   stream << "#endif\n";
+}
+
+void CodeGenHBMPIM::VisitStmt_(const AttrStmtNode* op) {
+  if (op->attr_key == tir::attr::bank) {
+    Var v = Downcast<Var>(op->node);
+    IntImm bank_ordering = Downcast<IntImm>(op->value);
+    bank_ordering_map_.Set(v, bank_ordering);
+    this->VisitStmt(op->body);
+  } else {
+    CodeGenC::VisitStmt_(op);
+  }
 }
 
 void CodeGenHBMPIM::VisitExpr_(const CallNode* op, std::ostream& os) {
@@ -222,7 +336,6 @@ void CodeGenHBMPIM::VisitExpr_(const CallNode* op, std::ostream& os) {
       this->PrintExpr(op->args[2], os);
       os << "])";
     }
-    std::cerr << "vstore is called!!!" << std::endl;
   } else if (op->op.same_as(builtin::barrier())) {
     os << "barrier(CLK_LOCAL_MEM_FENCE)";
   } else if (op->op.same_as(builtin::mem_fence())) {
@@ -249,17 +362,96 @@ void CodeGenHBMPIM::VisitExpr_(const CallNode* op, std::ostream& os) {
 }
 
 void CodeGenHBMPIM::VisitStmt_(const BufferStoreNode* op) {
-  // std::cerr << "[codegen] " << op->buffer->name << "(Store): " << op->global_indices <<
-  // std::endl;
+  if (op->buffer->name == "P") {  // TODO[ywshin]
+    LOG(FATAL) << "Internal buffer store is NOT implemented: " << op->buffer << "!";
+  }
   CodeGenC::VisitStmt_(op);
 }
 
+// Print a reference expression to a buffer.
+std::string CodeGenHBMPIM::GetBufferRef(DataType t, const BufferNode* buffer, std::string index) {
+  const VarNode* buffer_var = buffer->data.get();
+  std::ostringstream os;
+  std::string vid = GetVarID(buffer_var);
+  std::string scope;
+  if (alloc_storage_scope_.count(buffer_var)) {
+    scope = alloc_storage_scope_.at(buffer_var);
+  }
+  bool is_vol = IsVolatile(buffer_var);
+
+  auto ptr_cast = [this, is_vol, scope](DataType pointed_to) {
+    std::ostringstream ptr_os;
+    ptr_os << "(";
+    if (is_vol) {
+      ptr_os << "volatile ";
+    }
+    if (!scope.empty() && IsScopePartOfType()) {
+      PrintStorageScope(scope, ptr_os);
+    }
+    PrintType(pointed_to, ptr_os);
+    ptr_os << "*)";
+    return ptr_os.str();
+  };
+
+  DataType buffer_element_dtype = buffer->dtype;
+
+  std::string buffer_str = vid;
+  if (!HandleTypeMatch(buffer_var, buffer_element_dtype) || is_vol) {
+    std::stringstream temp;
+    temp << "(" << ptr_cast(buffer_element_dtype) << vid << ")";
+    buffer_str = temp.str();
+  }
+
+  std::string index_str = index;
+  if (t.bits() == 4 || (t.bits() == 1 && t.is_int())) {
+    // This is a special case, because CodegenCUDA::PrintType()
+    // returns "int" for bool and for 4-bit integers. In most cases,
+    // we divide by the number of lanes to determine the index.
+    // However, the backing type for scalar int4 and scalar bool is
+    // int32.  Therefore, we need to divide by the ratio of their
+    // sizes in that case.
+    int div_factor = (t.lanes() == 1) ? (32 / t.bits()) : t.lanes();
+
+    os << "*("
+       << "(" << ptr_cast(t) << vid << ")"
+       << " + " << index_str << " / " << div_factor << ")";
+  } else if (t == buffer_element_dtype) {
+    os << buffer_str << "[" << index_str << "]";
+  } else {
+    os << "*" << ptr_cast(t) << "(" << buffer_str << " + " << index_str << ")";
+  }
+
+  return os.str();
+}
+
 void CodeGenHBMPIM::VisitExpr_(const BufferLoadNode* op, std::ostream& os) {
-  // std::cerr << "[codegen] " << op->buffer->name << "(Load): " << op->global_indices << std::endl;
-  CodeGenC::VisitExpr_(op, os);
+  if (op->buffer->name == "P") {  // TODO[ywshin]
+    BankIndexInspector inspector(bank_ordering_map_, bank_extent_map_, thread_vars_);
+    PrimExpr bank_index = inspector.Inspect(op->indices[0]);
+    PrimExpr offset = op->global_indices[0];
+    std::stringstream ss;
+    ss << "addr_gen_s(get_group_id(0), 0, ";
+    this->PrintExpr(tvm::truncdiv(bank_index, 4), ss);
+    ss << ", ";
+    this->PrintExpr(tvm::truncmod(bank_index, 4), ss);
+    ss << ", ";
+    this->PrintExpr(offset * 2, ss);
+    ss << ") >> 1";
+
+    std::string ref = GetBufferRef(op->dtype, op->buffer.get(), ss.str());
+    HandleVolatileLoads(ref, op, os);
+  } else {
+    // std::cerr << "[codegen] " << op->buffer->name << "(Load): " << op->global_indices <<
+    // std::endl;
+    CodeGenC::VisitExpr_(op, os);
+  }
 }
 
 void CodeGenHBMPIM::VisitStmt_(const ForNode* op) {
+  // if (op->annotations.find("bank") != op->annotations.end()) {
+  //   std::cerr << op->loop_var << std::endl;
+  // }
+
   std::string extent = PrintExpr(op->extent);
   if (op->annotations.Get("pim").as<Bool>()) {
     PrintPIMPrologue();
@@ -296,7 +488,11 @@ void CodeGenHBMPIM::BindThreadIndex(const IterVar& iv) {
   std::ostringstream os;
   if (ts.rank == 1) {
     os << "get_local_id(" << ts.dim_index << ")";
+    thread_vars_.Set(ts.dim_index, iv);
   } else if (ts.rank == 2) {
+    os << 0;
+  } else if (ts.rank == 3) {
+    bank_extent_map_.Set(iv->var, Downcast<IntImm>(iv->dom->extent));
     os << 0;
   } else {
     os << "get_group_id(" << ts.dim_index << ")";
@@ -327,6 +523,9 @@ runtime::Module BuildHBMPIM(IRModule mod, Target target) {
     auto calling_conv = f->GetAttr<Integer>(tvm::attr::kCallingConv);
     ICHECK(calling_conv == CallingConv::kDeviceKernelLaunch)
         << "CodeGenHBMPIM: expect calling_conv equals CallingConv::kDeviceKernelLaunch";
+    PrimFuncNode* fptr = f.CopyOnWrite();
+    ThreadReindexer reindexer;
+    fptr->body = std::move(reindexer(f->body));
     cg.AddFunction(f);
     std::string fsource = cg.Finish();
     if (fpostproc) {

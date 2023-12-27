@@ -208,6 +208,9 @@ struct ThreadScope {
     } else if (s.compare(0, 6, "puIdx.") == 0) {
       r.rank = 2;
       r.dim_index = static_cast<int>(s[6] - 'x');
+    } else if (s.compare(0, 8, "bankIdx.") == 0) {
+      r.rank = 3;
+      r.dim_index = static_cast<int>(s[6] - 'x');
     } else {
       LOG(FATAL) << "Unknown threadscope " << s;
     }

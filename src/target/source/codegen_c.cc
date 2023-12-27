@@ -125,6 +125,7 @@ void CodeGenC::AddFunction(const PrimFunc& f) {
   int func_scope = this->BeginScope();
   this->PrintStmt(f->body);
   this->EndScope(func_scope);
+  this->PostFunctionBody(f);
   this->PrintIndent();
   this->stream << "}\n\n";
 }

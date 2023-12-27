@@ -35,22 +35,31 @@ namespace tvm {
 namespace codegen {
 
 class CodeGenHBMPIM final : public CodeGenOpenCL {
-  void PreFunctionBody(const PrimFunc& f) final;                // NOLINT(*)
-  void PrintExtraFuncParams(const PrimFunc& f) final;           // NOLINT(*)
-  void VisitExpr_(const CallNode* op, std::ostream& os) final;  // NOLINT(*)
-  void VisitStmt_(const ForNode* op) final;                     // NOLINT(*)
-  void VisitStmt_(const BufferStoreNode* op) final;             // NOLINT(*)
-  void VisitExpr_(const BufferLoadNode* op, std::ostream& os);  // NOLINT(*)
-  void BindThreadIndex(const IterVar& iv) final;                // NOLINT(*)
-  std::ostringstream& Stream();                                 // NOLINT(*)
-  void PrintPIMPrologue();                                      // NOLINT(*)
-  void PrintPIMEpilogue();                                      // NOLINT(*)
-  void PrintChangeGemvHabHabPim();                              // NOLINT(*)
-  void PrintChangeGemvHabPimHab();                              // NOLINT(*)
+ public:
+  CodeGenHBMPIM();
+  void PreFunctionBody(const PrimFunc& f) final;                                      // NOLINT(*)
+  void PostFunctionBody(const PrimFunc& f) final;                                     // NOLINT(*)
+  void PrintExtraFuncParams(const PrimFunc& f) final;                                 // NOLINT(*)
+  void VisitExpr_(const CallNode* op, std::ostream& os) final;                        // NOLINT(*)
+  void VisitStmt_(const ForNode* op) final;                                           // NOLINT(*)
+  void VisitStmt_(const BufferStoreNode* op) final;                                   // NOLINT(*)
+  void VisitExpr_(const BufferLoadNode* op, std::ostream& os);                        // NOLINT(*)
+  void VisitStmt_(const AttrStmtNode* op) final;                                      // NOLINT(*)
+  void BindThreadIndex(const IterVar& iv) final;                                      // NOLINT(*)
+  std::ostringstream& Stream();                                                       // NOLINT(*)
+  void PrintPIMPrologue();                                                            // NOLINT(*)
+  void PrintPIMEpilogue();                                                            // NOLINT(*)
+  void PrintChangeGemvHabHabPim();                                                    // NOLINT(*)
+  void PrintChangeGemvHabPimHab();                                                    // NOLINT(*)
+  std::string GetBufferRef(DataType t, const BufferNode* buffer, std::string index);  // NOLINT(*)
+
  private:
   int pim_scope_;
   bool skip_scope_ = false;
   const int crf_size_ = 32;
+  Map<Var, IntImm> bank_ordering_map_;
+  Map<Var, IntImm> bank_extent_map_;
+  Array<IterVar> thread_vars_;
 };
 
 }  // namespace codegen

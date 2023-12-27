@@ -117,6 +117,11 @@ class CodeGenC : public ExprFunctor<void(const PrimExpr&, std::ostream&)>,
    */
   virtual void PreFunctionBody(const PrimFunc& f) {}
   /*!
+   * \brief Insert statement after function body.
+   * \param f The function to be compiled.
+   */
+  virtual void PostFunctionBody(const PrimFunc& f) {}
+  /*!
    * \brief Initialize codegen state for generating f.
    * \param f The function to be compiled.
    */
