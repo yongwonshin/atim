@@ -26,10 +26,12 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <cstdio>
 
 #include <tvm/tir/stmt_functor.h>
 
 // #include "../../runtime/upmem/upmem_module.h"
+#include "../../runtime/upmem/upmem_module.h"
 #include "../../runtime/thread_storage_scope.h"
 #include "../build_common.h"
 #include "../spirv/spirv_utils.h"
@@ -258,6 +260,38 @@ void CodeGenUpmem::VisitStmt_(const ForNode* op) {
 void CodeGenUpmem::PrintStorageScope(const std::string& scope, std::ostream& os) {
 }
 
+// TODO-PIM: Concern about Non-unix?
+// TODO-PIM: Too low
+std::string DPUClangCompile(const std::string& code) {
+  std::string exec = "dpu-upmem-dpurte-clang";
+  int valid = std::system(("command -v " + exec + " >/dev/null 2>&1").c_str());
+  if (valid != 0) {
+    LOG(FATAL) << "dpu-upmem-dpurte-clang not found in PATH.";
+  }
+  std::string output_binary = "temp";
+  std::string flags = "-O3";
+  
+  std::string command = exec + " " + flags + " -o " + output_binary;
+  FILE* pipe = popen(command.c_str(), "w");
+
+  if (pipe) {
+    fwrite(code.c_str(), 1, code.size(), pipe);
+    int result = pclose(pipe);
+    if (result == 0) {
+      return output_binary;
+    } else if (result == -1) {
+      LOG(FATAL) << "Failed to execute pclose command.";
+    } else {
+      LOG(FATAL) << "Failed to compile code for upmem.";
+    }
+    // TODO-PIM: is this safe? synchronous is the best?
+  } else {
+    LOG(FATAL) << "Failed to pipe code into dpu-upmem-dpurte-clang";
+    return "";
+  }
+  return "";
+}
+
 runtime::Module BuildUpmem(IRModule mod, Target target) {
 
   using tvm::runtime::Registry;
@@ -272,15 +306,15 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
     auto f = Downcast<PrimFunc>(kv.second);
     cg.AddFunction(f);
     std::string fsource = cg.Finish();
-
-    VLOG(2) << fsource;
-    // if (fpostproc) {
-    //   fsource = (*fpostproc)(fsource, target).operator std::string();
-    // }
     code << fsource;
   }
+  VLOG(2) << code.str();
 
   return runtime::Module();
+
+  // std::string binary = DPUClangCompile(code.str());
+
+  // return UPMEMModuleCreate(binary, "upmem", ExtractFuncInfo(mod), code.str());
 }
 
 TVM_REGISTER_GLOBAL("target.build.upmem").set_body_typed(BuildUpmem);

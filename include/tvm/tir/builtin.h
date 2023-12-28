@@ -808,6 +808,13 @@ TVM_DLL const Op& barrier();
 TVM_DLL const Op& mem_fence();
 TVM_DLL const Op& addr_gen();
 
+TVM_DLL const Op& pim_write();
+TVM_DLL const Op& pim_read();
+TVM_DLL const Op& pim_transfer();
+TVM_DLL const Op& pim_allocate();
+TVM_DLL const Op& pim_free();
+TVM_DLL const Op& pim_kernel_marker();
+
 /*! \brief The kind of structure field info used in intrinsic */
 enum TVMStructFieldKind : int {
   // array head address

@@ -986,6 +986,9 @@ def ConvertForLoopsToSerial():
     """
     return _ffi_api.ConvertForLoopsToSerial()  # type: ignore
 
+def ExtractPimTransferSchedule():
+    return _ffi_api.ExtractPimTransferSchedule()
+
 
 def InjectSoftwarePipeline():
     """Transform annotated loops into pipelined one that parallelize producers and consumers

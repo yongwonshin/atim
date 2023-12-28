@@ -249,8 +249,8 @@ class Device(ctypes.Structure):
     kDLSDAccel = 33
     kOpenGL = 34
     kDLMicroDev = 35
-    kDLUPMEM = 36
-    kDLHBMPIM = 37
+    kDLUPMEM = 64
+    kDLHBMPIM = 65
 
     _fields_ = [("device_type", ctypes.c_int), ("device_id", ctypes.c_int)]
     MASK2STR = {
@@ -313,6 +313,11 @@ class Device(ctypes.Structure):
         import tvm.runtime._ffi_api
 
         return tvm.runtime._ffi_api.GetDeviceAttr(device_type, device_id, attr_id)
+
+    def is_pim(self):
+        if self.device_type == Device.kDLUPMEM or self.device_type == Device.kDLHBMPIM:
+            raise ValueError("For PIM device type, use PimDevice instead.")
+        return False
 
     @property
     def exist(self):
@@ -581,6 +586,14 @@ class Device(ctypes.Structure):
             )
         return "%s(%d)" % (Device.MASK2STR[self.device_type], self.device_id)
 
+class PimDevice(Device):
+    _fields_ = [
+        ("device_type", ctypes.c_int),
+        ("device_id", ctypes.c_int),
+    ]
+        
+    def is_pim():
+        return True
 
 class TVMArray(ctypes.Structure):
     """TVMValue in C API"""

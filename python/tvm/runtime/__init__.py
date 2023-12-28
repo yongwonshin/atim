@@ -22,13 +22,13 @@ from .object import Object
 from .object_path import ObjectPath, ObjectPathPair
 from .script_printer import Scriptable
 from .object_generic import ObjectGeneric, ObjectTypes
-from .ndarray import NDArray, DataType, DataTypeCode, Device
+from .ndarray import NDArray, DataType, DataTypeCode, Device, PimDevice
 from .module import Module, num_threads
 from .profiling import Report
 
 # function exposures
 from .object_generic import convert_to_object, convert, const
-from .ndarray import device, cpu, cuda, gpu, opencl, cl, vulkan, metal, mtl, upmem, hbmpim
+from .ndarray import device, cpu, cuda, gpu, opencl, cl, vulkan, metal, mtl, upmem, hbmpim, pim
 from .ndarray import vpi, rocm, ext_dev
 from .module import load_module, enabled, system_lib, load_static_library
 from .container import String, ShapeTuple

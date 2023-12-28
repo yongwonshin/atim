@@ -122,8 +122,8 @@ typedef enum {
   kDLSDAccel,
   kOpenGL,
   kDLMicroDev,
-  kDLUPMEM,
-  kDLHBMPIM,
+  kDLUPMEM=64,
+  kDLHBMPIM=65,
   TVMDeviceExtType_End,  // sentinel value
 } TVMDeviceExtType;
 
@@ -154,8 +154,8 @@ static_assert(kDLAOCL == 32, TVM_HARCODED_INTEGER_CHANGED_MSG);
 static_assert(kDLSDAccel == 33, TVM_HARCODED_INTEGER_CHANGED_MSG);
 static_assert(kOpenGL == 34, TVM_HARCODED_INTEGER_CHANGED_MSG);
 static_assert(kDLMicroDev == 35, TVM_HARCODED_INTEGER_CHANGED_MSG);
-static_assert(kDLUPMEM == 36, TVM_HARCODED_INTEGER_CHANGED_MSG);
-static_assert(kDLHBMPIM == 37, TVM_HARCODED_INTEGER_CHANGED_MSG);
+static_assert(kDLUPMEM == 64, TVM_HARCODED_INTEGER_CHANGED_MSG);
+static_assert(kDLHBMPIM == 65, TVM_HARCODED_INTEGER_CHANGED_MSG);
 #undef TVM_HARCODED_INTEGER_CHANGED_MSG
 #endif
 

@@ -1,0 +1,155 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/*!
+ * \file upmem_module.cc
+ */
+#include "upmem_module.h"
+
+#include <dpu.h>
+#include <dpu_log.h>
+#include <tvm/runtime/registry.h>
+
+#include <array>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "../file_utils.h"
+#include "../meta_data.h"
+#include "../pack_args.h"
+#include "../thread_storage_scope.h"
+#include "upmem_common.h"
+
+namespace tvm {
+namespace runtime {
+
+// Module to support thread-safe multi-GPU execution.
+// cuModule is a per-GPU module
+// The runtime will contain a per-device module table
+// The modules will be lazily loaded
+class UPMEMModuleNode : public runtime::ModuleNode {
+ public:
+  explicit UPMEMModuleNode(std::string binary_file, std::string fmt,
+                          std::unordered_map<std::string, FunctionInfo> fmap,
+                          std::string upmem_source)
+      : binary_file_(binary_file), fmt_(fmt), fmap_(fmap), upmem_source_(upmem_source) {
+    std::fill(module_.begin(), module_.end(), nullptr);
+  }
+  // destructor
+  ~UPMEMModuleNode() {
+  }
+  
+  void Init(){}
+
+  const char* type_key() const final { return "upmem"; }
+
+  /*! \brief Get the property of the runtime module .*/
+  int GetPropertyMask() const final {
+    return ModulePropertyMask::kBinarySerializable | ModulePropertyMask::kRunnable;
+  }
+
+  PackedFunc GetFunction(const String& name, const ObjectPtr<Object>& sptr_to_self) final;
+
+  void SaveToFile(const String& file_name, const String& format) final {
+  }
+
+  void SaveToBinary(dmlc::Stream* stream) final {
+  }
+
+  String GetSource(const String& format) final {
+  }
+
+ private:
+  // the binary data
+  std::string binary_file_;
+  // The format
+  std::string fmt_;
+  // function information table.
+  std::unordered_map<std::string, FunctionInfo> fmap_;
+  // The upmem source.
+  std::string upmem_source_;
+  // the internal modules per GPU, to be lazily initialized.
+  std::array<CUmodule, kMaxNumGPUs> module_;
+  // internal mutex when updating the module
+  std::mutex mutex_;
+};
+
+// a wrapped function class to get packed func.
+class UPMEMWrappedFunc {
+ public:
+  // initialize the UPMEM function.
+  void Init(UPMEMModuleNode* m, ObjectPtr<Object> sptr, const std::string& func_name,
+            size_t num_void_args, const std::vector<std::string>& launch_param_tags) {
+    m_ = m;
+    sptr_ = sptr;
+    func_name_ = func_name;
+    std::fill(fcache_.begin(), fcache_.end(), nullptr);
+    launch_param_config_.Init(num_void_args, launch_param_tags);
+  }
+  // invoke the function with void arguments
+  void operator()(TVMArgs args, TVMRetValue* rv, void** void_args) const {
+    // install kernel
+    // launch kernel
+  }
+
+ private:
+  // internal module
+  UPMEMModuleNode* m_;
+  // the resource holder
+  ObjectPtr<Object> sptr_;
+  // The name of the function.
+  std::string func_name_;
+  // Device function cache per device.
+  // mark as mutable, to enable lazy initialization
+  mutable std::array<CUfunction, kMaxNumGPUs> fcache_;
+  // launch parameters configuration
+  LaunchParamConfig launch_param_config_;
+};
+
+PackedFunc UPMEMModuleNode::GetFunction(const String& name, const ObjectPtr<Object>& sptr_to_self) {
+  ICHECK_EQ(sptr_to_self.get(), this);
+  auto it = fmap_.find(name);
+  if (it == fmap_.end()) return PackedFunc();
+  const FunctionInfo& info = it->second;
+  UPMEMWrappedFunc f;
+  f.Init(this, sptr_to_self, name, info.arg_types.size(), info.launch_param_tags);
+}
+
+Module UPMEMModuleCreate(std::string binary_file, std::string fmt,
+                        std::unordered_map<std::string, FunctionInfo> fmap,
+                        std::string upmem_source) {
+  // TODO: build upmem module with dpurte-upmem-clang
+  auto n = make_object<UPMEMModuleNode>(binary_file, fmt, fmap, upmem_source);
+  return Module(n);
+}
+
+// Load module from module.
+Module UPMEMModuleLoadFile(const std::string& file_name, const String& format) {
+}
+
+Module UPMEMModuleLoadBinary(void* strm) {
+}
+
+TVM_REGISTER_GLOBAL("runtime.module.loadfile_dpukernel").set_body_typed(UPMEMModuleLoadFile);
+
+TVM_REGISTER_GLOBAL("runtime.module.loadbinary_dpukernel").set_body_typed(UPMEMModuleLoadBinary);
+}  // namespace runtime
+}  // namespace tvm
