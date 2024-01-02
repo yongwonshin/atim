@@ -372,23 +372,23 @@ def get_partial_reduction_intrin(dtype):
 HBMPIM_INPUT_INTRIN = "hbmpim_input_intrin"
 TensorIntrin.register(
     HBMPIM_INPUT_INTRIN,
-    *get_input_intrin("float16"),
+    *get_input_intrin("int16"),
 )
 
 HBMPIM_WEIGHT_INTRIN = "hbmpim_weight_intrin"
 TensorIntrin.register(
     HBMPIM_WEIGHT_INTRIN,
-    *get_weight_intrin("float16"),
+    *get_weight_intrin("int16"),
 )
 
 HBMPIM_MAC_INTRIN = "hbmpim_mac_intrin"
 TensorIntrin.register(
     HBMPIM_MAC_INTRIN,
-    *get_mac_intrin("float16"),
+    *get_mac_intrin("int16"),
 )
 
 HBMPIM_PARTIAL_REDUCTION_INTRIN = "hbmpim_partial_reduction_intrin"
 TensorIntrin.register(
     HBMPIM_PARTIAL_REDUCTION_INTRIN,
-    *get_partial_reduction_intrin("float16"),
+    *get_partial_reduction_intrin("int16"),
 )

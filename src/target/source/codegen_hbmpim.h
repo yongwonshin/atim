@@ -52,6 +52,7 @@ class CodeGenHBMPIM final : public CodeGenOpenCL {
   void PrintChangeGemvHabHabPim();                                                    // NOLINT(*)
   void PrintChangeGemvHabPimHab();                                                    // NOLINT(*)
   std::string GetBufferRef(DataType t, const BufferNode* buffer, std::string index);  // NOLINT(*)
+  std::string Finish() final;                                                         // NOLINT(*)
 
  private:
   int pim_scope_;

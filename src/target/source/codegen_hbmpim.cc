@@ -31,6 +31,7 @@
 #include "../../runtime/thread_storage_scope.h"
 #include "../build_common.h"
 #include "../spirv/spirv_utils.h"
+#include "literal/hbmpim_utils.h"
 
 namespace tvm {
 namespace codegen {
@@ -133,18 +134,18 @@ void CodeGenHBMPIM::PreFunctionBody(const PrimFunc& f) {
   CodeGenOpenCL::PreFunctionBody(f);
   pim_scope_ = this->BeginScope();
   stream << "#ifdef EMULATOR\n";
-  Stream() << "emulator_trace->g_fba = (uint64_t)pim_ctr;\n";
+  Stream() << "emulator_trace->g_fba = (ulong)pim_ctr;\n";
   Stream() << "emulator_trace->g_fmtd16 = fmtd16;\n";
   Stream() << "emulator_trace->g_ridx[get_group_id(0)] = 0;\n";
   Stream() << "emulator_trace->m_width = mt_width;\n";
   Stream() << "barrier(CLK_LOCAL_MEM_FENCE);\n";
   stream << "#endif\n";
 
-  stream << "#ifdef PREPARE_KERNEL\n";
+  // stream << "#ifdef PREPARE_KERNEL\n";
   Stream() << "int num_ba = 4;\n";
   Stream() << "int w_idx = get_local_id(0) % 2;\n";
   Stream() << "int gidx = get_local_id(0) >> 1;\n";
-  Stream() << "uint64_t offset = w_idx << 4;\n";
+  Stream() << "ulong offset = w_idx << 4;\n";
   // temp
   Stream() << "int grf_shift = 3;\n";
   Stream() << "int ba_shift = 2;\n";
@@ -154,8 +155,8 @@ void CodeGenHBMPIM::PreFunctionBody(const PrimFunc& f) {
   Stream() << "int even_row, odd_row, row, col, loc;\n";
   Stream() << "int ch = get_group_id(0);\n";
   Stream() << "int teidx = get_local_id(0) * 16;\n";
-  Stream() << "uint64_t addr;\n";
-  stream << "#endif\n";
+  Stream() << "ulong addr;\n";
+  // stream << "#endif\n";
   this->EndScope(pim_scope_);
 }
 
@@ -180,61 +181,62 @@ void CodeGenHBMPIM::PrintChangeGemvHabPimHab() {
 
 void CodeGenHBMPIM::PrintPIMPrologue() {
   // park in
-  stream << "#if PARK_IN\n";
+  // stream << "#if PARK_IN\n";
   Stream() << "if (get_local_id(0) < 32) {\n";
   PrintIndent();
   Stream() << "park_in(pim_ctr, gidx, num_ba, offset);\n";
   Stream() << "}\n";
-  stream << "#endif\n";
+  // stream << "#endif\n";
 
   // change SB mode to HAB mode
-  stream << "#if CHANGE_SB_HAB\n";
+  // stream << "#if CHANGE_SB_HAB\n";
   Stream() << "if (get_local_id(0) < 2) {\n";
   PrintIndent();
   Stream() << "change_sb_hab(pim_ctr, offset);\n";
   Stream() << "}\n";
   Stream() << "barrier(CLK_GLOBAL_MEM_FENCE);\n";
-  stream << "#endif\n";
+  // stream << "#endif\n";
 
   // program CRF
-  stream << "#if PROGRAM_CRF\n";
+  // stream << "#if PROGRAM_CRF\n";
   Stream() << "if (get_local_id(0) < (" << crf_size_ << " >> 4)) {\n";
   PrintIndent();
   Stream() << "program_crf_mod(pim_ctr, gidx, crf_binary, offset);\n";
   Stream() << "}\n";
   Stream() << "barrier(CLK_GLOBAL_MEM_FENCE);\n";
-  stream << "#endif\n";
+  // stream << "#endif\n";
 
   // Limit threads
-  stream << "#if COMPUTE_GEMM\n";
+  // stream << "#if COMPUTE_GEMM\n";
   Stream() << "if (get_local_id(0) < 16) {\n";
   pim_scope_ = this->BeginScope();
 }
 
 void CodeGenHBMPIM::PrintExtraFuncParams(const PrimFunc& f) {
-  stream << ", __global uint8_t* __restrict__ pim_ctr";
+  stream << ", __global uchar* __restrict__ pim_ctr";
+  stream << ", __global uchar* crf_binary";
 }
 
 void CodeGenHBMPIM::PrintPIMEpilogue() {
   // change HAB_PIM mode to HAB_PIM mode
   this->EndScope(pim_scope_);
   Stream() << "}\n";
-  stream << "#endif\n";
+  // stream << "#endif\n";
 
-  stream << "#if CHANGE_HAB_SB\n";
+  // stream << "#if CHANGE_HAB_SB\n";
   Stream() << "if (get_local_id(0) < 4) {\n";
   PrintIndent();
   Stream() << "change_hab_sb(pim_ctr, gidx, offset);\n";
   Stream() << "}\n";
   Stream() << "barrier(CLK_GLOBAL_MEM_FENCE);\n";
-  stream << "#endif\n";
+  // stream << "#endif\n";
 
-  stream << "#if PARK_OUT\n";
+  // stream << "#if PARK_OUT\n";
   Stream() << "if (get_local_id(0) < 32) {\n";
   PrintIndent();
   Stream() << "park_out(pim_ctr, gidx, num_ba, offset);\n";
   Stream() << "}\n";
-  stream << "#endif\n";
+  // stream << "#endif\n";
 }
 
 void CodeGenHBMPIM::VisitStmt_(const AttrStmtNode* op) {
@@ -535,6 +537,12 @@ runtime::Module BuildHBMPIM(IRModule mod, Target target) {
   }
 
   return OpenCLModuleCreate(code.str(), "cl", ExtractFuncInfo(mod), code.str());
+}
+
+std::string CodeGenHBMPIM::Finish() {
+  decl_stream << _hbmpim_info_def;
+  decl_stream << _hbmpim_kernel_utils_def;
+  return CodeGenOpenCL::Finish();
 }
 
 TVM_REGISTER_GLOBAL("target.build.hbmpim").set_body_typed(BuildHBMPIM);
