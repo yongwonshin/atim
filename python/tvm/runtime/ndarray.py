@@ -329,9 +329,10 @@ def device(dev_type, dev_id=0):
         if dev_type not in Device.STR2MASK:
             raise ValueError(f"Unknown device type {dev_type}")
         dev_type = Device.STR2MASK[dev_type]
-    if dev_type >= 64:
-        raise ValueError("Device type value cannot be PIM. use tvm.pim() instead.")
+    # if dev_type >= 64:
+    #     raise ValueError("Device type value cannot be PIM. use tvm.pim() instead.")
     return Device(dev_type, dev_id)
+
 
 def pim(dev_type, dev_id):
     """Construct a TVM device with given device type and id.
@@ -355,7 +356,9 @@ def pim(dev_type, dev_id):
             raise ValueError(f"Unknown device type {dev_type}")
         dev_type = Device.STR2MASK[dev_type]
     if dev_type < 64:
-        raise ValueError("Only PIM Device can be allowed for dev_type. Use tvm.device() instead for other devices.")
+        raise ValueError(
+            "Only PIM Device can be allowed for dev_type. Use tvm.device() instead for other devices."
+        )
 
     dev = PimDevice(dev_type, dev_id)
     return dev
@@ -532,6 +535,7 @@ def metal(dev_id=0):
     """
     return Device(Device.kDLMetal, dev_id)
 
+
 def upmem(dev_id=0):
     """Construct a metal device
 
@@ -546,6 +550,7 @@ def upmem(dev_id=0):
         The created device
     """
     return PimDevice(Device.kDLUPMEM, dev_id)
+
 
 def hbmpim(dev_id=0):
     """Construct a metal device

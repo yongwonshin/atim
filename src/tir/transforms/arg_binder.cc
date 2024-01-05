@@ -35,6 +35,10 @@ namespace tir {
 
 void BinderAddAssert(arith::Analyzer* ana, PrimExpr cond, const std::string& arg_name,
                      std::vector<Stmt>* asserts) {
+  if (arg_name.find(".device_type") != std::string::npos) {
+    // TODO[ywshin]: skip for now
+    return;
+  }
   PrimExpr scond = ana->Simplify(cond);
   if (is_zero(scond)) {
     LOG(FATAL) << "Bind have an unmet assertion: " << cond << ", "

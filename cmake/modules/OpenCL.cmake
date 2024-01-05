@@ -35,6 +35,8 @@ if(USE_HBMPIM)
     message(STATUS "Enable OpenCL support required for HBMPIM")
     set(USE_OPENCL ON)
   endif()
+else()
+  list(APPEND COMPILER_SRCS src/target/opt/build_hbmpim_off.cc)
 endif(USE_HBMPIM)
 
 if(USE_AOCL)

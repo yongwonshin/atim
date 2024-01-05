@@ -451,7 +451,7 @@ TVM_REGISTER_TARGET_KIND("hbmpim", kDLOpenCL)  // line break
     .add_attr_option<Integer>("max_num_threads", Integer(256))
     .add_attr_option<Integer>("thread_warp_size", Integer(1))
     .add_attr_option<Integer>("texture_spatial_limit", Integer(16384))
-    .set_default_keys({"hbmpim", "pim"});
+    .set_default_keys({"hbmpim", "gpu"});
 
 TVM_REGISTER_TARGET_KIND("stackvm", kDLCPU)  // line break
     .set_default_keys({"cpu"});

@@ -213,7 +213,7 @@ void* OpenCLWorkspace::CreateHostPtrIfEnabled(cl::BufferDescriptor* desc, Device
 }
 
 void* OpenCLWorkspace::AllocDataSpace(Device dev, size_t size, size_t alignment,
-                                      DLDataType type_hint) {
+                                      DLDataType type_hint, Optional<String> mem_scope) {
   this->Init();
   cl_device_id device_id = GetCLDeviceID(dev.device_id);
   auto platform = device_to_platform[device_id];

@@ -190,9 +190,7 @@ class DataType(ctypes.Structure):
         else:
             import tvm.runtime._ffi_api
 
-            type_name = "custom[%s]" % tvm.runtime._ffi_api._datatype_get_type_name(
-                self.type_code
-            )
+            type_name = "custom[%s]" % tvm.runtime._ffi_api._datatype_get_type_name(self.type_code)
         x = "%s%d" % (type_name, self.bits)
         if self.lanes != 1:
             x += "x%d" % self.lanes
@@ -299,7 +297,7 @@ class Device(ctypes.Structure):
         "hexagon": kDLHexagon,
         "webgpu": kDLWebGPU,
         "upmem": kDLUPMEM,
-        "hbmpim": kDLOpenCL,
+        "hbmpim": kDLHBMPIM,
     }
 
     def __init__(self, device_type, device_id):
@@ -527,9 +525,7 @@ class Device(ctypes.Structure):
             The created runtime stream.
         """
         stream = ctypes.c_void_p()
-        check_call(
-            _LIB.TVMStreamCreate(self.device_type, self.device_id, ctypes.byref(stream))
-        )
+        check_call(_LIB.TVMStreamCreate(self.device_type, self.device_id, ctypes.byref(stream)))
         return stream
 
     def free_raw_stream(self, stream):
@@ -586,14 +582,16 @@ class Device(ctypes.Structure):
             )
         return "%s(%d)" % (Device.MASK2STR[self.device_type], self.device_id)
 
+
 class PimDevice(Device):
     _fields_ = [
         ("device_type", ctypes.c_int),
         ("device_id", ctypes.c_int),
     ]
-        
+
     def is_pim():
         return True
+
 
 class TVMArray(ctypes.Structure):
     """TVMValue in C API"""

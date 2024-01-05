@@ -255,7 +255,10 @@ class OpenCLWorkspace : public DeviceAPI {
             const std::string& platform_name = "");
   virtual void Init() { Init("opencl", "gpu"); }
   // Check whether the context is OpenCL or not.
-  virtual bool IsOpenCLDevice(Device dev) { return dev.device_type == kDLOpenCL; }
+  virtual bool IsOpenCLDevice(Device dev) {
+    std::cerr << "IsOpenCLDevice (ocl): " << (dev.device_type == kDLOpenCL) << std::endl;
+    return dev.device_type == kDLOpenCL;
+  }
   // get the queue of the device
   cl_command_queue GetQueue(Device dev) {
     ICHECK(IsOpenCLDevice(dev));
@@ -308,9 +311,10 @@ class OpenCLWorkspace : public DeviceAPI {
   // override device API
   void SetDevice(Device dev) final;
   void GetAttr(Device dev, DeviceAttrKind kind, TVMRetValue* rv) final;
-  void* AllocDataSpace(Device dev, size_t size, size_t alignment, DLDataType type_hint) final;
+  void* AllocDataSpace(Device dev, size_t size, size_t alignment, DLDataType type_hint,
+                       Optional<String> mem_scope = NullOpt);
   void* AllocDataSpace(Device dev, int ndim, const int64_t* shape, DLDataType dtype,
-                       Optional<String> mem_scope = NullOpt) final;
+                       Optional<String> mem_scope = NullOpt);
   void* GetNativePtr(const tvm::runtime::NDArray& narr);
   void FreeDataSpace(Device dev, void* ptr) final;
   void StreamSync(Device dev, TVMStreamHandle stream) final;
@@ -464,7 +468,7 @@ class OpenCLModuleNode : public OpenCLModuleNodeBase {
                             std::unordered_map<std::string, FunctionInfo> fmap, std::string source)
       : OpenCLModuleNodeBase(fmap), data_(data), fmt_(fmt), source_(source) {}
 
-  PackedFunc GetFunction(const String& name, const ObjectPtr<Object>& sptr_to_self) final;
+  PackedFunc GetFunction(const String& name, const ObjectPtr<Object>& sptr_to_self) override;
   void SaveToFile(const String& file_name, const String& format) final;
   void SaveToBinary(dmlc::Stream* stream) final;
   void SetPreCompiledPrograms(const std::string& bytes);

@@ -107,6 +107,13 @@ class DeviceInfoCollector : public StmtVisitor {
     if (op->attr_key == attr::thread_extent) {
       IterVar iv = Downcast<IterVar>(op->node);
       ICHECK_NE(iv->thread_tag.length(), 0U);
+
+      if (std::string(iv->thread_tag.c_str()).compare(0, 6, "puIdx.") == 0 ||
+          std::string(iv->thread_tag.c_str()).compare(0, 8, "bankIdx.") == 0) {
+        StmtVisitor::VisitStmt_(op);
+        return;
+      }
+
       // thread_extent can appear multiple times
       // use the first appearance as def.
       if (!defined_thread.count(iv.get())) {

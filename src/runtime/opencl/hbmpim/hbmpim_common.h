@@ -30,6 +30,16 @@
 
 namespace tvm {
 namespace runtime {
+
+class HBMPIMModuleNode : public OpenCLModuleNode {
+ public:
+  explicit HBMPIMModuleNode(std::string data, std::string fmt,
+                            std::unordered_map<std::string, FunctionInfo> fmap, std::string source)
+      : OpenCLModuleNode(data, fmt, fmap, source) {}
+  cl::OpenCLWorkspace* GetGlobalWorkspace() final;
+  PackedFunc GetFunction(const String& name, const ObjectPtr<Object>& sptr_to_self) final;
+};
+
 namespace cl {
 
 /*!
@@ -43,6 +53,10 @@ class HBMPIMWorkspace final : public OpenCLWorkspace {
   OpenCLThreadEntry* GetThreadEntry() final;
   // get the global workspace
   static OpenCLWorkspace* Global();
+  void* AllocDataSpace(Device dev, size_t size, size_t alignment, DLDataType type_hint,
+                       Optional<String> mem_scope = NullOpt) final;
+  void* AllocDataSpace(Device dev, int ndim, const int64_t* shape, DLDataType dtype,
+                       Optional<String> mem_scope = NullOpt) final;
 };
 
 /*! \brief Thread local workspace for HBMPIM*/

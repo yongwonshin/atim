@@ -21,9 +21,9 @@
  * \file upmem_device_api.cc
  * \brief UPMEM specific API
  */
+#include <dmlc/thread_local.h>
 #include <dpu.h>
 #include <dpu_log.h>
-#include <dmlc/thread_local.h>
 #include <tvm/runtime/device_api.h>
 #include <tvm/runtime/profiling.h>
 #include <tvm/runtime/registry.h>
@@ -43,7 +43,7 @@ class UPMEMDeviceAPI final : public DeviceAPI {
 
   void GetAttr(Device dev, DeviceAttrKind kind, TVMRetValue* rv) final {
     int value = 0;
-    switch(kind) {
+    switch (kind) {
       case kExist: {
         break;
       }
@@ -97,19 +97,20 @@ class UPMEMDeviceAPI final : public DeviceAPI {
     *rv = value;
   }
 
-  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint) final {
+  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
+                       Optional<String> mem_scope = NullOpt) final {
     // malloc is not needed...:(
   }
 
   void FreeDataSpace(Device dev, void* ptr) final {
-    // free dataspace 
+    // free dataspace
   }
 
   void CopyDataFromTo(DLTensor* from, DLTensor* to, TVMStreamHandle stream) final {
     size_t nbytes = GetDataSize(*from);
     ICHECK_EQ(nbytes, GetDataSize(*to));
     ICHECK(IsContiguous(*from) && IsContiguous(*to))
-      << "CopyDataFromTo only support contiguous array for now";
+        << "CopyDataFromTo only support contiguous array for now";
 
     auto from_device_type = from->device.device_type;
     auto to_device_type = to->device.device_type;
@@ -150,19 +151,14 @@ TVM_REGISTER_GLOBAL("device_api.upmem_host").set_body([](TVMArgs args, TVMRetVal
 
 class UPMEMTimerNode : public TimerNode {
  public:
-  virtual void Start() {
-  }
-  virtual void Stop() {
-  }
-  
-  virtual int64_t SyncAndGetElapsedNanos() {
-  }
+  virtual void Start() {}
+  virtual void Stop() {}
 
-  virtual ~UPMEMTimerNode() {
-  }
+  virtual int64_t SyncAndGetElapsedNanos() {}
 
-  UPMEMTimerNode() {
-  }
+  virtual ~UPMEMTimerNode() {}
+
+  UPMEMTimerNode() {}
 
   static constexpr const char* _type_key = "UPMEMTimerNode";
   TVM_DECLARE_FINAL_OBJECT_INFO(UPMEMTimerNode, TimerNode);

@@ -30,22 +30,31 @@
 namespace tvm {
 namespace tir {
 
-class InternalBufferReindexer : public StmtExprMutator {
+class HBMParamsInjector : public StmtExprMutator {
  public:
   static Stmt Substitute(const PrimFunc& f) {
-    InternalBufferReindexer reindexer;
+    HBMParamsInjector reindexer;
     return reindexer.VisitStmt(f->body);
   }
 
  private:
-  InternalBufferReindexer() = default;
+  HBMParamsInjector() = default;
 };
 
-PrimFunc ReindexInternalBuffer(PrimFunc f) {
+PrimFunc InjectHBMPIMParams(PrimFunc f) {
   // Only apply this pass to TIR that is not from TE schedules
   if (!IsFromLegacyTESchedule(f)) {
     PrimFuncNode* fptr = f.CopyOnWrite();
-    fptr->body = InternalBufferReindexer::Substitute(f);
+    // Var pim_ctr("pim_ctr", DataType::Handle(8));
+    // Var crf_binary("crf_binary", DataType::Handle(8));
+    // Array<Var> new_params;
+    // for (size_t i = 0; i < f->params.size(); ++i) {
+    //   new_params.push_back(f->params[i]);
+    // }
+    // new_params.push_back(pim_ctr);
+    // new_params.push_back(crf_binary);
+    // fptr->params = std::move(new_params);
+    fptr->body = HBMParamsInjector::Substitute(f);
     return f;
   } else {
     return f;
@@ -54,14 +63,14 @@ PrimFunc ReindexInternalBuffer(PrimFunc f) {
 
 namespace transform {
 
-Pass ReindexInternalBuffer() {
+Pass InjectHBMPIMParams() {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
-    return ReindexInternalBuffer(std::move(f));
+    return InjectHBMPIMParams(std::move(f));
   };
-  return CreatePrimFuncPass(pass_func, 0, "tir.ReindexInternalBuffer", {});
+  return CreatePrimFuncPass(pass_func, 0, "tir.InjectHBMPIMParams", {});
 }
 
-TVM_REGISTER_GLOBAL("tir.transform.ReindexInternalBuffer").set_body_typed(ReindexInternalBuffer);
+TVM_REGISTER_GLOBAL("tir.transform.InjectHBMPIMParams").set_body_typed(InjectHBMPIMParams);
 }  // namespace transform
 
 }  // namespace tir

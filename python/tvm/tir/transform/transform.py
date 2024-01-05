@@ -916,8 +916,8 @@ def FlattenBuffer():
     return _ffi_api.FlattenBuffer()  # type: ignore
 
 
-def ReindexInternalBuffer():
-    return _ffi_api.ReindexInternalBuffer()  # type: ignore
+def InjectHBMPIMParams():
+    return _ffi_api.InjectHBMPIMParams()  # type: ignore
 
 
 def TransformMmaBufferLayout():
@@ -985,6 +985,7 @@ def ConvertForLoopsToSerial():
         The result pass
     """
     return _ffi_api.ConvertForLoopsToSerial()  # type: ignore
+
 
 def ExtractPimTransferSchedule():
     return _ffi_api.ExtractPimTransferSchedule()

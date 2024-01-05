@@ -55,7 +55,8 @@ class RPCDeviceAPI final : public DeviceAPI {
     return space;
   }
 
-  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint) final {
+  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
+                       Optional<String> mem_scope = NullOpt) final {
     auto sess = GetSess(dev);
     auto remote_dev = RemoveRPCSessionMask(dev);
     void* data =

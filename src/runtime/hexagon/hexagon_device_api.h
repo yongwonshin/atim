@@ -104,7 +104,8 @@ class HexagonDeviceAPI final : public DeviceAPI {
 
   //! \note Standard memory allocation methods of the DeviceAPI interface.
   //! \brief Allocate a flat allocation of global memory wrapped in a HexagonBuffer.
-  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint) final;
+  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
+                       Optional<String> mem_scope = NullOpt) final;
 
   //! \brief Free the allocated HexagonBuffer.
   void FreeDataSpace(Device dev, void* ptr) final;

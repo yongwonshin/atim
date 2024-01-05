@@ -47,7 +47,8 @@ class VulkanDeviceAPI final : public DeviceAPI {
   void GetAttr(Device dev, DeviceAttrKind kind, TVMRetValue* rv) final;
 
   // Implement memory management required by DeviceAPI
-  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint) final;
+  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
+                       Optional<String> mem_scope = NullOpt) final;
   void FreeDataSpace(Device dev, void* ptr) final;
   void* AllocWorkspace(Device dev, size_t size, DLDataType type_hint) final;
   void FreeWorkspace(Device dev, void* data) final;

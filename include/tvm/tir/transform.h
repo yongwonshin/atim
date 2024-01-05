@@ -549,7 +549,7 @@ TVM_DLL Pass LowerOpaqueBlock();
  * \return The pass.
  */
 TVM_DLL Pass FlattenBuffer();
-TVM_DLL Pass ReindexInternalBuffer();
+TVM_DLL Pass InjectHBMPIMParams();
 
 /*
  * \brief Flatten the multi-dimensional read/write

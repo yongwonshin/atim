@@ -111,8 +111,8 @@ class TVM_DLL DeviceAPI {
    * as OpenGL, as nbytes & alignment are sufficient for most backends.
    * \return The allocated device pointer.
    */
-  virtual void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment,
-                               DLDataType type_hint) = 0;
+  virtual void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
+                               Optional<String> mem_scope = NullOpt) = 0;
   /*!
    * \brief Allocate a data space on device with memory scope support.
    * \param dev The device device to perform operation.

@@ -26,6 +26,7 @@
 #include <string>
 #include <vector>
 
+#include "../../runtime/opencl/hbmpim/hbmpim_module.h"
 #include "../../runtime/opencl/opencl_module.h"
 #include "../../runtime/texture.h"
 #include "../../runtime/thread_storage_scope.h"
@@ -133,6 +134,7 @@ class BankIndexInspector : public ExprVisitor {
 void CodeGenHBMPIM::PreFunctionBody(const PrimFunc& f) {
   CodeGenOpenCL::PreFunctionBody(f);
   pim_scope_ = this->BeginScope();
+  stream << "#ifdef EMPTY_BODY\n";
   stream << "#ifdef EMULATOR\n";
   Stream() << "emulator_trace->g_fba = (ulong)pim_ctr;\n";
   Stream() << "emulator_trace->g_fmtd16 = fmtd16;\n";
@@ -167,6 +169,7 @@ void CodeGenHBMPIM::PostFunctionBody(const PrimFunc& f) {
   PrintIndent();
   Stream() << "frd_size[0] = emulator_trace->g_ridx[0];\n";
   Stream() << "}\n";
+  stream << "#endif\n";
   stream << "#endif\n";
   this->EndScope(pim_scope_);
 }
@@ -436,7 +439,7 @@ void CodeGenHBMPIM::VisitExpr_(const BufferLoadNode* op, std::ostream& os) {
     this->PrintExpr(tvm::truncdiv(bank_index, 4), ss);
     ss << ", ";
     this->PrintExpr(tvm::truncmod(bank_index, 4), ss);
-    ss << ", ";
+    ss << ", 0, 0, ";
     this->PrintExpr(offset * 2, ss);
     ss << ") >> 1";
 
@@ -507,7 +510,7 @@ runtime::Module BuildHBMPIM(IRModule mod, Target target) {
   Optional<String> device = target->GetAttr<String>("device");
   if (device && device.value() == "spirv") {
     auto [smap, spirv_text] = LowerToSPIRV(mod, target);
-    return runtime::OpenCLModuleCreate(smap, spirv_text, ExtractFuncInfo(mod));
+    return runtime::HBMPIMModuleCreate(smap, spirv_text, ExtractFuncInfo(mod));
   }
 #endif
 
@@ -519,6 +522,8 @@ runtime::Module BuildHBMPIM(IRModule mod, Target target) {
   for (auto kv : mod->functions) {
     ICHECK(kv.second->IsInstance<PrimFuncNode>()) << "CodeGenHBMPIM: Can only take PrimFunc";
     code << "// Function: " << kv.first->name_hint << std::endl;
+    code << _hbmpim_info_def;
+    code << _hbmpim_kernel_utils_def;
     CodeGenHBMPIM cg;
     cg.Init(output_ssa);
     auto f = Downcast<PrimFunc>(kv.second);
@@ -536,13 +541,7 @@ runtime::Module BuildHBMPIM(IRModule mod, Target target) {
     code << fsource;
   }
 
-  return OpenCLModuleCreate(code.str(), "cl", ExtractFuncInfo(mod), code.str());
-}
-
-std::string CodeGenHBMPIM::Finish() {
-  decl_stream << _hbmpim_info_def;
-  decl_stream << _hbmpim_kernel_utils_def;
-  return CodeGenOpenCL::Finish();
+  return HBMPIMModuleCreate(code.str(), "pclbin", ExtractFuncInfo(mod), code.str());
 }
 
 TVM_REGISTER_GLOBAL("target.build.hbmpim").set_body_typed(BuildHBMPIM);
