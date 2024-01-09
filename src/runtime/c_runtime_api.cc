@@ -152,7 +152,7 @@ static size_t GetDataAlignment(const DLDataType dtype) {
 
 void* DeviceAPI::AllocDataSpace(Device dev, int ndim, const int64_t* shape, DLDataType dtype,
                                 Optional<String> mem_scope) {
-  if (!mem_scope.defined() || mem_scope.value() == "global") {
+  if (!mem_scope.defined() || mem_scope.value() == "global" || mem_scope.value() == "internal") {
     // by default, we can always redirect to the flat memory allocations
     DLTensor temp;
     temp.data = nullptr;
@@ -164,7 +164,7 @@ void* DeviceAPI::AllocDataSpace(Device dev, int ndim, const int64_t* shape, DLDa
     temp.byte_offset = 0;
     size_t size = GetDataSize(temp);
     size_t alignment = GetDataAlignment(temp.dtype);
-    return AllocDataSpace(dev, size, alignment, dtype);
+    return AllocDataSpace(dev, size, alignment, dtype, mem_scope);
   }
   LOG(FATAL) << "Device does not support allocate data space with "
              << "specified memory scope: " << mem_scope.value();

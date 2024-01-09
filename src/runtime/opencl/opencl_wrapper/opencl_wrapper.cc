@@ -126,6 +126,8 @@ using f_clReleaseCommandQueue = cl_int (*)(cl_command_queue);
 using f_clGetCommandQueueInfo = cl_int (*)(cl_command_queue, cl_command_queue_info, size_t, void*,
                                            size_t*);
 using f_clCreateBuffer = cl_mem (*)(cl_context, cl_mem_flags, size_t, void*, cl_int*);
+using f_clCreateSubBuffer = cl_mem (*)(cl_mem, cl_mem_flags, cl_buffer_create_type, const void*,
+                                       cl_int*);
 using f_clCreateImage = cl_mem (*)(cl_context, cl_mem_flags, const cl_image_format*,
                                    const cl_image_desc*, void*, cl_int*);
 using f_clReleaseMemObject = cl_int (*)(cl_mem);
@@ -276,6 +278,18 @@ cl_mem clCreateBuffer(cl_context context, cl_mem_flags flags, size_t size, void*
   auto func = (f_clCreateBuffer)lib.getOpenCLFunction("clCreateBuffer");
   if (func) {
     return func(context, flags, size, host_ptr, errcode_ret);
+  } else {
+    return nullptr;
+  }
+}
+
+cl_mem clCreateSubBuffer(cl_mem buffer, cl_mem_flags flags,
+                         cl_buffer_create_type buffer_create_type, const void* buffer_create_info,
+                         cl_int* errcode_ret) {
+  auto& lib = LibOpenCLWrapper::getInstance();
+  auto func = (f_clCreateSubBuffer)lib.getOpenCLFunction("clCreateSubBuffer");
+  if (func) {
+    return func(buffer, flags, buffer_create_type, buffer_create_info, errcode_ret);
   } else {
     return nullptr;
   }

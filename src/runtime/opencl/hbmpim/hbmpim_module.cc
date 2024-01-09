@@ -61,6 +61,11 @@ class HBMPIMWrappedFunc {
     if (kernel == nullptr || e.version != entry_.version) {
       kernel = m_->InstallKernel(w_, t, func_name_, entry_);
     }
+    // setup crf binary.
+    // TODO[ywshin]: I temporarily fix the arguments
+    auto crf_bin = dynamic_cast<cl::HBMPIMWorkspace*>(w_)->GetCrfBin(
+        pim_library::PimOpType::OP_GEMV, 4096 * 2 * sizeof(uint64_t));
+
     // setup arguments.
     for (cl_uint i = 0; i < arg_size_.size() - 2; ++i) {
       void* arg = nullptr;
@@ -71,10 +76,16 @@ class HBMPIMWrappedFunc {
       }
       OPENCL_CALL(clSetKernelArg(kernel, i, arg_size_[i], arg));
     }
-    for (int i = arg_size_.size() - 2; i < arg_size_.size(); i++) {
-      void* arg = nullptr;
-      OPENCL_CALL(clSetKernelArg(kernel, i, arg_size_[i], arg));
+    {
+      int i = arg_size_.size() - 2;
+      void* arg = dynamic_cast<cl::HBMPIMWorkspace*>(w_)->GetBaseMemobj();
+      OPENCL_CALL(clSetKernelArg(kernel, i, arg_size_[i], (void*)&arg));
     }
+    {
+      int i = arg_size_.size() - 1;
+      OPENCL_CALL(clSetKernelArg(kernel, i, arg_size_[i], crf_bin));
+    }
+
     cl_command_queue queue = w_->GetQueue(t->device);
     ThreadWorkLoad wl = launch_param_config_.Extract(args);
     cl_uint work_dim = static_cast<cl_uint>(launch_param_config_.work_dim());
@@ -151,7 +162,7 @@ PackedFunc HBMPIMModuleNode::GetFunction(const String& name,
   }
   if (true || std::string(name.c_str()).compare(0, 11, "main_kernel") == 0) {
     for (int i = 0; i < 2; i++) {
-      arg_size.push_back(sizeof(uint8_t*));
+      arg_size.push_back(sizeof(void*));
       info.arg_types.push_back(DataType::Handle());
     }
   }
