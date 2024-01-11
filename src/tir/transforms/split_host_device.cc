@@ -43,6 +43,8 @@ namespace tir {
 
 class HostDeviceSplitter : public StmtMutator {
  public:
+  Map<String, Array<PrimExpr>> upmem_symbol_map;
+
   explicit HostDeviceSplitter(IRModule* device_mod, std::function<GlobalVar()> var_supply)
       : device_mod_(device_mod), var_supply_(var_supply) {}
 
@@ -54,12 +56,29 @@ class HostDeviceSplitter : public StmtMutator {
     return StmtMutator::VisitStmt_(op);
   }
 
+  // Note: params should be injected into symbol in UPMEM codegen, such as "__mram_noinit float* A[262144];"
+  // which is dealed by "buffer_map" in PrimFunc
+  // however, the value buffer is buffer with bank-side size, not ordinary host-size buffer
+  // Actually, for PIM, we need to design novel split-host device because H->D, D->H is about to be splitted to other functions
+  Stmt VisitStmt_(const EvaluateNode* op) final {
+    if (const CallNode* call = op->value.as<CallNode>()) {
+      if (call->op.same_as(builtin::pim_allocate_memory())) {
+        Var v = Downcast<Var>(call->args[0]);
+        StringImm var_name = Downcast<StringImm>(call->args[1]);
+        StringImm type_str = Downcast<StringImm>(call->args[2]);
+        upmem_symbol_map.Set(v->name_hint, 
+          { StringImm(var_name->value), StringImm(type_str->value), call->args[3] });
+      } 
+    }
+    return StmtMutator::VisitStmt_(op);
+  }
+
  private:
   Stmt SplitDeviceFunc(Stmt body, Target device_target) {
     Array<Var> params = [&]() {
       VarUseDefAnalyzer use_def(/*defined_vars=*/{}, /*visit_thread_extent=*/false);
       use_def(body);
-
+ 
       // Sort first by variable typ, then by variable name
       std::vector<Var> params{use_def.undefined_.begin(), use_def.undefined_.end()};
       std::sort(params.begin(), params.end(), [](const Var& a, const Var& b) {
@@ -74,11 +93,18 @@ class HostDeviceSplitter : public StmtMutator {
       return params;
     }();
 
-    GlobalVar kernel_symbol_global = var_supply_();
     PrimFunc device_func(params, body);
-    device_func = WithAttrs(std::move(device_func), {{tvm::attr::kTarget, device_target},
-                                                     {tir::attr::kNoAlias, Bool(true)},
-                                                     {tir::attr::kIsGlobalFunc, Bool(true)}});
+
+    GlobalVar kernel_symbol_global = var_supply_();
+
+    tvm::TargetFeatures attrs = {{tvm::attr::kTarget, device_target},
+      {tir::attr::kNoAlias, Bool(true)},
+      {tir::attr::kIsGlobalFunc, Bool(true)}};
+    if (device_target->GetTargetDeviceType() == kDLUPMEM) {
+      attrs.Set("upmem_symbol_map", upmem_symbol_map);
+    }
+    
+    device_func = WithAttrs(std::move(device_func), attrs);
 
     (*device_mod_)->Add(kernel_symbol_global, device_func);
     Array<PrimExpr> args = params.Map([](const Var& var) -> PrimExpr { return var; });

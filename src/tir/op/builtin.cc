@@ -376,22 +376,31 @@ TIR_DEFINE_BUILTIN_FUNC(start_profile_intrinsic)
 TIR_DEFINE_BUILTIN_FUNC(end_profile_intrinsic)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kPure));
 
-TIR_DEFINE_BUILTIN_FUNC(pim_write)
+TIR_DEFINE_BUILTIN_FUNC(pim_acquire_resources)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 
-TIR_DEFINE_BUILTIN_FUNC(pim_read)
+TIR_DEFINE_BUILTIN_FUNC(pim_release_resources)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 
-TIR_DEFINE_BUILTIN_FUNC(pim_transfer)
+TIR_DEFINE_BUILTIN_FUNC(pim_transfer_host_to_device)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 
-TIR_DEFINE_BUILTIN_FUNC(pim_allocate)
+TIR_DEFINE_BUILTIN_FUNC(pim_transfer_device_to_host)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 
-TIR_DEFINE_BUILTIN_FUNC(pim_free)
+TIR_DEFINE_BUILTIN_FUNC(pim_broadcast)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 
-TIR_DEFINE_BUILTIN_FUNC(pim_kernel_marker)
+TIR_DEFINE_BUILTIN_FUNC(pim_allocate_memory)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
+TIR_DEFINE_BUILTIN_FUNC(pim_free_memory)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
+TIR_DEFINE_BUILTIN_FUNC(dpu_prepare_parallel_transfer)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
+TIR_DEFINE_BUILTIN_FUNC(dpu_parallel_transfer)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
     
 }  // namespace builtin

@@ -808,12 +808,26 @@ TVM_DLL const Op& barrier();
 TVM_DLL const Op& mem_fence();
 TVM_DLL const Op& addr_gen();
 
-TVM_DLL const Op& pim_write();
-TVM_DLL const Op& pim_read();
-TVM_DLL const Op& pim_transfer();
-TVM_DLL const Op& pim_allocate();
-TVM_DLL const Op& pim_free();
-TVM_DLL const Op& pim_kernel_marker();
+// Used for common PIM
+// num (for UPMEM, num means the number of dpus)
+TVM_DLL const Op& pim_acquire_resources();
+// ()
+TVM_DLL const Op& pim_release_resources();
+// buffer handle, size, (bank index or -1)
+TVM_DLL const Op& pim_allocate_memory(); 
+// buffer handle, (bank index or -1)
+TVM_DLL const Op& pim_free_memory(); 
+// buffer, host address, in bank address, bank index, size (not bytes)
+TVM_DLL const Op& pim_transfer_host_to_device(); 
+// buffer, host address, in_bank address, bank index, size (not bytes)
+TVM_DLL const Op& pim_transfer_device_to_host(); 
+// buffer, host address, size (not bytes)
+TVM_DLL const Op& pim_broadcast(); 
+
+
+// Currently only used for UPMEM (opportunity to promote if some other devices are able to support parallel xfer)
+TVM_DLL const Op& dpu_prepare_parallel_transfer(); // buffer, host address, bank index, is_h2d
+TVM_DLL const Op& dpu_parallel_transfer(); // buffer, in bank address, size
 
 /*! \brief The kind of structure field info used in intrinsic */
 enum TVMStructFieldKind : int {

@@ -24,8 +24,10 @@
 #ifndef TVM_RUNTIME_UPMEM_UPMEM_COMMON_H_
 #define TVM_RUNTIME_UPMEM_UPMEM_COMMON_H_
 
+extern "C" {
 #include <dpu.h>
-#include <dpu_log.h>
+}
+
 #include <tvm/runtime/packed_func.h>
 
 #include <string>
@@ -49,6 +51,67 @@ namespace runtime {
     dpu_error_t err = x;                                      \
     ICHECK(err == DPU_OK) << "UPMEM: " << dpu_error_to_string(err); \
   }
+
+class UPMEMDeviceAPI final: public DeviceAPI {
+public:
+  struct DpuVarInfo {
+    int32_t bytes;
+    std::string var_name;
+  };
+  static UPMEMDeviceAPI* Global(); 
+
+  void SetDevice(Device dev) final {}
+
+  void GetAttr(Device dev, DeviceAttrKind kind, TVMRetValue* rv) final;
+
+  void StreamSync(Device dev, TVMStreamHandle stream) final {}
+
+  void* AllocWorkspace(Device dev, size_t size, DLDataType type_hint) final;
+
+  void FreeWorkspace(Device dev, void* data) final;
+
+  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint, Optional<String> mem_scope = NullOpt) final;
+
+  void FreeDataSpace(Device dev, void* ptr);
+
+  int AcquireResources(int32_t bank_num);
+
+  int ReleaseResources();
+
+  void SetPimMemoryEntry(void* handle, std::string var_name, DataType dtype, int size, int bank_index);
+
+  void ErasePimMemoryEntry(void* handle);
+
+  int TransferHostToDevice(void* handle, uint64_t host_addr, uint64_t in_bank_addr, int bank_idx, int size);
+
+  int TransferDeviceToHost(void* handle, uint64_t host_addr, uint64_t in_bank_addr, int bank_idx, int size);
+
+  int Broadcast(void* handle, uint64_t host_addr, int size);
+
+  int PrepareXfer(void* handle, uint64_t host_addr, int bank_index);
+
+  int PushXfer(void* handle, uint64_t in_bank_addr, int size, int direction);
+
+protected:
+  void CopyDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset, size_t size,
+                      Device dev_from, Device dev_to, DLDataType type_hint,
+                      TVMStreamHandle stream) final;
+
+  int GetBytes(void* handle) { return dpu_addr_ptr[handle].bytes; }
+
+  std::string GetSymbolName(void* handle) { return dpu_addr_ptr[handle].var_name; }
+
+  void* HostOffset(void* handle, uint64_t offset) {
+    return (char *)handle + (size_t)offset * GetBytes(handle);
+  }
+
+public:
+  dpu_set_t dpu_set;
+
+  std::unordered_map<int, dpu_set_t> dpu_entry;
+  std::unordered_map<void*, DpuVarInfo> dpu_addr_ptr;
+  void* recent_host_address;
+};
 
 class UPMEMThreadEntry { // is it necessary?
  public:

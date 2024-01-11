@@ -27,7 +27,7 @@ except ImportError:
 import tvm._ffi
 
 from tvm._ffi.base import _LIB, check_call, c_array, string_types, _FFI_MODE
-from tvm._ffi.runtime_ctypes import DataType, Device, PimDevice, TVMArray, TVMArrayHandle
+from tvm._ffi.runtime_ctypes import DataType, Device, TVMArray, TVMArrayHandle
 from tvm._ffi.runtime_ctypes import DataTypeCode, tvm_shape_index_t
 from . import _ffi_api
 
@@ -329,39 +329,7 @@ def device(dev_type, dev_id=0):
         if dev_type not in Device.STR2MASK:
             raise ValueError(f"Unknown device type {dev_type}")
         dev_type = Device.STR2MASK[dev_type]
-    # if dev_type >= 64:
-    #     raise ValueError("Device type value cannot be PIM. use tvm.pim() instead.")
     return Device(dev_type, dev_id)
-
-
-def pim(dev_type, dev_id):
-    """Construct a TVM device with given device type and id.
-
-    Parameters
-    ----------
-    dev_type: int or str
-        The device type mask or name of the device. Only PIM Devices are allowed.
-
-    split : int, list, tuple
-        Either can be number of banks, or list/tuple of positive integers to indicate the split grid.
-
-    Returns
-    -------
-    dev: tvm.runtime.Device
-        The corresponding device.
-    """
-    if isinstance(dev_type, string_types):
-        dev_type = dev_type.split()[0]
-        if dev_type not in Device.STR2MASK:
-            raise ValueError(f"Unknown device type {dev_type}")
-        dev_type = Device.STR2MASK[dev_type]
-    if dev_type < 64:
-        raise ValueError(
-            "Only PIM Device can be allowed for dev_type. Use tvm.device() instead for other devices."
-        )
-
-    dev = PimDevice(dev_type, dev_id)
-    return dev
 
 
 def numpyasarray(np_data):
@@ -549,7 +517,7 @@ def upmem(dev_id=0):
     dev : Device
         The created device
     """
-    return PimDevice(Device.kDLUPMEM, dev_id)
+    return Device(Device.kDLUPMEM, dev_id)
 
 
 def hbmpim(dev_id=0):
@@ -565,7 +533,7 @@ def hbmpim(dev_id=0):
     dev : Device
         The created device
     """
-    return PimDevice(Device.kDLHBMPIM, dev_id)
+    return Device(Device.kDLHBMPIM, dev_id)
 
 
 def vpi(dev_id=0):

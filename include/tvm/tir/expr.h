@@ -637,6 +637,7 @@ class BufferLoadNode : public PrimExprNode {
     v->Visit("dtype", &(this->dtype));
     v->Visit("buffer", &buffer);
     v->Visit("indices", &indices);
+    v->Visit("global_indices", &global_indices);
     v->Visit("span", &span);
   }
 

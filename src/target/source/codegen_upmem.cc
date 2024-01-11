@@ -39,22 +39,51 @@
 namespace tvm {
 namespace codegen {
 
+class TaskletNumFinder: public StmtExprVisitor {
+ public:
+  int tasklet_num = 1;
+  void VisitStmt_(const AttrStmtNode* op) final {
+    if (op->attr_key == tvm::tir::attr::thread_extent) {
+      const IterVarNode* iv = op->node.as<IterVarNode>();
+      tvm::runtime::ThreadScope ts = tvm::runtime::ThreadScope::Create(iv->thread_tag);
+      if (ts.rank == 1) {
+        tasklet_num *= op->value.as<IntImmNode>()->value;
+      }
+    }
+    StmtExprVisitor::VisitStmt_(op);
+  }
+};
+
 CodeGenUpmem::CodeGenUpmem() {}
 
 void CodeGenUpmem::AddFunction(const PrimFunc& f) {
   // clear previous generated state.
   this->InitFuncState(f);
 
-  for (Var arg : f->params) {
-    this->stream << "__host ";
-    PrintType(arg.dtype(), this->stream);
-    std::string vid = AllocVarID(arg.get());
-    this->stream << " " << vid << ";\n";
+  Map<String, Array<PrimExpr>> sym_map = f->GetAttr<Map<String, Array<PrimExpr>>>("upmem_symbol_map").value_or({});
+
+  for (Var arg: f->params) {
+    if (sym_map.count(arg->name_hint)) {
+      auto arr = sym_map[arg->name_hint];
+      std::string alias = Downcast<StringImm>(arr[0])->value;
+      DataType dtype = DataType(String2DLDataType(Downcast<StringImm>(arr[1])->value));
+      int size = Downcast<IntImm>(arr[2])->value;
+      this->stream << "__mram_noinit ";
+      PrintType(dtype, this->stream);
+      this->stream << " " << alias << "[" << size << "];\n";
+      var_idmap_[arg.get()] = alias;
+    } else {
+      this->stream << "__host ";
+      PrintType(arg.dtype(), this->stream);
+      std::string vid = AllocVarID(arg.get());
+      this->stream << " " << vid << ";\n";
+    }
   }
+
   // reserve keywords
   ReserveKeywordsAsUnique();
 
-  stream << "int main() {\n";
+  stream << "int main() {\n"; 
   this->PreFunctionBody(f);
   int func_scope = this->BeginScope();
   this->PrintStmt(f->body);
@@ -172,7 +201,6 @@ void CodeGenUpmem::VisitExpr_(const BufferLoadNode* op, std::ostream& os) {
   std::string ref = GetBufferRef(op->dtype, op->buffer.get(), index);
   HandleVolatileLoads(ref, op, os);
 }
-  
 
 void CodeGenUpmem::VisitStmt_(const BufferStoreNode* op) {
   ICHECK_EQ(op->indices.size(), 1) << "Store to non-flat memory not supported.";
@@ -229,13 +257,15 @@ void CodeGenUpmem::VisitStmt_(const ForNode* op) {
           std::string size = size_stream.str();
 
           if (sscope == "local" && (lscope  == ""|| lscope == "global")) {
-            stream << "mram_read((__mram_ptr void const*)(" << lid << " + (" << PrintExpr(GetIndexStrided(store->global_indices[0]));
-            stream << ") * " <<  size << "), " << sid << ", " << op->extent << " * " << size << ");\n";
+            ICHECK(store->global_indices.size() == 1) << "In local->global pattern, BufferStore global_indices should be size 1.";
+            stream << "mram_read((__mram_ptr void const*)(" << lid << " + " << PrintExpr(GetIndexStrided(store->global_indices[0]));
+            stream << "), " << sid << ", " << op->extent << " * " << size << ");\n";
             return;
           }
           else if ((sscope == "" || sscope == "global") && lscope == "local") {
-            stream << "mram_write(" << lid << ", (__mram_ptr void*)(" << sid << " + (" << PrintExpr(GetIndexStrided(load->global_indices[0]));
-            stream << ") * " << size << "), " << op->extent << " * " << size << ");\n";
+            ICHECK(load->global_indices.size() == 1) << "In global->local pattern, BufferLoad global_indices should be size 1.";
+            stream << "mram_write(" << lid << ", (__mram_ptr void*)(" << sid << " + " << PrintExpr(GetIndexStrided(load->global_indices[0]));
+            stream << "), " << op->extent << " * " << size << ");\n";
             return;
           }
         }
@@ -260,18 +290,16 @@ void CodeGenUpmem::VisitStmt_(const ForNode* op) {
 void CodeGenUpmem::PrintStorageScope(const std::string& scope, std::ostream& os) {
 }
 
-// TODO-PIM: Concern about Non-unix?
-// TODO-PIM: Too low
-std::string DPUClangCompile(const std::string& code) {
+std::string DPUClangCompile(const std::string& code, int tasklet_num) { // hack
   std::string exec = "dpu-upmem-dpurte-clang";
   int valid = std::system(("command -v " + exec + " >/dev/null 2>&1").c_str());
   if (valid != 0) {
     LOG(FATAL) << "dpu-upmem-dpurte-clang not found in PATH.";
   }
   std::string output_binary = "temp";
-  std::string flags = "-O3";
+  std::string flags = "-DNR_TASKLETS=" + std::to_string(tasklet_num) + " -O3 -x c";
   
-  std::string command = exec + " " + flags + " -o " + output_binary;
+  std::string command = exec + " " + flags + " -o " + output_binary + " -";
   FILE* pipe = popen(command.c_str(), "w");
 
   if (pipe) {
@@ -284,7 +312,6 @@ std::string DPUClangCompile(const std::string& code) {
     } else {
       LOG(FATAL) << "Failed to compile code for upmem.";
     }
-    // TODO-PIM: is this safe? synchronous is the best?
   } else {
     LOG(FATAL) << "Failed to pipe code into dpu-upmem-dpurte-clang";
     return "";
@@ -299,22 +326,29 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
 
   std::stringstream code;
   // const auto* fpostproc = Registry::Get("tvm_callback_upmem_postproc");
+  ICHECK(mod->functions.size() == 1) << "Only one function supported for now.";
+  int tasklet_num = 1;
   for (auto kv : mod->functions) {
+    auto f = Downcast<PrimFunc>(kv.second);
+    TaskletNumFinder tnf;
+    tnf(f->body);
+    tasklet_num = tnf.tasklet_num;
+
     code << "// Function: " << kv.first->name_hint << std::endl;
     CodeGenUpmem cg;
     cg.Init(output_ssa);
-    auto f = Downcast<PrimFunc>(kv.second);
+    
     cg.AddFunction(f);
     std::string fsource = cg.Finish();
     code << fsource;
   }
   VLOG(2) << code.str();
 
-  return runtime::Module();
+  // return runtime::Module();
 
-  // std::string binary = DPUClangCompile(code.str());
+   std::string binary = DPUClangCompile(code.str(), tasklet_num);
 
-  // return UPMEMModuleCreate(binary, "upmem", ExtractFuncInfo(mod), code.str());
+  return UPMEMModuleCreate("kernel", "upmem", ExtractFuncInfo(mod), code.str());
 }
 
 TVM_REGISTER_GLOBAL("target.build.upmem").set_body_typed(BuildUpmem);

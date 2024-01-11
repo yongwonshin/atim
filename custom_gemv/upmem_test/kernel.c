@@ -6,28 +6,28 @@
 #include <barrier.h>
 #include <seqread.h>
 
-BARRIER_INIT(my_barrier, NR_TASKLETS);
-__host uint32_t A, B, C;
-
+BARRIER_INIT(barrier, NR_TASKLETS);
+__mram_noinit float  A[262144];
+__mram_noinit float  B[512];
+__mram_noinit float  C_rf[512];
 int main() {
   unsigned int tasklet_id = me();
   if (tasklet_id == 0) mem_reset();
-  barrier_wait(&my_barrier);
-
-  float* C_local = (float*) mem_alloc(2 * sizeof(float)); // 동적
+  barrier_wait(&barrier);
+  float* C_rf_local = (float*) mem_alloc(2 * sizeof(float));
   float* A_local = (float*) mem_alloc(64 * sizeof(float));
   float* B_local = (float*) mem_alloc(64 * sizeof(float));
-  for (int y_inner_outer = 0; y_inner_outer < 16; ++y_inner_outer) { // 그대로
-    for (int y_c = 0; y_c < 2; ++y_c) {
-      C_local[y_c] = 0;
-      for (int k_outer = 0; k_outer < 32; ++k_outer) {
-        mram_read((__mram_ptr void const*)(A + (tasklet_id * 65536 + y_inner_outer * 4096 + y_c * 2048 + k_outer * 64) * sizeof(float)), A_local, 64 * sizeof(float));
-        mram_read((__mram_ptr void const*)(B + (64 * k_outer) * sizeof(float)), B_local, 64 * sizeof(float));
-        for (int k_inner = 0; k_inner < 64; ++k_inner) {
-          C_local[y_c] = (C_local[y_c] + (A_local[k_inner] * B_local[k_inner]));
+  for (int32_t i_2 = 0; i_2 < 16; ++i_2) {
+    for (int32_t i_3 = 0; i_3 < 2; ++i_3) {
+      C_rf_local[i_3] = 0.000000e+00f;
+      for (int32_t k_1_0 = 0; k_1_0 < 8; ++k_1_0) {
+        mram_read((__mram_ptr void const*)(A + (((((tasklet_id * 16384) + (i_2 * 1024)) + (i_3 * 512)) + (k_1_0 * 64))) * sizeof(float)), A_local, 64 * sizeof(float));
+        mram_read((__mram_ptr void const*)(B + ((k_1_0 * 64)) * sizeof(float)), B_local, 64 * sizeof(float));
+        for (int32_t k_1_1 = 0; k_1_1 < 64; ++k_1_1) {
+          C_rf_local[i_3] = (C_rf_local[i_3] + (A_local[k_1_1] * B_local[k_1_1]));
         }
       }
     }
-    mram_write(C_local, (__mram_ptr void*)(C + (tasklet_id * 32 + y_inner_outer * 2) * sizeof(float)), sizeof(float) * 2);   
-  }                                         
+    mram_write(C_rf_local, (__mram_ptr void*)(C_rf + (((tasklet_id * 32) + (i_2 * 2))) * sizeof(float)), 2 * sizeof(float));
+  }
 }

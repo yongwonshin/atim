@@ -72,11 +72,7 @@ class DataTypeCode(object):
 class DataType(ctypes.Structure):
     """TVM datatype structure"""
 
-    _fields_ = [
-        ("type_code", ctypes.c_uint8),
-        ("bits", ctypes.c_uint8),
-        ("lanes", ctypes.c_uint16),
-    ]
+    _fields_ = [("type_code", ctypes.c_uint8), ("bits", ctypes.c_uint8), ("lanes", ctypes.c_uint16)]
     CODE2STR = {
         DataTypeCode.INT: "int",
         DataTypeCode.UINT: "uint",
@@ -311,11 +307,6 @@ class Device(ctypes.Structure):
         import tvm.runtime._ffi_api
 
         return tvm.runtime._ffi_api.GetDeviceAttr(device_type, device_id, attr_id)
-
-    def is_pim(self):
-        if self.device_type == Device.kDLUPMEM or self.device_type == Device.kDLHBMPIM:
-            raise ValueError("For PIM device type, use PimDevice instead.")
-        return False
 
     @property
     def exist(self):
@@ -575,23 +566,8 @@ class Device(ctypes.Structure):
         if self.device_type >= RPC_SESS_MASK:
             tbl_id = self.device_type / RPC_SESS_MASK - 1
             dev_type = self.device_type % RPC_SESS_MASK
-            return "remote[%d]:%s(%d)" % (
-                tbl_id,
-                Device.MASK2STR[dev_type],
-                self.device_id,
-            )
+            return "remote[%d]:%s(%d)" % (tbl_id, Device.MASK2STR[dev_type], self.device_id)
         return "%s(%d)" % (Device.MASK2STR[self.device_type], self.device_id)
-
-
-class PimDevice(Device):
-    _fields_ = [
-        ("device_type", ctypes.c_int),
-        ("device_id", ctypes.c_int),
-    ]
-
-    def is_pim():
-        return True
-
 
 class TVMArray(ctypes.Structure):
     """TVMValue in C API"""

@@ -35,42 +35,48 @@
 #include <tvm/arith/analyzer.h>
 
 #include "ir_utils.h"
+#include "../../support/utils.h"
 #include "../../arith/interval_set.h"
 #include "../../runtime/thread_storage_scope.h"
+#include "../analysis/var_use_def_analysis.h"
 #include "remove_no_op.h"
+#include "pim_transfer_schedule.h"
 
 namespace tvm {
 namespace tir {
 
-class FindCopyCandidates: public StmtExprVisitor {
+class PimKernelFinder: public StmtExprVisitor {
 public:
   std::vector<Buffer> h2d, d2h;
   bool inside_kernel = false;
+  Stmt kernel_body;
+  int32_t bank_count = 1;
 
-  explicit FindCopyCandidates() { }
+  explicit PimKernelFinder() { }
 
   void VisitStmt_(const AttrStmtNode* op) {
-    if (op->attr_key == tvm::tir::attr::thread_extent) {
+    if (op->attr_key == tvm::attr::kTarget) {
+      if (inside_kernel == false) {
+        ICHECK(!kernel_body.defined()) << "Only one kernel is supported";
+        kernel_body = GetRef<Stmt>(op);
+      }
+      inside_kernel = true;
+      StmtExprVisitor::VisitStmt_(op);
+      inside_kernel = false;
+    } else if (op->attr_key == tvm::tir::attr::thread_extent) {
       const IterVarNode* iv = op->node.as<IterVarNode>();
       ICHECK(iv);
       Var var = iv->var;
       runtime::ThreadScope scope = runtime::ThreadScope::Create(iv->thread_tag);
-      bool prev_inside_kernel = false;
-      if (scope.rank == 0) { ;
-        prev_inside_kernel = inside_kernel;
-        inside_kernel = true;
+      if (scope.rank == 0) {
+        auto imm = op->value.as<IntImmNode>();
+        ICHECK(imm) << "Bank index must be constant.";
+        bank_count *= imm->value;
       }
       StmtExprVisitor::VisitStmt_(op);
-      if (scope.rank == 0) {
-        inside_kernel = prev_inside_kernel;
-      }
     } else {
       StmtExprVisitor::VisitStmt_(op);
     }
-  }
-
-  void VisitStmt_(const AllocateNode* op) {
-    StmtExprVisitor::VisitStmt_(op);
   }
 
   void VisitStmt_(const BufferStoreNode* op) {
@@ -95,73 +101,81 @@ public:
   }
 };
 
-class ScheduleExtractor: public StmtExprMutator {
+class ScheduleExtractor: public StmtExprVisitor {
 public:
   const Buffer& target_buffer_;
-  bool found = false;
   bool inside_kernel = false;
-  PrimExpr bank_index = 0;
+  Stmt res_stmt;
+  PrimExpr bank_index = 0, host_index= 0;
+  std::vector<Var> loops;
+  Map<Var, PrimExpr> vmap;
+  Map<Var, Range> rmap;
 
   ScheduleExtractor(const Buffer& buffer) : target_buffer_(buffer) { }
 
-  Stmt VisitStmt_(const ForNode* op) {
-    Stmt stmt = StmtExprMutator::VisitStmt_(op);
-    if (found) {
-      return stmt;
+  class IsVarUsed: public ExprVisitor {
+    public:
+    Var target_var;
+    bool found = false;
+    IsVarUsed(Var var) : target_var(var) { }
+    void VisitExpr_(const VarNode* op) final {
+      if (op == target_var.get()) {
+        found = true;
+      }
     }
-    return Evaluate(0);
+  };
+
+  void VisitStmt_(const ForNode* op) {
+    auto new_loop_var = op->loop_var.copy_with_suffix("_");
+    vmap.Set(op->loop_var, new_loop_var);
+    rmap.Set(op->loop_var, Range::FromMinExtent(op->min, op->extent));
+    loops.push_back(op->loop_var);
+    StmtExprVisitor::VisitStmt_(op);
+    loops.pop_back();
+    rmap.erase(op->loop_var);
+    vmap.erase(op->loop_var);
   }
 
-  Stmt VisitStmt_(const AllocateNode* op) {
-    Stmt stmt = StmtExprMutator::VisitStmt_(op);
-    if (found) {
-      return Downcast<Allocate>(stmt)->body;
-    }
-    return Evaluate(0);
-  }
-
-  Stmt VisitStmt_(const AttrStmtNode* op) {
-    if (op->attr_key == tvm::tir::attr::thread_extent) {
+  void VisitStmt_(const AttrStmtNode* op) {
+    // if (found) return;
+    if (op->attr_key == tvm::attr::kTarget) {
+      inside_kernel = true;
+      StmtExprVisitor::VisitStmt_(op);
+      inside_kernel = false;
+    } 
+    if (op->attr_key == tvm::tir::attr::thread_extent && inside_kernel) {
       const IterVarNode* iv = op->node.as<IterVarNode>();
       ICHECK(iv);
       Var var = iv->var;
+      Var new_var = iv->var.copy_with_suffix("_");
       runtime::ThreadScope scope = runtime::ThreadScope::Create(iv->thread_tag);
-      runtime::Map<runtime::String, runtime::ObjectRef> ann;
-
       PrimExpr prev_bank_index;
-      bool prev_inside_kernel = false;
       if (scope.rank == 0) { 
         prev_bank_index = bank_index;
-        bank_index = bank_index * op->value + var;
-        prev_inside_kernel = inside_kernel;
-        inside_kernel = true;
-        ann.Set("bank", IntImm(runtime::DataType::Bool(), true));
+        bank_index = bank_index * op->value + new_var;
       }
-      Stmt stmt = StmtExprMutator::VisitStmt_(op);
+      vmap.Set(var, new_var);
+      rmap.Set(var, Range::FromMinExtent(PrimExpr(0), op->value));
+      loops.push_back(var);
+      StmtExprVisitor::VisitStmt_(op);
+      loops.pop_back();
+      rmap.erase(var);
+      vmap.erase(var);
+
       if (scope.rank == 0) {
         bank_index = prev_bank_index;
-        inside_kernel = prev_inside_kernel;
       }
-      if (!found) {
-        return Evaluate(0);
-      }
-      const AttrStmtNode* attr = stmt.as<AttrStmtNode>();
-      return For(Downcast<IterVar>(attr->node)->var, PrimExpr(0), attr->value, ForKind::kSerial, attr->body, NullOpt, ann);
     }
     else {
-      Stmt stmt = StmtExprMutator::VisitStmt_(op);
-      if (!found) {
-        return Evaluate(0);
-      }
-      const AttrStmtNode* attr = stmt.as<AttrStmtNode>();
-      return attr->body;
+      StmtExprVisitor::VisitStmt_(op);
     }
   }
 
-  Stmt VisitStmt_(const BufferStoreNode* op) {
-    PrimExpr host_index, in_bank_index;
+  void VisitStmt_(const BufferStoreNode* op) {
+    bool found = false;
+    PrimExpr in_bank_index;
     Buffer buffer;
-    if (!inside_kernel) return Evaluate(0);
+    if (!inside_kernel) return;
     if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
       std::string lscope = GetPtrStorageScope(load->buffer->data);
       std::string sscope = GetPtrStorageScope(op->buffer->data);
@@ -170,68 +184,108 @@ public:
          ICHECK(op->global_indices.size() == 1) << "In local->global pattern, BufferStore global_indices should be size 1.";
         if (load->buffer->data.get() == target_buffer_->data.get()) {
           found = true;
-          host_index = load->indices[0];
-          in_bank_index = op->global_indices[0];
+          host_index = Substitute(load->indices[0], vmap);
+          in_bank_index = Substitute(op->global_indices[0], vmap);
           buffer = load->buffer;
-          return Evaluate(Call(DataType::Int(32), builtin::pim_transfer(), { buffer->data, host_index, in_bank_index, bank_index }));
+          res_stmt = Evaluate(Call(DataType::Int(32), builtin::pim_transfer_host_to_device(), 
+            { buffer->data, host_index, in_bank_index, bank_index, 1 }));
         }
       }
       if (lscope == "local" && (sscope == "" || sscope == "global")) { // global <- local: d->h pattern
         ICHECK(load->global_indices.size() == 1) << "In global->local pattern, BufferLoad global_indices should be size 1.";
         if (op->buffer->data.get() == target_buffer_->data.get()) {
           found = true;
-          host_index = op->indices[0];
-          in_bank_index = load->global_indices[0];
+          host_index = Substitute(op->indices[0], vmap);
+          in_bank_index = Substitute(load->global_indices[0], vmap);
           buffer = op->buffer;
-          return Evaluate(Call(DataType::Int(32), builtin::pim_transfer(), { buffer->data, host_index, in_bank_index, bank_index }));
+          res_stmt = Evaluate(Call(DataType::Int(32), builtin::pim_transfer_device_to_host(), 
+            { buffer->data, host_index, in_bank_index, bank_index, 1 }));
+        }
+      }
+      if (found) {
+        for (auto it = loops.rbegin(); it != loops.rend(); it++) {
+          auto v = *it;
+          Var new_var = Downcast<Var>(vmap[v]);
+          bool is_bank = support::StartsWith(new_var->name_hint, "blockIdx"); // todo-stonerdk: a little bit hack
+          IsVarUsed visitor(new_var);
+          visitor(host_index);
+          if (visitor.found || is_bank) {
+            Map<runtime::String, runtime::ObjectRef> ann; 
+            if (is_bank)
+              ann.Set("bank", IntImm(runtime::DataType::Bool(), true));
+            res_stmt = For(new_var, rmap[v]->min, rmap[v]->extent, ForKind::kSerial, std::move(res_stmt), NullOpt, ann);
+          }
         }
       }
     }
-    return Evaluate(0);
+    return;
   }
 };
 
 class AllocateFreeExtractor: public StmtExprVisitor {
 public:
-  std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> alloca_candidates;
   bool inside_kernel = false;
   PrimExpr bank_index = 0;
   std::vector<Var> bank_vars;
   std::vector<PrimExpr> bank_extents;
   bool traversed = false;
   Map<Var, PrimExpr> vmap;
+  Map<Buffer, PrimExpr> smap;
+  //Map<Buffer, Var> param_map;
+  Stmt allocate_stmt, free_stmt;
 
-  Stmt extract(Stmt stmt, bool is_allocate_mode) {
+  void extract(Stmt stmt, Stmt kernel_body) {
+    VarUseDefAnalyzer use_def({}, false);
+    use_def(kernel_body);
+
+    for (auto& buf: use_def.undefined_buffers_) {
+      for (auto& v: use_def.undefined_) {
+        if (buf->data.get() == v.get()) {
+          VLOG(2) << "Including " << buf->data;
+          smap.Set(buf, 1);
+          //param_map.Set(buf, v); // buf->data.get() == v.get() but its handle is different?? 
+        }
+      }
+    }
+    if (smap.size() == 0) return;
+
     if (!traversed) {
       VisitStmt(stmt);
       traversed = true;
     }
-    if (alloca_candidates.size() == 0) return Evaluate(0);
-    Array<Stmt> allocates;
-    for (auto& kv: alloca_candidates) {
-      if (is_allocate_mode)
-        allocates.push_back(Evaluate(Call(DataType::Int(32), builtin::pim_allocate(), { kv.first, kv.second, bank_index })));
-      else
-        allocates.push_back(Evaluate(Call(DataType::Int(32), builtin::pim_free(), { kv.first, bank_index })));
-    }
-    Stmt seq;
-    if (allocates.size() == 1) seq = allocates[0];
-    else seq = SeqStmt(allocates);
-    for (int i = bank_vars.size() - 1; i >= 0; i--) {
-      auto& var = bank_vars[i];
-      auto& extent = bank_extents[i];
-      runtime::Map<runtime::String, runtime::ObjectRef> ann;
-      ann.Set("bank", IntImm(runtime::DataType::Bool(), true));
-      seq = For(var, PrimExpr(0), extent, ForKind::kSerial, seq, NullOpt, ann);
-    }
-    return seq;
-  }
+    Array<Stmt> allocates, frees;
 
-  void VisitStmt_(const AllocateNode* op) {
-    if (!inside_kernel) {
-      alloca_candidates[op->buffer_var] = op->extents[0];
+    auto wrapBankLoop = [&](Stmt stmt) {
+      for (int i = bank_vars.size() - 1; i >= 0; i--) {
+        auto var = bank_vars[i];
+        auto extent = bank_extents[i];
+        runtime::Map<runtime::String, runtime::ObjectRef> ann;
+        ann.Set("bank", IntImm(runtime::DataType::Bool(), true));
+        stmt = For(var, PrimExpr(0), extent, ForKind::kSerial, stmt, NullOpt, ann);
+      }
+      return stmt;
+    };
+    
+    for (auto& kv : smap) {
+      //Var nv = param_map[kv.first];
+      std::string var_name = kv.first->data->name_hint;
+      std::replace(var_name.begin(), var_name.end(), '.', '_');
+      std::replace(var_name.begin(), var_name.end(), '-', '_');
+      std::replace(var_name.begin(), var_name.end(), ':', '_');
+      std::string sdtype = DLDataType2String(kv.first->dtype);
+      auto allocate = Evaluate(Call(DataType::Int(32), builtin::pim_allocate_memory(), 
+        { kv.first->data, StringImm(var_name), StringImm(sdtype), kv.second, bank_index }));
+      allocates.push_back(wrapBankLoop(allocate));
+      auto free_ = Evaluate(Call(DataType::Int(32), builtin::pim_free_memory(), 
+        { kv.first->data, bank_index }));
+      frees.push_back(wrapBankLoop(free_));
     }
-    StmtExprVisitor::VisitStmt_(op);
+
+    Stmt seq;
+    if (allocates.size() == 1) allocate_stmt = allocates[0];
+    else allocate_stmt = SeqStmt(allocates);
+    if (frees.size() == 1) free_stmt = frees[0];
+    else free_stmt = SeqStmt(frees);
   }
 
   void VisitStmt_(const ForNode* op) {
@@ -240,29 +294,28 @@ public:
   }
 
   void VisitStmt_(const AttrStmtNode* op) {
-    if (op->attr_key == tvm::tir::attr::thread_extent) {
+    if (op->attr_key == tvm::attr::kTarget) {
+      inside_kernel = true;
+      StmtExprVisitor::VisitStmt_(op);
+      inside_kernel = false;
+    } 
+    else if (op->attr_key == tvm::tir::attr::thread_extent) {
       const IterVarNode* iv = op->node.as<IterVarNode>();
       ICHECK(iv);
       Var var = iv->var;
       runtime::ThreadScope scope = runtime::ThreadScope::Create(iv->thread_tag);
-      bool prev_inside_kernel = false;
-       PrimExpr prev_bank_index;
+      PrimExpr prev_bank_index;
       runtime::Map<runtime::String, runtime::ObjectRef> ann;
 
       if (scope.rank == 0) { ;
-        prev_inside_kernel = inside_kernel;
         prev_bank_index = bank_index;
         bank_index = bank_index * op->value + var;
-        // bankIdx.x가 커널 통틀어 딱 한 번 있어야 한다는 조건이 필요...
-        inside_kernel = true;
+        // bankIdx.x가 커널 통틀어 딱 한 번 있어야 한다는 조건이 필요
         bank_vars.push_back(var);
         bank_extents.push_back(op->value);
       }
       vmap.Set(var, op->value - 1);
       StmtExprVisitor::VisitStmt_(op);
-      if (scope.rank == 0) {
-        inside_kernel = prev_inside_kernel;
-      }
     } else {
       StmtExprVisitor::VisitStmt_(op);
     }
@@ -274,15 +327,18 @@ public:
         std::string lscope = GetPtrStorageScope(load->buffer->data);
         std::string sscope = GetPtrStorageScope(op->buffer->data);
         PrimExpr target_expr;
+        Buffer target_buffer;
         ICHECK(sscope == "local" || lscope == "local") << "Either source or destination must be local.";
         if (sscope == "local" && (lscope == "" || lscope == "global")) { // local <- global: h->d pattern
-          if ((alloca_candidates.find(load->buffer->data) != alloca_candidates.end())) {
+          if ((smap.find(load->buffer) != smap.end())) {
             target_expr = op->global_indices[0];
+            target_buffer = load->buffer;
           }
         }
         if (lscope == "local" && (sscope == "" || sscope == "global")) { // global <- local: d->h pattern
-          if ((alloca_candidates.find(op->buffer->data) != alloca_candidates.end())) {
+          if ((smap.find(op->buffer) != smap.end())) {
             target_expr = load->global_indices[0];
+            target_buffer = op->buffer;
           }
         }
         if (!target_expr.defined()) return;
@@ -290,51 +346,83 @@ public:
         arith::Analyzer ana;
         target_expr = ana.Simplify(target_expr);
         if (is_const_number(target_expr)) {
-          alloca_candidates[op->buffer->data] = target_expr;
+          smap.Set(target_buffer, target_expr);
         }
-      } // TODO (stonerdk): UNSTABLE!!!!
+      }
     }
     StmtExprVisitor::VisitStmt_(op);
   }
 };
 
-Stmt ConstructTransferStmt(Stmt stmt) {
-  FindCopyCandidates candidates;
-  candidates(stmt);
+class KernelReplacer: public StmtExprMutator {
+  public:
+  Stmt& replace_target;
+  Stmt kernel_body;
+  bool inside_kernel = false;
+  KernelReplacer(Stmt stmt) : replace_target(stmt) { }
+
+  Stmt VisitStmt_(const AttrStmtNode* op) {
+    if (op->attr_key == tvm::attr::kTarget) {
+      if (inside_kernel == false) {
+        ICHECK(!kernel_body.defined()) << "Only one kernel is supported";
+        return replace_target;
+      }
+    } 
+    return StmtExprMutator::VisitStmt_(op);
+  }
+};
+
+Stmt ConstructTransferStmt(Stmt stmt, Target target) {
+  PimKernelFinder finder;
+  finder(stmt);
+  Stmt kernel_body = finder.kernel_body;
+
+  AllocateFreeExtractor v;
+  v.extract(stmt, kernel_body);
 
   Array<Stmt> seq;
-  AllocateFreeExtractor v;
-
-  auto allocates = v.extract(stmt, true);
-  auto frees = v.extract(stmt, false);
-  seq.push_back(allocates);
-
-  for (auto h2d_bf : candidates.h2d) {
+  seq.push_back(Evaluate(Call(DataType::Int(32), builtin::pim_acquire_resources(), { PrimExpr(finder.bank_count) })));
+  seq.push_back(v.allocate_stmt);
+  for (auto h2d_bf : finder.h2d) {
     arith::Analyzer ana;
-    auto new_stmt = ScheduleExtractor(h2d_bf)(stmt);
-    new_stmt = tir::RemoveNoOp(new_stmt, &ana);
-    seq.push_back(new_stmt);
+    ScheduleExtractor ex(h2d_bf);
+    ex(stmt);
+    seq.push_back(tir::RemoveNoOp(ex.res_stmt, &ana));
   }
-
-  seq.push_back(Evaluate(Call(DataType::Int(32), builtin::pim_kernel_marker(), {})));
-
-  for (auto h2d_bf : candidates.d2h) {
+  seq.push_back(kernel_body);
+  for (auto d2h_bf : finder.d2h) {
     arith::Analyzer ana;
-    auto new_stmt = ScheduleExtractor(h2d_bf)(stmt);
-    new_stmt = tir::RemoveNoOp(new_stmt, &ana);
-    seq.push_back(new_stmt);
+    ScheduleExtractor ex(d2h_bf);
+    ex(stmt);
+    seq.push_back(tir::RemoveNoOp(ex.res_stmt, &ana));
   }
+  seq.push_back(v.free_stmt);
+  seq.push_back(Evaluate(Call(DataType::Int(32), builtin::pim_release_resources(), { })));
+  Stmt res = SeqStmt(seq);
 
-  seq.push_back(frees);
-  return SeqStmt(seq);
+  res = KernelReplacer(res)(stmt);
+  res = OptimizePimTransferSchedule(res, target);
+  return res;
 }
 
+bool IsPIMDevice(const Target& target) {
+  int dev_type = target->GetTargetDeviceType();
+  return kDLUPMEM == dev_type || kDLHBMPIM == dev_type;
+}
 namespace transform {
 
 Pass ExtractPimTransferSchedule() {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
     auto* n = f.CopyOnWrite();
-    n->body = ConstructTransferStmt(n->body);
+    Target target = [&]() {
+      auto opt = f->GetAttr<Target>(tvm::attr::kTarget);
+      ICHECK(opt) << "MakePackedAPI required the function to be annotated with tvm::attr::kTarget ("
+                  << tvm::attr::kTarget << "), but the function only has attributes " << f->attrs;
+      return opt.value();
+    }();
+    if (IsPIMDevice(target)) {
+      n->body = ConstructTransferStmt(n->body, target);
+    }
     return f;
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.ExtractPimTransferSchedule", {});

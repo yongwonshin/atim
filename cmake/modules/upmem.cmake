@@ -17,8 +17,10 @@
 
 if(USE_UPMEM)
   message(STATUS "Build with UPMEM support")
+  find_path(UPMEM_INCLUDE_DIR dpu.h PATH_SUFFIXES dpu)
   find_library(UPMEM_LIB dpu)
   tvm_file_glob(GLOB RUNTIME_UPMEM_SRCS src/runtime/upmem/*.cc)
+  include_directories(SYSTEM ${UPMEM_INCLUDE_DIR})
   list(APPEND TVM_RUNTIME_LINKER_LIBS ${UPMEM_LIB})
   list(APPEND RUNTIME_SRCS ${RUNTIME_UPMEM_SRCS})
 else(USE_UPMEM)

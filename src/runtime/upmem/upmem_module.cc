@@ -21,9 +21,8 @@
  * \file upmem_module.cc
  */
 #include "upmem_module.h"
+#include "upmem_common.h"
 
-#include <dpu.h>
-#include <dpu_log.h>
 #include <tvm/runtime/registry.h>
 
 #include <array>
@@ -51,13 +50,11 @@ class UPMEMModuleNode : public runtime::ModuleNode {
                           std::unordered_map<std::string, FunctionInfo> fmap,
                           std::string upmem_source)
       : binary_file_(binary_file), fmt_(fmt), fmap_(fmap), upmem_source_(upmem_source) {
-    std::fill(module_.begin(), module_.end(), nullptr);
+    // std::fill(module_.begin(), module_.end(), nullptr);
   }
   // destructor
   ~UPMEMModuleNode() {
   }
-  
-  void Init(){}
 
   const char* type_key() const final { return "upmem"; }
 
@@ -66,15 +63,28 @@ class UPMEMModuleNode : public runtime::ModuleNode {
     return ModulePropertyMask::kBinarySerializable | ModulePropertyMask::kRunnable;
   }
 
-  PackedFunc GetFunction(const String& name, const ObjectPtr<Object>& sptr_to_self) final;
+  PackedFunc GetFunction(const String& name, const ObjectPtr<Object>& sptr_to_self) final {
+    auto it = fmap_.find(name);
+    if (it == fmap_.end()) {
+      return PackedFunc();
+    } else {
+      return PackedFunc([](TVMArgs args, TVMRetValue* rv) {
+        UPMEMDeviceAPI* api = UPMEMDeviceAPI::Global();
+        UPMEM_CALL(dpu_launch(api->dpu_set, DPU_SYNCHRONOUS));
+      });
+    }
+  }
 
   void SaveToFile(const String& file_name, const String& format) final {
+    LOG(FATAL) << "UpmemModuleNode::SaveToFile is not implemented";
   }
 
   void SaveToBinary(dmlc::Stream* stream) final {
+    LOG(FATAL) << "UpmemModuleNode::SaveToBinary is not implemented";
   }
 
   String GetSource(const String& format) final {
+    return upmem_source_;
   }
 
  private:
@@ -87,7 +97,7 @@ class UPMEMModuleNode : public runtime::ModuleNode {
   // The upmem source.
   std::string upmem_source_;
   // the internal modules per GPU, to be lazily initialized.
-  std::array<CUmodule, kMaxNumGPUs> module_;
+  // std::array<CUmodule, kMaxNumGPUs> module_;
   // internal mutex when updating the module
   std::mutex mutex_;
 };
@@ -101,7 +111,6 @@ class UPMEMWrappedFunc {
     m_ = m;
     sptr_ = sptr;
     func_name_ = func_name;
-    std::fill(fcache_.begin(), fcache_.end(), nullptr);
     launch_param_config_.Init(num_void_args, launch_param_tags);
   }
   // invoke the function with void arguments
@@ -118,20 +127,9 @@ class UPMEMWrappedFunc {
   // The name of the function.
   std::string func_name_;
   // Device function cache per device.
-  // mark as mutable, to enable lazy initialization
-  mutable std::array<CUfunction, kMaxNumGPUs> fcache_;
   // launch parameters configuration
   LaunchParamConfig launch_param_config_;
 };
-
-PackedFunc UPMEMModuleNode::GetFunction(const String& name, const ObjectPtr<Object>& sptr_to_self) {
-  ICHECK_EQ(sptr_to_self.get(), this);
-  auto it = fmap_.find(name);
-  if (it == fmap_.end()) return PackedFunc();
-  const FunctionInfo& info = it->second;
-  UPMEMWrappedFunc f;
-  f.Init(this, sptr_to_self, name, info.arg_types.size(), info.launch_param_tags);
-}
 
 Module UPMEMModuleCreate(std::string binary_file, std::string fmt,
                         std::unordered_map<std::string, FunctionInfo> fmap,
@@ -143,9 +141,13 @@ Module UPMEMModuleCreate(std::string binary_file, std::string fmt,
 
 // Load module from module.
 Module UPMEMModuleLoadFile(const std::string& file_name, const String& format) {
+  LOG(FATAL) << "UpmemModuleLoadFile is not implemented";
+  return Module();
 }
 
 Module UPMEMModuleLoadBinary(void* strm) {
+  LOG(FATAL) << "UpmemModuleLoadBinary is not implemented";
+  return Module();
 }
 
 TVM_REGISTER_GLOBAL("runtime.module.loadfile_dpukernel").set_body_typed(UPMEMModuleLoadFile);

@@ -323,6 +323,24 @@ class BuiltinLower : public StmtExprMutator {
       return MakeDMAStartGroup(op);
     } else if (op->op.same_as(builtin::dma_end_group())) {
       return MakeDMAEndGroup(op);
+    } else if (op->op.same_as(builtin::pim_acquire_resources())) {
+      return MakePimAcquireResources(op);
+    } else if (op->op.same_as(builtin::pim_release_resources())) {
+      return MakePimReleaseResources(op);
+    } else if (op->op.same_as(builtin::pim_allocate_memory())) {
+      return MakePimAllocateMemory(op);
+    } else if (op->op.same_as(builtin::pim_transfer_device_to_host())) {
+      return MakePimTransferDeviceToHost(op);
+    } else if (op->op.same_as(builtin::pim_transfer_host_to_device())) {
+      return MakePimTransferHostToDevice(op);
+    } else if (op->op.same_as(builtin::pim_free_memory())) {
+      return MakePimFreeMemory(op);
+    } else if (op->op.same_as(builtin::pim_broadcast())) {
+      return MakePimBroadcast(op);
+    } else if (op->op.same_as(builtin::dpu_parallel_transfer())) {
+      return MakeDpuParallelTransfer(op);
+    } else if (op->op.same_as(builtin::dpu_prepare_parallel_transfer())) {
+      return MakeDpuPrepareParallelTransfer(op);
     } else {
       return StmtExprMutator::VisitExpr_(op);
     }
@@ -378,6 +396,115 @@ class BuiltinLower : public StmtExprMutator {
 
     auto method_name = GetDeviceMethodName("dma_end_group");
     Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, queue_id});
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakePimAcquireResources(const CallNode* op) {
+    PrimExpr num = op->args[0];
+
+    auto method_name = GetDeviceMethodName("acquire_resources");
+    Call call_packed =
+        Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, num});
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakePimReleaseResources(const CallNode* op) {
+    auto method_name = GetDeviceMethodName("release_resources");
+
+    Call call_packed =
+        Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name});
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakePimAllocateMemory(const CallNode* op) {
+    ICHECK(op->args.size() == 4 || op->args.size() == 5) << "pim_allocate_memory expects either 4 or 5 arguments";
+    PrimExpr buffer_var = op->args[0];
+    PrimExpr var_name = op->args[1];
+    PrimExpr type = op->args[2];
+    PrimExpr size = op->args[3];
+    PrimExpr bank_index;
+    if (op->args.size() == 4)
+      bank_index = -1;
+    else if (op->args.size() == 5)
+      bank_index = op->args[4];
+    
+    auto method_name = GetDeviceMethodName("pim_allocate_memory");
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), 
+      { method_name, buffer_var, var_name, type, size, bank_index });
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakePimFreeMemory(const CallNode* op) {
+    ICHECK(op->args.size() == 1 || op->args.size() == 2) << "pim_free_memory expects either 1 or 2 arguments";
+    PrimExpr buffer_var = op->args[0];
+    PrimExpr bank_index;
+    if (op->args.size() == 1)
+      bank_index = -1; // -1 means ALL, todo: change to enum
+    else if (op->args.size() == 2)
+      bank_index = op->args[1];
+
+    auto method_name = GetDeviceMethodName("pim_free_memory");
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, bank_index});
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakePimTransferHostToDevice(const CallNode* op) {
+    ICHECK(op->args.size() == 5) << "pim_transfer_host_to_device expects 5 arguments";
+    PrimExpr buffer_var = op->args[0];
+    PrimExpr host_address = op->args[1];
+    PrimExpr in_bank_address = op->args[2];
+    PrimExpr bank_index = op->args[3];
+    PrimExpr size = op->args[4];
+
+    auto method_name = GetDeviceMethodName("pim_transfer_host_to_device");
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, host_address, in_bank_address, bank_index, size});
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakePimTransferDeviceToHost(const CallNode* op) {
+    ICHECK(op->args.size() == 5) << "pim_transfer_device_to_host expects 5 arguments";
+    PrimExpr buffer_var = op->args[0];
+    PrimExpr host_address = op->args[1];
+    PrimExpr in_bank_address = op->args[2];
+    PrimExpr bank_index = op->args[3];
+    PrimExpr size = op->args[4];
+
+    auto method_name = GetDeviceMethodName("pim_transfer_device_to_host");
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, host_address, in_bank_address, bank_index, size});
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakePimBroadcast(const CallNode* op) {
+    ICHECK(op->args.size() == 3) << "pim_broadcast expects 3 arguments";
+    PrimExpr buffer_var = op->args[0];
+    PrimExpr host_address = op->args[1];
+    PrimExpr size = op->args[2];
+
+    auto method_name = GetDeviceMethodName("pim_broadcast");
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, host_address, size});
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakeDpuPrepareParallelTransfer(const CallNode* op) {
+    ICHECK(op->args.size() == 3) << "dpu_prepare_parallel_transfer expects 4 arguments";
+    PrimExpr buffer_var = op->args[0];
+    PrimExpr host_address = op->args[1];
+    PrimExpr bank_index = op->args[2];
+
+    auto method_name = GetDeviceMethodName("dpu_prepare_parallel_transfer");
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, host_address, bank_index});
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakeDpuParallelTransfer(const CallNode* op) {
+    ICHECK(op->args.size() == 4) << "dpu_parallel_transfer expects 3 arguments";
+    PrimExpr buffer_var = op->args[0];
+    PrimExpr in_bank_address = op->args[1];
+    PrimExpr size = op->args[2];
+    PrimExpr is_h2d = op->args[3];
+
+    auto method_name = GetDeviceMethodName("dpu_parallel_transfer");
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, in_bank_address, size, is_h2d});
     return VisitExpr(call_packed);
   }
 
