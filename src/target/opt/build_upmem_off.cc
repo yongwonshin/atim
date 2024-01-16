@@ -24,12 +24,11 @@
 
 namespace tvm {
 namespace runtime {
-
-Module UpmemModuleCreate(std::unordered_map<std::string, std::string> smap,
-                         std::unordered_map<std::string, FunctionInfo> fmap, std::string fmt,
-                         std::string source) {
+Module UPMEMModuleCreate(std::string binary_file, std::string fmt,
+                        std::unordered_map<std::string, FunctionInfo> fmap,
+                        std::string upmem_source) {
   LOG(WARNING) << "Upmem runtime not enabled, return a source module...";
-  return codegen::DeviceSourceModuleCreate(source, fmt, fmap, "upmem");
+  return codegen::DeviceSourceModuleCreate(upmem_source, fmt, fmap, "upmem");
 }
 
 }  // namespace runtime
