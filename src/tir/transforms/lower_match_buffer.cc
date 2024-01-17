@@ -611,7 +611,9 @@ class Test : public StmtExprMutator {
       extent = IntImm(DataType::Int(32), 1);
     }
     if (op->kind == ForKind::kThreadBinding) {
-      extent = IntImm(DataType::Int(32), 1);
+      runtime::ThreadScope scope = runtime::ThreadScope::Create(op->thread_binding.value()->thread_tag);
+      if (scope.rank == 0)
+        extent = IntImm(DataType::Int(32), 1);
     }
     Range loop_range = Range::FromMinExtent(op->min, extent);
     loop_range_.push_back(arith::IntSet::FromRange(loop_range));

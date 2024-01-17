@@ -68,15 +68,18 @@ void CodeGenUpmem::AddFunction(const PrimFunc& f) {
       std::string alias = Downcast<StringImm>(arr[0])->value;
       DataType dtype = DataType(String2DLDataType(Downcast<StringImm>(arr[1])->value));
       int size = Downcast<IntImm>(arr[2])->value;
+
       this->stream << "__mram_noinit ";
       PrintType(dtype, this->stream);
       this->stream << " " << alias << "[" << size << "];\n";
       var_idmap_[arg.get()] = alias;
+      RegisterHandleType(arg.get(), dtype);
     } else {
       this->stream << "__host ";
       PrintType(arg.dtype(), this->stream);
       std::string vid = AllocVarID(arg.get());
       this->stream << " " << vid << ";\n";
+      RegisterHandleType(arg.get(), arg->dtype);
     }
   }
 
@@ -346,7 +349,7 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
 
   // return runtime::Module();
 
-   std::string binary = DPUClangCompile(code.str(), tasklet_num);
+  DPUClangCompile(code.str(), tasklet_num);
 
   return UPMEMModuleCreate("kernel", "upmem", ExtractFuncInfo(mod), code.str());
 }
