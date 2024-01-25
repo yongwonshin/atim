@@ -418,3 +418,5 @@ set(USE_UMA OFF)
 
 # Set custom Alloc Alignment for device allocated memory ndarray points to
 set(USE_KALLOC_ALIGNMENT 64)
+set(USE_UPMEM OFF)
+set(USE_HBMPIM OFF)
