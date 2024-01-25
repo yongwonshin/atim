@@ -334,9 +334,9 @@ class OpenCLWorkspace : public DeviceAPI {
   // get the global workspace
   static OpenCLWorkspace* Global();
 
-  void CopyDataFromTo(DLTensor* from, DLTensor* to, TVMStreamHandle stream) final;
+  void CopyDataFromTo(DLTensor* from, DLTensor* to, TVMStreamHandle stream) override;
 
-  void* CreateHostPtrIfEnabled(BufferDescriptor* desc, Device dev, size_t size);
+  virtual void* CreateHostPtrIfEnabled(BufferDescriptor* desc, Device dev, size_t size);
 
  private:
   std::string GetError() {
@@ -398,6 +398,7 @@ struct BufferDescriptor {
      *         e.g. image2d[height=NH, width=WC]
      */
     kImage2DNHWC,
+    kBuffer1DInternal,
   };
   BufferDescriptor() = default;
   explicit BufferDescriptor(Optional<String> scope) : layout(MemoryLayoutFromScope(scope)) {}
@@ -480,6 +481,9 @@ class OpenCLModuleNode : public OpenCLModuleNodeBase {
   // install a new kernel to thread local entry
   cl_kernel InstallKernel(cl::OpenCLWorkspace* w, cl::OpenCLThreadEntry* t,
                           const std::string& func_name, const KTRefEntry& e) override;
+
+ protected:
+  std::string compile_options_;
 
  private:
   // the binary data

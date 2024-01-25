@@ -113,7 +113,7 @@ typedef enum __PimKrnlType {
   CUSTOM_GPU,
 } PimKrnlType;
 
-#ifdef EMULATOR
+// #ifdef EMULATOR
 typedef struct __PimMemTracer {
   uint64_t g_fba;
   PimMemTraceData* g_fmtd16;
@@ -121,7 +121,7 @@ typedef struct __PimMemTracer {
   int g_idx[64];
   int m_width;
 } PimMemTracer;
-#endif
+// #endif
 
 }  // namespace pim_library
 }  // namespace runtime

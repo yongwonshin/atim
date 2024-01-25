@@ -834,3 +834,11 @@ if(USE_CUDA AND USE_CUTLASS)
   target_link_libraries(tvm PRIVATE fpA_intB_gemm)
   target_link_libraries(tvm_runtime PRIVATE fpA_intB_gemm)
 endif()
+
+if(USE_HBMPIM)
+  # TODO[ywshin]: hardcoded libarary path
+  find_library(DRAMSIM2_SO /lib/libdramsim2.so)
+  target_link_libraries(tvm_runtime PUBLIC ${DRAMSIM2_SO})
+  target_link_libraries(tvm PUBLIC ${DRAMSIM2_SO})
+  link_directories("3rdparty/hbmpim/external_libs")
+endif()

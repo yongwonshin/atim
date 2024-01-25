@@ -44,15 +44,9 @@ void* BlockAllocator::alloc(cl_context context, size_t request_size, size_t& all
 }
 
 void BlockAllocator::free(void* ptr, size_t length) {
-  VLOG(2) << "[START] " << __FUNCTION__ << " called";
-  cl_int err_code;
-  err_code = clEnqueueUnmapMemObject(m_[ptr], base_address_memobject_, base_host_address_, 0,
-                                     nullptr, nullptr);
-  OPENCL_CHECK_ERROR(err_code);
-  err_code = clReleaseMemObject(base_address_memobject_);
-  OPENCL_CHECK_ERROR(err_code);
-
-  VLOG(2) << "[END] " << __FUNCTION__ << " called";
+  OPENCL_CALL(clEnqueueUnmapMemObject(m_[ptr], base_address_memobject_, base_host_address_, 0,
+                                      nullptr, nullptr));
+  OPENCL_CALL(clReleaseMemObject(base_address_memobject_));
 }
 
 void* BlockAllocator::allocate_pim_block(cl_context context, size_t bsize, Device dev) {

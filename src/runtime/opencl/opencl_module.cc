@@ -243,7 +243,8 @@ cl_kernel OpenCLModuleNode::InstallKernel(cl::OpenCLWorkspace* w, cl::OpenCLThre
     // build program
     cl_int err;
     cl_device_id dev = w->devices[device_id];
-    err = clBuildProgram(programs_[func_name][device_id], 1, &dev, nullptr, nullptr, nullptr);
+    err = clBuildProgram(programs_[func_name][device_id], 1, &dev, compile_options_.c_str(),
+                         nullptr, nullptr);
     if (err != CL_SUCCESS) {
       size_t len;
       std::string log;
