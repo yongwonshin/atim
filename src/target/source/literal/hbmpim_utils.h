@@ -207,7 +207,7 @@ void _R_CMD(__global volatile uchar* __restrict__ addr, __global PimMemTracer* _
 
     emulator_trace->g_fmtd16[ridx].block_id = bid;
     emulator_trace->g_fmtd16[ridx].thread_id = tid;
-    emulator_trace->g_fmtd16[ridx].addr = (ulong_t)addr - emulator_trace->g_fba;
+    emulator_trace->g_fmtd16[ridx].addr = (ulong)addr - emulator_trace->g_fba;
     emulator_trace->g_fmtd16[ridx].cmd = 'R';
 }
 
@@ -220,7 +220,7 @@ void _W_CMD(__global volatile uchar* __restrict__ addr, __global PimMemTracer* _
 
     emulator_trace->g_fmtd16[ridx].block_id = bid;
     emulator_trace->g_fmtd16[ridx].thread_id = tid;
-    emulator_trace->g_fmtd16[ridx].addr = (ulong_t)addr - emulator_trace->g_fba;
+    emulator_trace->g_fmtd16[ridx].addr = (ulong)addr - emulator_trace->g_fba;
     emulator_trace->g_fmtd16[ridx].cmd = 'W';
 }
 
@@ -238,7 +238,7 @@ void _W_CMD_R(__global volatile uchar* __restrict__ addr, __global volatile ucha
     }
     emulator_trace->g_fmtd16[ridx].block_id = bid;
     emulator_trace->g_fmtd16[ridx].thread_id = tid;
-    emulator_trace->g_fmtd16[ridx].addr = (ulong_t)addr - emulator_trace->g_fba;
+    emulator_trace->g_fmtd16[ridx].addr = (ulong)addr - emulator_trace->g_fba;
     emulator_trace->g_fmtd16[ridx].cmd = 'W';
 }
 
@@ -256,7 +256,7 @@ void _W_CMD_R_C(__global volatile uchar* __restrict__ addr, __constant volatile 
     }
     emulator_trace->g_fmtd16[ridx].block_id = bid;
     emulator_trace->g_fmtd16[ridx].thread_id = tid;
-    emulator_trace->g_fmtd16[ridx].addr = (ulong_t)addr - emulator_trace->g_fba;
+    emulator_trace->g_fmtd16[ridx].addr = (ulong)addr - emulator_trace->g_fba;
     emulator_trace->g_fmtd16[ridx].cmd = 'W';
 }
 

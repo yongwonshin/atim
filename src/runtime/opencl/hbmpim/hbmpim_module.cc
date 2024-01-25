@@ -51,6 +51,7 @@ class HBMPIMWrappedFunc {
   // invoke the function with void arguments
   void operator()(TVMArgs args, TVMRetValue* rv, void** void_args) const {
     ICHECK(w_->devices.size() > 0) << "No OpenCL device";
+    cl::HBMPIMWorkspace* w = dynamic_cast<cl::HBMPIMWorkspace*>(w_);
     cl::OpenCLThreadEntry* t = w_->GetThreadEntry();
     // get the kernel from thread local kernel table.
     if (entry_.kernel_id >= t->kernel_table.size()) {
@@ -61,10 +62,6 @@ class HBMPIMWrappedFunc {
     if (kernel == nullptr || e.version != entry_.version) {
       kernel = m_->InstallKernel(w_, t, func_name_, entry_);
     }
-    // setup crf binary.
-    // TODO[ywshin]: I temporarily fix the arguments
-    auto crf_bin = dynamic_cast<cl::HBMPIMWorkspace*>(w_)->GetCrfBin(
-        pim_library::PimOpType::OP_GEMV, 4096 * 2 * sizeof(uint64_t));
 
     // setup arguments.
     for (cl_uint i = 0; i < arg_size_.size() - 2; ++i) {
@@ -77,13 +74,31 @@ class HBMPIMWrappedFunc {
       OPENCL_CALL(clSetKernelArg(kernel, i, arg_size_[i], arg));
     }
     {
+      // TODO[ywshin]: need check for real hardware
       int i = arg_size_.size() - 2;
-      void* arg = dynamic_cast<cl::HBMPIMWorkspace*>(w_)->GetBaseMemobj();
+      void* arg = w->GetBaseMemobj();
       OPENCL_CALL(clSetKernelArg(kernel, i, arg_size_[i], (void*)&arg));
     }
     {
       int i = arg_size_.size() - 1;
-      OPENCL_CALL(clSetKernelArg(kernel, i, arg_size_[i], crf_bin));
+      void* arg = nullptr;
+      if (func_name_ == "main_kernel") {
+        // TODO[ywshin]: need check for matrix multilication
+        ICHECK_EQ(args.type_codes[1], DLDataTypeCode::kDLOpaqueHandle);
+        void* buffer = (*static_cast<cl::BufferDescriptor**>(void_args[1]))->host_ptr;
+        arg = w->GetCrfBin(pim_library::PimOpType::OP_GEMV, w->buffer_size_map_[buffer]);
+        arg = (void*)&(static_cast<cl::BufferDescriptor*>(arg)->buffer);
+      }
+      OPENCL_CALL(clSetKernelArg(kernel, i, arg_size_[i], arg));
+    }
+    {
+      int i = arg_size_.size();
+      // #ifdef EMULATOR
+      OPENCL_CALL(clSetKernelArg(kernel, i, sizeof(cl_mem), (void*)&w->cl_d_fmtd16_));
+      OPENCL_CALL(clSetKernelArg(kernel, i + 1, sizeof(cl_mem), (void*)&w->cl_d_fmtd16_size_));
+      OPENCL_CALL(clSetKernelArg(kernel, i + 2, sizeof(cl_int), (void*)&w->fmtd_size_per_ch_));
+      OPENCL_CALL(clSetKernelArg(kernel, i + 3, sizeof(cl_mem), (void*)&w->cl_d_emulator_trace_));
+      // #endif
     }
 
     cl_command_queue queue = w_->GetQueue(t->device);
@@ -105,6 +120,18 @@ class HBMPIMWrappedFunc {
       OPENCL_CALL(clEnqueueNDRangeKernel(queue, kernel, work_dim, nullptr, wl.work_size,
                                          wl.work_size + 3, 0, nullptr, nullptr));
     }
+    // #ifdef EMULATOR
+    if (func_name_ == "main_kernel") {
+      w->EmulatorTraceGen(pim_library::vega20_pbi.num_pim_chan, pim_library::PimOpType::OP_GEMV);
+      auto pim_gemv_tmp_buffer = *static_cast<cl::BufferDescriptor**>(void_args[2]);
+      auto weight = *static_cast<cl::BufferDescriptor**>(void_args[0]);
+      auto output = *static_cast<cl::BufferDescriptor**>(void_args[2]);
+      w->ExecuteGemmBiasAct(
+          output, weight, w->h_fmtd32_, w->h_fmtd32_size_[0], pim_library::PimOpType::OP_GEMV,
+          w->fragment_allocator_[t->device.device_id]->get_g_pim_base_addr(t->device.device_id),
+          pim_gemv_tmp_buffer, nullptr, pim_library::PimActFunc::NONE);
+    }
+    // #endif
   }
 
  private:
@@ -123,6 +150,11 @@ class HBMPIMWrappedFunc {
   // launch parameters config
   LaunchParamConfig launch_param_config_;
 };
+
+void HBMPIMModuleNode::Init() {
+  compile_options_ = "-DEMULATOR=1";
+  OpenCLModuleNode::Init();
+}
 
 cl::OpenCLWorkspace* HBMPIMModuleNode::GetGlobalWorkspace() {
   return cl::HBMPIMWorkspace::Global();
@@ -160,12 +192,13 @@ PackedFunc HBMPIMModuleNode::GetFunction(const String& name,
       arg_size[i] = bits / 8;
     }
   }
-  if (true || std::string(name.c_str()).compare(0, 11, "main_kernel") == 0) {
-    for (int i = 0; i < 2; i++) {
-      arg_size.push_back(sizeof(void*));
-      info.arg_types.push_back(DataType::Handle());
-    }
+  // if (std::string(name.c_str()).compare(0, 11, "main_kernel") == 0) {
+  for (int i = 0; i < 2; i++) {
+    arg_size.push_back(sizeof(void*));
+    info.arg_types.push_back(DataType::Handle());
   }
+  // }
+
   // initialize the wrapped func.
   f.Init(this, sptr_to_self, kid_map_.at(name), name, arg_size, info.launch_param_tags);
   return PackFuncVoidAddr(f, info.arg_types);

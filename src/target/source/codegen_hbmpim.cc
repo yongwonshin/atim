@@ -134,7 +134,7 @@ class BankIndexInspector : public ExprVisitor {
 void CodeGenHBMPIM::PreFunctionBody(const PrimFunc& f) {
   CodeGenOpenCL::PreFunctionBody(f);
   pim_scope_ = this->BeginScope();
-  stream << "#ifdef EMPTY_BODY\n";
+  // stream << "#ifdef EMPTY_BODY\n";
   stream << "#ifdef EMULATOR\n";
   Stream() << "emulator_trace->g_fba = (ulong)pim_ctr;\n";
   Stream() << "emulator_trace->g_fmtd16 = fmtd16;\n";
@@ -170,7 +170,7 @@ void CodeGenHBMPIM::PostFunctionBody(const PrimFunc& f) {
   Stream() << "frd_size[0] = emulator_trace->g_ridx[0];\n";
   Stream() << "}\n";
   stream << "#endif\n";
-  stream << "#endif\n";
+  // stream << "#endif\n";
   this->EndScope(pim_scope_);
 }
 
@@ -218,6 +218,12 @@ void CodeGenHBMPIM::PrintPIMPrologue() {
 void CodeGenHBMPIM::PrintExtraFuncParams(const PrimFunc& f) {
   stream << ", __global uchar* __restrict__ pim_ctr";
   stream << ", __global uchar* crf_binary";
+  stream << "\n#ifdef EMULATOR\n";
+  stream << ", __global PimMemTraceData* fmtd16"
+         << ", __global size_t* frd_size"
+         << ", int mt_width"
+         << ", __global PimMemTracer* emulator_trace";
+  stream << "\n#endif\n";
 }
 
 void CodeGenHBMPIM::PrintPIMEpilogue() {

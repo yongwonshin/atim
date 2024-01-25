@@ -126,6 +126,8 @@ using f_clReleaseCommandQueue = cl_int (*)(cl_command_queue);
 using f_clGetCommandQueueInfo = cl_int (*)(cl_command_queue, cl_command_queue_info, size_t, void*,
                                            size_t*);
 using f_clCreateBuffer = cl_mem (*)(cl_context, cl_mem_flags, size_t, void*, cl_int*);
+using f_clEnqueueFillBuffer = cl_int (*)(cl_command_queue, cl_mem, const void*, size_t, size_t,
+                                         size_t, cl_uint, const cl_event*, cl_event*);
 using f_clCreateSubBuffer = cl_mem (*)(cl_mem, cl_mem_flags, cl_buffer_create_type, const void*,
                                        cl_int*);
 using f_clCreateImage = cl_mem (*)(cl_context, cl_mem_flags, const cl_image_format*,
@@ -280,6 +282,20 @@ cl_mem clCreateBuffer(cl_context context, cl_mem_flags flags, size_t size, void*
     return func(context, flags, size, host_ptr, errcode_ret);
   } else {
     return nullptr;
+  }
+}
+
+cl_int clEnqueueFillBuffer(cl_command_queue command_queue, cl_mem buffer, const void* pattern,
+                           size_t pattern_size, size_t offset, size_t size,
+                           cl_uint num_events_in_wait_list, const cl_event* event_wait_list,
+                           cl_event* event) {
+  auto& lib = LibOpenCLWrapper::getInstance();
+  auto func = (f_clEnqueueFillBuffer)lib.getOpenCLFunction("clEnqueueFillBuffer");
+  if (func) {
+    return func(command_queue, buffer, pattern, pattern_size, offset, size, num_events_in_wait_list,
+                event_wait_list, event);
+  } else {
+    return CL_INVALID_PLATFORM;
   }
 }
 

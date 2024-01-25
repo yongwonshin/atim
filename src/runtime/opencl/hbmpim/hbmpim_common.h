@@ -31,7 +31,9 @@
 #include "pim_library/pim_command.h"
 #include "pim_library/pim_data_types.h"
 #include "pim_library/pim_info.h"
+#include "pim_library/pim_trace_coalescer.h"
 #include "pim_library/simple_heap.h"
+#include "tools/emulator_api/PimSimulator.h"
 
 namespace tvm {
 namespace runtime {
@@ -47,6 +49,7 @@ class HBMPIMModuleNode : public OpenCLModuleNode {
       : OpenCLModuleNode(data, fmt, fmap, source) {}
   cl::OpenCLWorkspace* GetGlobalWorkspace() final;
   PackedFunc GetFunction(const String& name, const ObjectPtr<Object>& sptr_to_self) final;
+  void Init() final;
 };
 
 namespace cl {
@@ -56,10 +59,10 @@ namespace cl {
  */
 class HBMPIMWorkspace final : public OpenCLWorkspace {
  public:
-  HBMPIMWorkspace();
   // override OpenCL device API
   void Init() final;
   bool IsOpenCLDevice(Device dev) final;
+  bool IsHBMPIMDevice(Device dev);
   OpenCLThreadEntry* GetThreadEntry() final;
   // get the global workspace
   static OpenCLWorkspace* Global();
@@ -72,10 +75,35 @@ class HBMPIMWorkspace final : public OpenCLWorkspace {
   std::shared_ptr<pim_library::PimCrfBinGen> crf_generator_;
   void* GetCrfBin(pim_library::PimOpType op_type, int output_size);
   void* GetBaseMemobj();
+  void EmulatorTraceGen(unsigned int block_size, pim_library::PimOpType op_type);
+  void* MakeCrfBin(pim_library::PimOpType op_type, int data_size);
+  int CopyDataFromTo(void* from, void* to, size_t size, pim_library::PimMemCpyType mem_copy_type);
+  void CopyDataFromTo(DLTensor* from, DLTensor* to, TVMStreamHandle stream) final;
+  int ExecuteGemmBiasAct(void* output, void* pim_data, pim_library::PimMemTraceData* fmtd32,
+                         int fmtd32_size, pim_library::PimOpType op_type, uint64_t pim_base_addr,
+                         void* temp_buf, pim_library::PimBo* bias,
+                         pim_library::PimActFunc act_func);
+  int ConvertMemTraceFrom16BTo32B(pim_library::PimMemTraceData* fmtd32, int* fmtd32_size,
+                                  pim_library::PimMemTraceData* fmtd16, int fmtd16_size,
+                                  pim_library::PimOpType op_type);
+  void* CreateHostPtrIfEnabled(cl::BufferDescriptor* desc, Device dev, size_t size) final;
 
- private:
-  void* makeCrfBin(pim_library::PimOpType op_type, int data_size);
-  int copyDataFromTo(void* from, void* to, size_t size, pim_library::PimMemCpyType mem_copy_type);
+  // #ifdef EMULATOR
+  pim_library::PimMemTraceData* h_fmtd16_;
+  pim_library::PimMemTraceData* h_fmtd32_;
+  pim_library::PimMemTracer* d_emulator_trace_;
+  cl_mem cl_d_fmtd16_;
+  cl_mem cl_d_fmtd16_size_;
+  cl_mem cl_d_emulator_trace_;
+
+  size_t* h_fmtd16_size_;
+  size_t* h_fmtd32_size_;
+  int fmtd_size_per_ch_;
+  int max_block_size_;
+  int max_fmtd_size_;
+  PimSimulator pim_sim_;
+  std::unordered_map<const void*, size_t> buffer_size_map_;
+  // #endif
 };
 
 /*! \brief Thread local workspace for HBMPIM*/
