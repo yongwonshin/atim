@@ -52,6 +52,7 @@ typedef struct __PimBlockInfo {
   int num_pim_chan;
   int trans_size;
   int num_out_per_grf;
+  int num_elem_per_grf;
 } PimBlockInfo;
 
 static const PimBlockInfo vega20_pbi = {
@@ -79,6 +80,7 @@ static const PimBlockInfo vega20_pbi = {
     .num_pim_chan = 64,
     .trans_size = 32,
     .num_out_per_grf = 16,
+    .num_elem_per_grf = 16,
 };
 
 typedef struct __PimMemTraceData {
