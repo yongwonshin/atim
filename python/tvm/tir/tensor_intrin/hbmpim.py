@@ -127,6 +127,44 @@ def get_input_intrin(dtype):
     return input_desc, input_impl
 
 
+def get_input_intrin_mm(dtype, N):
+    @T.prim_func
+    def input_desc(a: T.handle, b: T.handle) -> None:
+        B = T.match_buffer(a, (N, 128 // N), dtype=dtype, offset_factor=1, scope="global")
+        B_local = T.match_buffer(b, (N, 128 // N), dtype=dtype, offset_factor=1, scope="local")
+        with T.block("root"):
+            T.reads(B[0:N, 0 : 128 // N])
+            T.writes(B_local[0:N, 0 : 128 // N])
+            for i, j in T.grid(N, 128 // N):
+                with T.block(""):
+                    v_i, v_j = T.axis.remap("SS", [i, j])
+                    B_local[v_i, v_j] = B[v_i, v_j]
+
+    @T.prim_func
+    def input_impl(a: T.handle, b: T.handle) -> None:
+        B = T.match_buffer(a, (N, 128 // N), dtype=dtype, offset_factor=1, scope="global")
+        B_local = T.match_buffer(b, (N, 128 // N), dtype=dtype, offset_factor=1, scope="local")
+        with T.block("root"):
+            T.reads(B[0:N, 0 : 128 // N])
+            T.writes(B_local[0:N, 0 : 128 // N])
+            ch = T.env_thread("blockIdx.x")
+            T.launch_thread(ch, 64)
+            tx = T.env_thread("threadIdx.x")
+            T.launch_thread(tx, 16)
+
+            offset = (tx % 8) * 8 + (tx // 8) * 1024  # TODO[ywshin]
+            addr = T.addr_gen(ch, 0, 0, B_local.bank_index() % 2, 0x3FFF, 0x8, tx * 16)
+            W_CMD_R("int32x4", addr, B.access_ptr("r", offset=offset), ptr="pim_ctr")
+            R_CMD(
+                "int32x4",
+                addr,
+                ptr="pim_ctr",
+            )
+            B_CMD(1)
+
+    return input_desc, input_impl
+
+
 def get_weight_intrin(dtype):
     @T.prim_func
     def weight_desc(a: T.handle, b: T.handle) -> None:
@@ -186,6 +224,51 @@ def get_weight_intrin(dtype):
     return weight_desc, weight_impl
 
 
+def get_weight_intrin_mm(dtype, N):
+    @T.prim_func
+    def weight_desc(a: T.handle, b: T.handle) -> None:
+        A = T.match_buffer(a, (128 // N,), dtype=dtype, offset_factor=1, scope="global")
+        A_local = T.match_buffer(b, (128 // N,), dtype=dtype, offset_factor=1, scope="local")
+        with T.block("root"):
+            T.reads(A[0 : 128 // N])
+            T.writes(A_local[0 : 128 // N])
+            for i in T.serial(0, 128 // N):
+                with T.block(""):
+                    v_i = T.axis.remap("S", [i])
+                    A_local[v_i] = A[v_i]
+
+    @T.prim_func
+    def weight_impl(a: T.handle, b: T.handle) -> None:
+        A = T.match_buffer(a, (128 // N,), dtype=dtype, offset_factor=1, scope="global")
+        A_local = T.match_buffer(b, (128 // N,), dtype=dtype, offset_factor=1, scope="local")
+        with T.block("root"):
+            T.reads(A[0 : 128 // N])
+            T.writes(A_local[0 : 128 // N])
+            ch = T.env_thread("blockIdx.x")
+            T.launch_thread(ch, 64)
+            tx = T.env_thread("threadIdx.x")
+            T.launch_thread(tx, 16)  # TODO[ywshin]
+            R_CMD(
+                "int32x4",
+                A.access_ptr(
+                    "r",
+                    offset=T.addr_gen(
+                        ch,
+                        0,
+                        0,
+                        A_local.bank_index() % 2,
+                        0,
+                        0,
+                        offset=A_local.in_bank_offset_of([(tx // N) * 8])[0] * 2,
+                    )
+                    // 2,
+                    ignore_elem_offset=True,
+                ),
+            )
+
+    return weight_desc, weight_impl
+
+
 def get_mac_intrin(dtype):
     @T.prim_func
     def mac_desc(a: T.handle, b: T.handle, p: T.handle) -> None:
@@ -231,6 +314,32 @@ def get_mac_intrin(dtype):
             #     with T.block(""):
             #         v_k, v_r = T.axis.remap("RS", [k, r])
             #         P_local[v_r] = P_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
+
+    return mac_desc, mac_impl
+
+
+def get_mac_intrin_mm(dtype, N):
+    @T.prim_func
+    def mac_desc(a: T.handle, b: T.handle, p: T.handle) -> None:
+        A_local = T.match_buffer(a, (128 // N,), dtype=dtype, offset_factor=1, scope="local")
+        B_local = T.match_buffer(b, (128 // N,), dtype=dtype, offset_factor=1, scope="local")
+        P_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
+        with T.block("root"):
+            T.reads(P_local[0:16], A_local[0 : 128 // N], B_local[0 : 128 // N])
+            T.writes(P_local[0:16])
+            for k, r in T.grid(8 // N, 16):
+                with T.block(""):
+                    v_k, v_r = T.axis.remap("RS", [k, r])
+                    P_local[v_r] = P_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
+
+    @T.prim_func
+    def mac_impl(a: T.handle, b: T.handle, p: T.handle) -> None:
+        A_local = T.match_buffer(a, (128 // N,), dtype=dtype, offset_factor=1, scope="local")
+        B_local = T.match_buffer(b, (128 // N,), dtype=dtype, offset_factor=1, scope="local")
+        P_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
+        with T.block("root"):
+            T.reads(P_local[0:16], A_local[0 : 128 // N], B_local[0 : 128 // N])
+            T.writes(P_local[0:16])
 
     return mac_desc, mac_impl
 
@@ -285,16 +394,34 @@ TensorIntrin.register(
     *get_input_intrin("int16"),
 )
 
+HBMPIM_INPUT_INTRIN_MM = "hbmpim_input_intrin_mm"
+TensorIntrin.register(
+    HBMPIM_INPUT_INTRIN_MM,
+    *get_input_intrin_mm("int16", 2),
+)
+
 HBMPIM_WEIGHT_INTRIN = "hbmpim_weight_intrin"
 TensorIntrin.register(
     HBMPIM_WEIGHT_INTRIN,
     *get_weight_intrin("int16"),
 )
 
+HBMPIM_WEIGHT_INTRIN_MM = "hbmpim_weight_intrin_mm"
+TensorIntrin.register(
+    HBMPIM_WEIGHT_INTRIN_MM,
+    *get_weight_intrin_mm("int16", 2),
+)
+
 HBMPIM_MAC_INTRIN = "hbmpim_mac_intrin"
 TensorIntrin.register(
     HBMPIM_MAC_INTRIN,
     *get_mac_intrin("int16"),
+)
+
+HBMPIM_MAC_INTRIN_MM = "hbmpim_mac_intrin_mm"
+TensorIntrin.register(
+    HBMPIM_MAC_INTRIN_MM,
+    *get_mac_intrin_mm("int16", 2),
 )
 
 HBMPIM_PARTIAL_REDUCTION_INTRIN = "hbmpim_partial_reduction_intrin"
