@@ -237,6 +237,10 @@ def HBMStyle():
     func_test("hbmstyle_float32", sch, *args)
     
 def cleanup():
+    if not os.path.exists("./results"):
+        os.makedirs("./results")
+    if not os.path.exists("./errors"):
+        os.makedirs("./errors")
     for fname in os.listdir("./results"):
         os.remove("./results/" + fname)
     for fname in os.listdir("./errors"):

@@ -280,3 +280,6 @@ gallery/how_to/work_with_microtvm/micro_tvmc.py
 
 custom_gemv/
 playground/
+
+pim_test/*/errors
+pim_test/*/results

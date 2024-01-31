@@ -254,21 +254,23 @@ void CodeGenUpmem::VisitStmt_(const ForNode* op) {
           std::string lid = GetVarID(load->buffer->data.get());
 
           std::stringstream size_stream;
-          size_stream << "sizeof(";
+          size_stream << op->extent << " * " << "sizeof(";
           PrintType(load->buffer->dtype, size_stream);
           size_stream << ")";
           std::string size = size_stream.str();
 
           if (sscope == "local" && (lscope  == ""|| lscope == "global")) {
             ICHECK(store->global_indices.size() == 1) << "In local->global pattern, BufferStore global_indices should be size 1.";
-            stream << "mram_read((__mram_ptr void const*)(" << lid << " + " << PrintExpr(GetIndexStrided(store->global_indices[0]));
-            stream << "), " << sid << ", " << op->extent << " * " << size << ");\n";
+            std::string l_ptr = lid + " + " + PrintExpr(GetIndexStrided(store->global_indices[0]));
+            std::string s_ptr = sid + " + " + PrintExpr(GetIndexStrided(store->indices[0])); 
+            stream << "mram_read((__mram_ptr void*)(" << l_ptr << "), " << s_ptr << ", " << size << ");\n";
             return;
           }
           else if ((sscope == "" || sscope == "global") && lscope == "local") {
+            std::string l_ptr = lid + " + " + PrintExpr(GetIndexStrided(load->indices[0]));
+            std::string s_ptr = sid + " + " + PrintExpr(GetIndexStrided(load->global_indices[0]));
             ICHECK(load->global_indices.size() == 1) << "In global->local pattern, BufferLoad global_indices should be size 1.";
-            stream << "mram_write(" << lid << ", (__mram_ptr void*)(" << sid << " + " << PrintExpr(GetIndexStrided(load->global_indices[0]));
-            stream << "), " << op->extent << " * " << size << ");\n";
+            stream << "mram_write(" << l_ptr << ", (__mram_ptr void*)(" << s_ptr << "), " << size << ");\n";
             return;
           }
         }
