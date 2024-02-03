@@ -163,12 +163,12 @@ const VarNode* GetIndexFlatVar(const PrimExpr &expr) {
 
 const PrimExpr GetIndexStrided(const PrimExpr &expr) {
   if (expr.as<VarNode>() || expr.as<IntImmNode>())
-    return PrimExpr();
+    return PrimExpr(0);
   else if (const AddNode* v = expr.as<AddNode>()) {
     const PrimExpr a = GetIndexStrided(v->a);
-    if (!a.defined()) return v->b;
+    if (is_zero(a)) return v->b;
     const PrimExpr b = GetIndexStrided(v->b);
-    if (!b.defined()) return v->a;
+    if (is_zero(b)) return v->a;
     return v->a + v->b;
   }
   return expr;
@@ -234,6 +234,7 @@ void CodeGenUpmem::VisitStmt_(const BufferStoreNode* op) {
   alloc_global_index = PrimExpr();
 
   Var buffer_var = op->buffer->data;
+  // stream << "// " << value_dtype;
   std::string ref = this->GetBufferRef(value_dtype, op->buffer.get(), index_expr);
   this->PrintIndent();
   stream << ref << " = " << value << ";\n";
@@ -295,7 +296,7 @@ void CodeGenUpmem::VisitStmt_(const ForNode* op) {
 void CodeGenUpmem::PrintStorageScope(const std::string& scope, std::ostream& os) {
 }
 
-std::string DPUClangCompile(const std::string& code, int tasklet_num) { // hack
+std::string DPUClangCompile(const std::string& code, int tasklet_num, bool use_dummy = false) { // hack
   std::string exec = "dpu-upmem-dpurte-clang";
   int valid = std::system(("command -v " + exec + " >/dev/null 2>&1").c_str());
   if (valid != 0) {
@@ -303,8 +304,13 @@ std::string DPUClangCompile(const std::string& code, int tasklet_num) { // hack
   }
   std::string output_binary = "temp";
   std::string flags = "-DNR_TASKLETS=" + std::to_string(tasklet_num) + " -O3 -x c";
-  
-  std::string command = exec + " " + flags + " -o " + output_binary + " -";
+  std::string command = exec + " " + flags + " -o " + output_binary;
+  if (use_dummy) {
+    command += " dummy_kernel.c";
+    std::system(command.c_str());
+    return "temp";
+  }
+  command += " -";
   FILE* pipe = popen(command.c_str(), "w");
 
   if (pipe) {

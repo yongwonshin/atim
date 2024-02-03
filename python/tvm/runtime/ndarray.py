@@ -19,6 +19,7 @@
 import ctypes
 import warnings
 import numpy as np
+from contextlib import suppress
 
 try:
     import ml_dtypes
@@ -504,7 +505,7 @@ def metal(dev_id=0):
     return Device(Device.kDLMetal, dev_id)
 
 
-def upmem(dev_id=0):
+def upmem(func=None):
     """Construct a metal device
 
     Parameters
@@ -517,7 +518,9 @@ def upmem(dev_id=0):
     dev : Device
         The created device
     """
-    return Device(Device.kDLUPMEM, dev_id)
+    dev = Device(Device.kDLUPMEM, 0)
+    dev.load_function(func)
+    return dev
 
 
 def hbmpim(dev_id=0):
@@ -625,7 +628,7 @@ cl = opencl
 mtl = metal
 
 
-def array(arr, device=cpu(0), mem_scope=None):
+def array(arr, device=cpu(0), mem_scope=None, symbol=None):
     """Create an array from source arr.
 
     Parameters
@@ -638,6 +641,9 @@ def array(arr, device=cpu(0), mem_scope=None):
 
     mem_scope : Optional[str]
         The memory scope of the array
+        
+    symbol : Optional[Callable]
+        The symbol to distribute the array to the device
 
     Returns
     -------
@@ -649,6 +655,22 @@ def array(arr, device=cpu(0), mem_scope=None):
 
     if not isinstance(arr, (np.ndarray, NDArray)):
         arr = np.array(arr)
+        
+    if device.device_type == Device.kDLUPMEM:
+        host_arr = array(arr, cpu(0))
+        if symbol is not None:
+            if hasattr(symbol, "__call__"):
+                symbol(host_arr)
+            elif isinstance(symbol, str):
+                if device.func is None:
+                    raise AttributeError("The function should be loaded to the UPMEM device.")
+                with suppress(AttributeError):
+                    _sym = device.func["copy_" + symbol]
+                    if _sym is None:
+                        warnings.warn(f"function copy_{symbol} not included in module. Bypassing symbol={symbol}")
+                    if _sym:
+                        _sym(host_arr)
+        return host_arr
     return empty(arr.shape, arr.dtype, device, mem_scope).copyfrom(arr)
 
 

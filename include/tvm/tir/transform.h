@@ -292,6 +292,11 @@ TVM_DLL Pass AnnotateDeviceRegions();
 TVM_DLL Pass SplitHostDevice();
 
 /*!
+ * \brief Lower the PIM transfer functions.
+*/
+TVM_DLL Pass SplitPimTransfer();
+
+/*!
  * \brief Lower cross-device function calls.
  *
  * Prior to this pass, host to device calls are represented as

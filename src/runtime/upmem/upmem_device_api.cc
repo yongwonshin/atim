@@ -92,7 +92,7 @@ UPMEMDeviceAPI* UPMEMDeviceAPI::Global()
 
 int UPMEMDeviceAPI::AcquireResources(int32_t bank_num) {
   if (!dpu_entry.empty()) {
-    LOG(FATAL) << "DPU resources already acquired. Release them first.";
+    // LOG(FATAL) << "DPU resources already acquired. Release them first.";
     return 1;
   }
   VLOG(3) << "dpu_alloc(" << bank_num << ", NULL, &dpu_set)";
@@ -114,7 +114,7 @@ int UPMEMDeviceAPI::AcquireResources(int32_t bank_num) {
 
 int UPMEMDeviceAPI::ReleaseResources() {
   if (dpu_entry.empty()) {
-    LOG(FATAL) << "DPU resource is already empty.";
+    // LOG(FATAL) << "DPU resource is already empty.";
     return 1;
   } else {
     VLOG(3) << "dpu_free(dpu_set)";

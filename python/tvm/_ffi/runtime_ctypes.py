@@ -300,6 +300,7 @@ class Device(ctypes.Structure):
         super(Device, self).__init__()
         self.device_type = int(device_type)
         self.device_id = device_id
+        self.func = None
 
     def _GetDeviceAttr(self, device_type, device_id, attr_id):
         """Internal helper function to invoke runtime.GetDeviceAttr"""
@@ -548,6 +549,16 @@ class Device(ctypes.Structure):
             Jobs in this stream should be finished.
         """
         check_call(_LIB.TVMSynchronize(self.device_type, self.device_id, stream))
+        
+    def load_function(self, func):
+        """Load a function to the device.
+
+        Parameters
+        ----------
+        func : Function
+            The function to be loaded.
+        """
+        self.func = func
 
     def __eq__(self, other):
         return (

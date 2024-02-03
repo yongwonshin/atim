@@ -152,7 +152,7 @@ def func_test(fname, sch, M, K, dtype):
             func = tvm.build(sch.mod, target=target, name="gemm")
             print("\n\n[UPMEM source]\n", file=f)
             print(func.imported_modules[0].get_source(), file=f)
-            device = tvm.device(target.kind.name, 0)
+            device = tvm.upmem(func)
             
             if dtype[:5] == "float":
                 na = np.random.rand(M, K).astype(dtype)
@@ -162,9 +162,9 @@ def func_test(fname, sch, M, K, dtype):
                 nb = np.random.randint(0, 100, (K,)).astype(dtype)
             nc = np.dot(na,nb)
 
-            a = tvm.nd.array(na, device)
-            b = tvm.nd.array(nb, device)
-            c = tvm.nd.array(nc, device)
+            a = tvm.nd.array(na, device, symbol="A")
+            b = tvm.nd.array(nb, device, symbol="B")
+            c = tvm.nd.empty(nc.shape, dtype, device)
 
             func(a, b, c)
             print("\n\n[Correctness Test]\n", file=f)

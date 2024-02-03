@@ -489,6 +489,16 @@ def SplitHostDevice():
     """
     return _ffi_api.SplitHostDevice()  # type: ignore
 
+def SplitPimTransfer():
+    """Split pim transfer into separated functions.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.SplitPimTransfer()
+
 
 def LowerDeviceKernelLaunch():
     """Lower cross-device function calls.

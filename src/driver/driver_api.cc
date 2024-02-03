@@ -424,8 +424,6 @@ std::pair<IRModule, IRModule> SplitMixedModule(IRModule mod_mixed, const Target&
 
   IRModule device_mod = ApplyPasses(mod_mixed, DeviceModulePassManager(mod_mixed, target));
 
-  VLOG(2) << "[DEVICE]\n" << device_mod;
-
   auto keys = target->GetKeys();
 
   CheckAndUpdateHostConsistency(&target, &target_host);
@@ -594,6 +592,7 @@ transform::Sequential MixedModulePassManager(IRModule mixed_mod, Target target) 
   mixed_pass_list.push_back(tir::transform::AnnotateDeviceRegions());
   mixed_pass_list.push_back(tir::transform::ExtractPimTransferSchedule());
   mixed_pass_list.push_back(tir::transform::SplitHostDevice());
+  mixed_pass_list.push_back(tir::transform::SplitPimTransfer());
 
 bool unpacked_api = mixed_mod->GetAttr<relay::Executor>(tvm::attr::kExecutor)
                           .value_or(relay::Executor::Create("graph", {}))

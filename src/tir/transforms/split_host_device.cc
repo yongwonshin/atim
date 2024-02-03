@@ -43,32 +43,19 @@ namespace tir {
 
 class HostDeviceSplitter : public StmtMutator {
  public:
-  Map<String, Array<PrimExpr>> upmem_symbol_map;
+  Optional<ObjectRef> upmem_symbol_map;
 
   explicit HostDeviceSplitter(IRModule* device_mod, std::function<GlobalVar()> var_supply)
       : device_mod_(device_mod), var_supply_(var_supply) {}
 
   Stmt VisitStmt_(const AttrStmtNode* op) final {
+    if (op->attr_key == "upmem_symbol_map") {
+      upmem_symbol_map = op->node;
+      return VisitStmt(op->body);
+    }
     if (op->attr_key == tvm::attr::kTarget) {
       auto device_target = op->node.as<Target>().value().WithoutHost();
       return SplitDeviceFunc(op->body, device_target);
-    }
-    return StmtMutator::VisitStmt_(op);
-  }
-
-  // Note: params should be injected into symbol in UPMEM codegen, such as "__mram_noinit float* A[262144];"
-  // which is dealed by "buffer_map" in PrimFunc
-  // however, the value buffer is buffer with bank-side size, not ordinary host-size buffer
-  // Actually, for PIM, we need to design novel split-host device because H->D, D->H is about to be splitted to other functions
-  Stmt VisitStmt_(const EvaluateNode* op) final {
-    if (const CallNode* call = op->value.as<CallNode>()) {
-      if (call->op.same_as(builtin::pim_allocate_memory())) {
-        Var v = Downcast<Var>(call->args[0]);
-        StringImm var_name = Downcast<StringImm>(call->args[1]);
-        StringImm type_str = Downcast<StringImm>(call->args[2]);
-        upmem_symbol_map.Set(v->name_hint, 
-          { StringImm(var_name->value), StringImm(type_str->value), call->args[3] });
-      } 
     }
     return StmtMutator::VisitStmt_(op);
   }
@@ -100,8 +87,8 @@ class HostDeviceSplitter : public StmtMutator {
     tvm::TargetFeatures attrs = {{tvm::attr::kTarget, device_target},
       {tir::attr::kNoAlias, Bool(true)},
       {tir::attr::kIsGlobalFunc, Bool(true)}};
-    if (device_target->GetTargetDeviceType() == kDLUPMEM) {
-      attrs.Set("upmem_symbol_map", upmem_symbol_map);
+    if (device_target->GetTargetDeviceType() == kDLUPMEM && upmem_symbol_map.defined()) {
+      attrs.Set("upmem_symbol_map", upmem_symbol_map.value());
     }
     
     device_func = WithAttrs(std::move(device_func), attrs);

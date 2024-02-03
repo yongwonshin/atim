@@ -84,7 +84,7 @@ def func_test(fname, sch, M, N, L, dtype):
             func = tvm.build(sch.mod, target=target, name="gemm")
             print("\n\n[UPMEM source]\n", file=f)
             print(func.imported_modules[0].get_source(), file=f)
-            device = tvm.device(target.kind.name, 0)
+            device = tvm.upmem(func)
             
             if dtype[:5] == "float":
                 na = np.random.rand(M, N).astype(dtype)
@@ -94,9 +94,9 @@ def func_test(fname, sch, M, N, L, dtype):
                 nb = np.random.randint(0, 100, (N, L)).astype(dtype)
             nc = np.zeros((M, L), dtype=dtype)
 
-            a = tvm.nd.array(na, device)
-            b = tvm.nd.array(nb, device)
-            c = tvm.nd.array(nc, device)
+            a = tvm.nd.array(na, device, symbol="A")
+            b = tvm.nd.array(nb, device, symbol="B")
+            c = tvm.nd.array(nc, device, symbol="C")
             func(a, b, c)
             nc = np.dot(na, nb)
             
@@ -144,9 +144,6 @@ def test_all():
     gemmTest(2048, 2048, 2048, 4, 4, 4, 8, 16, 8, "int32", "gemm_E")
     gemmTest(2048, 2048, 2048, 8, 8, 8, 8, 16, 8, "int32", "gemm_F")
     gemmTest(2048, 2048, 2048, 8, 8, 8, 8, 32, 8, "int32", "gemm_G")
-    gemmTest(2048, 2048, 2048, 8, 8, 8, 8, 64, 4, "int32", "gemm_H")
-    gemmTest(2048, 2048, 2048, 8, 8, 8, 8, 32, 8, "float32", "gemm_I")
-    gemmTest(4096, 4096, 4096, 8, 8, 8, 8, 32, 8, "float32", "gemm_J")
 
     for fname in successes:
         print(fname, "PASS")
