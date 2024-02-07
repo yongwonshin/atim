@@ -196,6 +196,7 @@ class TVM_DLL DeviceAPI {
    * as OpenGL, as nbytes is sufficient for most backends.
    */
   virtual void* AllocWorkspace(Device dev, size_t nbytes, DLDataType type_hint = {});
+  virtual void* AllocWorkspace(Device dev, size_t nbytes, DLDataType type_hint, String mem_scope);
   /*!
    * \brief Free temporal workspace in backend execution.
    *

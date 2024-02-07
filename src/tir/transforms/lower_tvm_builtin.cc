@@ -250,13 +250,15 @@ class BuiltinLower : public StmtExprMutator {
     Stmt body = SeqStmt({IfThenElse(Call(DataType::Bool(1), builtin::isnullptr(), {op->buffer_var}),
                                     throw_last_error),
                          op->body});
-    Stmt alloca = LetStmt(op->buffer_var,
-                          Call(op->buffer_var.dtype(), Op::Get("tir.TVMBackendAllocWorkspace"),
-                               {cast(DataType::Int(32), device_type_.value()),
-                                cast(DataType::Int(32), device_id_.value()), total_bytes,
-                                IntImm(DataType::Int(32), op->dtype.code()),
-                                IntImm(DataType::Int(32), op->dtype.bits())}),
-                          body);
+    auto storage_scope = Downcast<PointerType>(op->buffer_var->type_annotation)->storage_scope;
+    Stmt alloca =
+        LetStmt(op->buffer_var,
+                Call(op->buffer_var.dtype(), Op::Get("tir.TVMBackendAllocWorkspace"),
+                     {cast(DataType::Int(32), device_type_.value()),
+                      cast(DataType::Int(32), device_id_.value()), total_bytes,
+                      IntImm(DataType::Int(32), op->dtype.code()),
+                      IntImm(DataType::Int(32), op->dtype.bits()), StringImm(storage_scope)}),
+                body);
 
     PrimExpr free_op = Call(DataType::Int(32), Op::Get("tir.TVMBackendFreeWorkspace"),
                             {cast(DataType::Int(32), device_type_.value()),
@@ -403,21 +405,20 @@ class BuiltinLower : public StmtExprMutator {
     PrimExpr num = op->args[0];
 
     auto method_name = GetDeviceMethodName("acquire_resources");
-    Call call_packed =
-        Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, num});
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, num});
     return VisitExpr(call_packed);
   }
 
   PrimExpr MakePimReleaseResources(const CallNode* op) {
     auto method_name = GetDeviceMethodName("release_resources");
 
-    Call call_packed =
-        Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name});
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name});
     return VisitExpr(call_packed);
   }
 
   PrimExpr MakePimAllocateMemory(const CallNode* op) {
-    ICHECK(op->args.size() == 4 || op->args.size() == 5) << "pim_allocate_memory expects either 4 or 5 arguments";
+    ICHECK(op->args.size() == 4 || op->args.size() == 5)
+        << "pim_allocate_memory expects either 4 or 5 arguments";
     PrimExpr buffer_var = op->args[0];
     PrimExpr var_name = op->args[1];
     PrimExpr type = op->args[2];
@@ -427,24 +428,26 @@ class BuiltinLower : public StmtExprMutator {
       bank_index = -1;
     else if (op->args.size() == 5)
       bank_index = op->args[4];
-    
+
     auto method_name = GetDeviceMethodName("pim_allocate_memory");
-    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), 
-      { method_name, buffer_var, var_name, type, size, bank_index });
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(),
+                            {method_name, buffer_var, var_name, type, size, bank_index});
     return VisitExpr(call_packed);
   }
 
   PrimExpr MakePimFreeMemory(const CallNode* op) {
-    ICHECK(op->args.size() == 1 || op->args.size() == 2) << "pim_free_memory expects either 1 or 2 arguments";
+    ICHECK(op->args.size() == 1 || op->args.size() == 2)
+        << "pim_free_memory expects either 1 or 2 arguments";
     PrimExpr buffer_var = op->args[0];
     PrimExpr bank_index;
     if (op->args.size() == 1)
-      bank_index = -1; // -1 means ALL, todo: change to enum
+      bank_index = -1;  // -1 means ALL, todo: change to enum
     else if (op->args.size() == 2)
       bank_index = op->args[1];
 
     auto method_name = GetDeviceMethodName("pim_free_memory");
-    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, bank_index});
+    Call call_packed =
+        Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, bank_index});
     return VisitExpr(call_packed);
   }
 
@@ -457,7 +460,9 @@ class BuiltinLower : public StmtExprMutator {
     PrimExpr size = op->args[4];
 
     auto method_name = GetDeviceMethodName("pim_transfer_host_to_device");
-    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, host_address, in_bank_address, bank_index, size});
+    Call call_packed =
+        Call(DataType::Int(32), builtin::tvm_call_packed(),
+             {method_name, buffer_var, host_address, in_bank_address, bank_index, size});
     return VisitExpr(call_packed);
   }
 
@@ -470,7 +475,9 @@ class BuiltinLower : public StmtExprMutator {
     PrimExpr size = op->args[4];
 
     auto method_name = GetDeviceMethodName("pim_transfer_device_to_host");
-    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, host_address, in_bank_address, bank_index, size});
+    Call call_packed =
+        Call(DataType::Int(32), builtin::tvm_call_packed(),
+             {method_name, buffer_var, host_address, in_bank_address, bank_index, size});
     return VisitExpr(call_packed);
   }
 
@@ -481,7 +488,8 @@ class BuiltinLower : public StmtExprMutator {
     PrimExpr size = op->args[2];
 
     auto method_name = GetDeviceMethodName("pim_broadcast");
-    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, host_address, size});
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(),
+                            {method_name, buffer_var, host_address, size});
     return VisitExpr(call_packed);
   }
 
@@ -492,7 +500,8 @@ class BuiltinLower : public StmtExprMutator {
     PrimExpr bank_index = op->args[2];
 
     auto method_name = GetDeviceMethodName("dpu_prepare_parallel_transfer");
-    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, host_address, bank_index});
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(),
+                            {method_name, buffer_var, host_address, bank_index});
     return VisitExpr(call_packed);
   }
 
@@ -504,7 +513,8 @@ class BuiltinLower : public StmtExprMutator {
     PrimExpr is_h2d = op->args[3];
 
     auto method_name = GetDeviceMethodName("dpu_parallel_transfer");
-    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, buffer_var, in_bank_address, size, is_h2d});
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(),
+                            {method_name, buffer_var, in_bank_address, size, is_h2d});
     return VisitExpr(call_packed);
   }
 

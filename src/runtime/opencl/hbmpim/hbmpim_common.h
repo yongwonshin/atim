@@ -33,7 +33,7 @@
 #include "pim_library/pim_info.h"
 #include "pim_library/pim_trace_coalescer.h"
 #include "pim_library/simple_heap.h"
-#include "tools/emulator_api/PimSimulator.h"
+#include "tools/emulator_api/PimSimulator2.h"
 
 namespace tvm {
 namespace runtime {
@@ -101,7 +101,7 @@ class HBMPIMWorkspace final : public OpenCLWorkspace {
   int fmtd_size_per_ch_;
   int max_block_size_;
   int max_fmtd_size_;
-  PimSimulator pim_sim_;
+  PimSimulator2 pim_sim_;
   std::unordered_map<const void*, size_t> buffer_size_map_;
   // #endif
 };

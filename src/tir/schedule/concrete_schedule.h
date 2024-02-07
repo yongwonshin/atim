@@ -146,7 +146,8 @@ class ConcreteScheduleNode : public ScheduleNode {
   void ComputeInline(const BlockRV& block) override;
   void ReverseComputeInline(const BlockRV& block) override;
   /******** Schedule: Reduction ********/
-  BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) override;
+  BlockRV RFactor(const LoopRV& loop_rv, int factor_axis,
+                  const String& mem_scope = "global") override;
   BlockRV DecomposeReduction(const BlockRV& block_rv, const LoopRV& loop_rv) override;
   void PadEinsum(const BlockRV& block_rv, const Array<Integer>& padding) override;
   /******** Schedule: Block annotation ********/

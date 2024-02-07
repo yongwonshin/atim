@@ -83,6 +83,7 @@ class HBMPIMWrappedFunc {
       int i = arg_size_.size() - 1;
       void* arg = nullptr;
       if (func_name_ == "main_kernel") {
+        // XXX: crf bin size affects correcteness, but not simulation time
         ICHECK_EQ(args.type_codes[1], DLDataTypeCode::kDLOpaqueHandle);
         // void* buffer = (*static_cast<cl::BufferDescriptor**>(void_args[1]))->host_ptr;
         // arg = w->GetCrfBin(pim_library::PimOpType::OP_GEMV, w->buffer_size_map_[buffer]);

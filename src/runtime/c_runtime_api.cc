@@ -144,6 +144,10 @@ void* DeviceAPI::AllocWorkspace(Device dev, size_t size, DLDataType type_hint) {
   return AllocDataSpace(dev, size, kTempAllocaAlignment, type_hint);
 }
 
+void* DeviceAPI::AllocWorkspace(Device dev, size_t size, DLDataType type_hint, String mem_scope) {
+  return AllocDataSpace(dev, size, kTempAllocaAlignment, type_hint, mem_scope);
+}
+
 static size_t GetDataAlignment(const DLDataType dtype) {
   size_t align = (dtype.bits / 8) * dtype.lanes;
   if (align < kAllocAlignment) return kAllocAlignment;
@@ -428,7 +432,7 @@ int TVMBackendGetFuncFromEnv(void* mod_node, const char* func_name, TVMFunctionH
 }
 
 void* TVMBackendAllocWorkspace(int device_type, int device_id, uint64_t size, int dtype_code_hint,
-                               int dtype_bits_hint) {
+                               int dtype_bits_hint, const char* mem_scope) {
   DLDevice dev;
   dev.device_type = static_cast<DLDeviceType>(device_type);
   dev.device_id = device_id;
@@ -438,7 +442,8 @@ void* TVMBackendAllocWorkspace(int device_type, int device_id, uint64_t size, in
   type_hint.bits = static_cast<decltype(type_hint.bits)>(dtype_bits_hint);
   type_hint.lanes = 1;
 
-  return DeviceAPIManager::Get(dev)->AllocWorkspace(dev, static_cast<size_t>(size), type_hint);
+  return DeviceAPIManager::Get(dev)->AllocWorkspace(dev, static_cast<size_t>(size), type_hint,
+                                                    mem_scope);
 }
 
 int TVMBackendFreeWorkspace(int device_type, int device_id, void* ptr) {

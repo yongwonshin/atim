@@ -610,7 +610,7 @@ std::unordered_map<const VarNode*, For> GetLoopVar2LoopMap(const Array<For>& loo
  * \return The new created intermediate rfactor buffer
  */
 Array<Buffer> CreateRFactorBuffers(const Array<BufferStore>& buf_stores, int factor_axis,
-                                   const ForNode* rf_loop) {
+                                   const ForNode* rf_loop, const String& mem_scope) {
   Array<Buffer> rf_buffers;
   rf_buffers.reserve(buf_stores.size());
   for (const BufferStore& buf_store : buf_stores) {
@@ -620,9 +620,9 @@ Array<Buffer> CreateRFactorBuffers(const Array<BufferStore>& buf_stores, int fac
 
     ObjectPtr<BufferNode> n = make_object<BufferNode>(*buffer.get());
     n->shape = rf_shape;
-    n->name = buffer->name + ".rf";
-    n->data = buffer->data.copy_with_suffix(".rf");
-    rf_buffers.push_back(Buffer(n));
+    n->name = buffer->name + "_rf";
+    n->data = buffer->data.copy_with_suffix("_rf");
+    rf_buffers.push_back(WithScope(Buffer(n), mem_scope));
   }
   return rf_buffers;
 }
@@ -1167,7 +1167,8 @@ class BlockReplacer : public StmtMutator {
   std::unordered_map<const VarNode*, For> loop_vars2loop_;
 };
 
-StmtSRef RFactor(ScheduleState self, const StmtSRef& rf_loop_sref, int factor_axis) {
+StmtSRef RFactor(ScheduleState self, const StmtSRef& rf_loop_sref, int factor_axis,
+                 const String& mem_scope) {
   // *****************************************************
   // *    Condition Checks and Information Collection    *
   // *****************************************************
@@ -1234,7 +1235,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& rf_loop_sref, int factor_ax
 
   // Step 1. Create the intermediate buffer (a.k.a. rfactor buffer), which has an additional
   // dimension that specified by `factor_axis` and `rf_loop`.
-  Array<Buffer> rf_buffers = CreateRFactorBuffers(updates, factor_axis, rf_loop);
+  Array<Buffer> rf_buffers = CreateRFactorBuffers(updates, factor_axis, rf_loop, mem_scope);
 
   // Step 2. Create the rfactor block.
   RFactorBlockCreator rf_block_creator(block_realize, GetRef<For>(rf_loop), updates, reducer,

@@ -86,7 +86,8 @@ TVM_DLL int TVMBackendRegisterSystemLibSymbol(const char* name, void* ptr);
  * \return nullptr when error is thrown, a valid ptr if success
  */
 TVM_DLL void* TVMBackendAllocWorkspace(int device_type, int device_id, uint64_t nbytes,
-                                       int dtype_code_hint, int dtype_bits_hint);
+                                       int dtype_code_hint, int dtype_bits_hint,
+                                       const char* mem_scope = "global");
 
 /*!
  * \brief Backend function to free temporal workspace.

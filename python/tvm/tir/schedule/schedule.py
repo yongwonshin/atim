@@ -2288,7 +2288,7 @@ class Schedule(Object):
         return _ffi_api.ScheduleDecomposeReduction(self, block, loop)  # type: ignore
 
     @type_checked
-    def rfactor(self, loop: LoopRV, factor_axis: int) -> BlockRV:
+    def rfactor(self, loop: LoopRV, factor_axis: int, mem_scope: str = "global") -> BlockRV:
         """Factorize an associative reduction block by the specified loop.
 
         An associative reduction cannot be parallelized directly,
@@ -2435,7 +2435,7 @@ class Schedule(Object):
         Negative indexing is normalized according to numpy convention.
         """
         # pylint: disable-next=no-member
-        return _ffi_api.ScheduleRFactor(self, loop, factor_axis)  # type: ignore
+        return _ffi_api.ScheduleRFactor(self, loop, factor_axis, mem_scope)  # type: ignore
 
     ######## Schedule: Block annotation ########
 

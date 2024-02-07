@@ -617,7 +617,8 @@ class ScheduleNode : public runtime::Object {
    *                    ndim(B)]`, and the negative index will be normalized to a non-negative one
    * \return The rfactor block
    */
-  virtual BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) = 0;
+  virtual BlockRV RFactor(const LoopRV& loop_rv, int factor_axis,
+                          const String& mem_scope = "global") = 0;
   /******** Schedule: Block annotation ********/
   /*!
    * \brief Set alignment requirement for specific dimension such that

@@ -110,7 +110,7 @@ class MatchBufferLower : public StmtExprMutator {
     }
 
     for (auto match_buffer : op->match_buffers) {
-      if (match_buffer->buffer->name == "P") {  // TODO[ywshin]
+      if (match_buffer->buffer->name == "C_rf_internal") {  // TODO[ywshin]
         IntImm buffer_size = Downcast<IntImm>(match_buffer->source->region[0]->extent);
         for (int i = 1; i < match_buffer->source->region.size(); i++) {
           buffer_size *= Downcast<IntImm>(match_buffer->source->region[i]->extent);
@@ -199,7 +199,7 @@ class MatchBufferLower : public StmtExprMutator {
     op = expr.as<BufferLoadNode>();
     ICHECK(op != nullptr);
 
-    if (op->buffer->name == "P") {  // TODO[ywshin]
+    if (op->buffer->name == "C_rf_internal") {  // TODO[ywshin]
       BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(op));
       BufferLoadNode* op_ = load.CopyOnWrite();
 
@@ -611,9 +611,9 @@ class Test : public StmtExprMutator {
       extent = IntImm(DataType::Int(32), 1);
     }
     if (op->kind == ForKind::kThreadBinding) {
-      runtime::ThreadScope scope = runtime::ThreadScope::Create(op->thread_binding.value()->thread_tag);
-      if (scope.rank == 0)
-        extent = IntImm(DataType::Int(32), 1);
+      runtime::ThreadScope scope =
+          runtime::ThreadScope::Create(op->thread_binding.value()->thread_tag);
+      if (scope.rank == 0) extent = IntImm(DataType::Int(32), 1);
     }
     Range loop_range = Range::FromMinExtent(op->min, extent);
     loop_range_.push_back(arith::IntSet::FromRange(loop_range));

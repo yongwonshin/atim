@@ -516,8 +516,9 @@ BlockRV TracedScheduleNode::DecomposeReduction(const BlockRV& block_rv, const Lo
   return result;
 }
 
-BlockRV TracedScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
-  BlockRV result = ConcreteScheduleNode::RFactor(loop_rv, factor_axis);
+BlockRV TracedScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis,
+                                    const String& mem_scope) {
+  BlockRV result = ConcreteScheduleNode::RFactor(loop_rv, factor_axis, mem_scope);
   static const InstructionKind& kind = InstructionKind::Get("RFactor");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{loop_rv},

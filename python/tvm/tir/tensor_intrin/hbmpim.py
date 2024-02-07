@@ -1,7 +1,7 @@
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
+# regarding copyright ownershiC_rf_internal.  The ASF licenses this file
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
@@ -274,46 +274,49 @@ def get_mac_intrin(dtype):
     def mac_desc(a: T.handle, b: T.handle, p: T.handle) -> None:
         A_local = T.match_buffer(a, (128,), dtype=dtype, offset_factor=1, scope="local")
         B_local = T.match_buffer(b, (128,), dtype=dtype, offset_factor=1, scope="local")
-        P_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
+        C_rf_internal_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
         with T.block("root"):
-            T.reads(P_local[0:16], A_local[0:128], B_local[0:128])
-            T.writes(P_local[0:16])
+            T.reads(C_rf_internal_local[0:16], A_local[0:128], B_local[0:128])
+            T.writes(C_rf_internal_local[0:16])
             for k, r in T.grid(8, 16):
                 with T.block(""):
-                    v_k, v_r = T.axis.remap("RS", [k, r])
-                    P_local[v_r] = P_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
+                    # v_k, v_r = T.axis.remap("RS", [k, r])
+                    v_r, v_k = T.axis.remap("SR", [r, k])
+                    C_rf_internal_local[v_r] = (
+                        C_rf_internal_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
+                    )
 
     @T.prim_func
     def mac_impl(a: T.handle, b: T.handle, p: T.handle) -> None:
         # A = T.match_buffer(a, (128,), dtype=dtype, offset_factor=1, scope="local")
         # B = T.match_buffer(b, (128,), dtype=dtype, offset_factor=1, scope="local")
-        # P = T.match_buffer(c, (16,), dtype=dtype, offset_factor=1, scope="global")
+        # C_rf_internal = T.match_buffer(c, (16,), dtype=dtype, offset_factor=1, scope="global")
         # with T.block("root"):
-        #     T.reads(P[0:16], A[0:128], B[0:128])
-        #     T.writes(P[0:16])
+        #     T.reads(C_rf_internal[0:16], A[0:128], B[0:128])
+        #     T.writes(C_rf_internal[0:16])
         #     ch = T.env_thread("blockIdx.x")
         #     T.launch_thread(ch, 64)
         #     tx = T.env_thread("threadIdx.x")
         #     T.launch_thread(tx, 16)
         #     T.evaluate(
         #         T.W_CMD(
-        #             P.access_ptr(
+        #             C_rf_internal.access_ptr(
         #                 "r",
-        #                 offset=T.addr_gen(ch=ch, bk=1, offset=P.in_bank_offset_of([tx * 16])[0]),
+        #                 offset=T.addr_gen(ch=ch, bk=1, offset=C_rf_internal.in_bank_offset_of([tx * 16])[0]),
         #             )
         #         )
         #     )
 
         A_local = T.match_buffer(a, (128,), dtype=dtype, offset_factor=1, scope="local")
         B_local = T.match_buffer(b, (128,), dtype=dtype, offset_factor=1, scope="local")
-        P_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
+        C_rf_internal_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
         with T.block("root"):
-            T.reads(P_local[0:16], A_local[0:128], B_local[0:128])
-            T.writes(P_local[0:16])
+            T.reads(C_rf_internal_local[0:16], A_local[0:128], B_local[0:128])
+            T.writes(C_rf_internal_local[0:16])
             # for k, r in T.grid(8, 16):
             #     with T.block(""):
             #         v_k, v_r = T.axis.remap("RS", [k, r])
-            #         P_local[v_r] = P_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
+            #         C_rf_internal_local[v_r] = C_rf_internal_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
 
     return mac_desc, mac_impl
 
@@ -323,23 +326,25 @@ def get_mac_intrin_mm(dtype, N):
     def mac_desc(a: T.handle, b: T.handle, p: T.handle) -> None:
         A_local = T.match_buffer(a, (128 // N,), dtype=dtype, offset_factor=1, scope="local")
         B_local = T.match_buffer(b, (128 // N,), dtype=dtype, offset_factor=1, scope="local")
-        P_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
+        C_rf_internal_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
         with T.block("root"):
-            T.reads(P_local[0:16], A_local[0 : 128 // N], B_local[0 : 128 // N])
-            T.writes(P_local[0:16])
+            T.reads(C_rf_internal_local[0:16], A_local[0 : 128 // N], B_local[0 : 128 // N])
+            T.writes(C_rf_internal_local[0:16])
             for k, r in T.grid(8 // N, 16):
                 with T.block(""):
                     v_k, v_r = T.axis.remap("RS", [k, r])
-                    P_local[v_r] = P_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
+                    C_rf_internal_local[v_r] = (
+                        C_rf_internal_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
+                    )
 
     @T.prim_func
     def mac_impl(a: T.handle, b: T.handle, p: T.handle) -> None:
         A_local = T.match_buffer(a, (128 // N,), dtype=dtype, offset_factor=1, scope="local")
         B_local = T.match_buffer(b, (128 // N,), dtype=dtype, offset_factor=1, scope="local")
-        P_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
+        C_rf_internal_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
         with T.block("root"):
-            T.reads(P_local[0:16], A_local[0 : 128 // N], B_local[0 : 128 // N])
-            T.writes(P_local[0:16])
+            T.reads(C_rf_internal_local[0:16], A_local[0 : 128 // N], B_local[0 : 128 // N])
+            T.writes(C_rf_internal_local[0:16])
 
     return mac_desc, mac_impl
 
@@ -347,23 +352,27 @@ def get_mac_intrin_mm(dtype, N):
 def get_partial_reduction_intrin(dtype):
     @T.prim_func
     def partial_reduction_desc(a: T.handle, b: T.handle) -> None:
-        P = T.match_buffer(a, (8, 16), dtype=dtype, offset_factor=1, scope="global")
-        P_local = T.match_buffer(b, (8, 16), dtype=dtype, offset_factor=1, scope="local")
+        C_rf_internal = T.match_buffer(a, (8, 16), dtype=dtype, offset_factor=1, scope="internal")
+        C_rf_internal_local = T.match_buffer(
+            b, (8, 16), dtype=dtype, offset_factor=1, scope="local"
+        )
         with T.block("root"):
-            T.reads(P_local[0:8, 0:16])
-            T.writes(P[0:8, 0:16])
+            T.reads(C_rf_internal_local[0:8, 0:16])
+            T.writes(C_rf_internal[0:8, 0:16])
             for k, r in T.grid(8, 16):
                 with T.block(""):
                     v_k, v_r = T.axis.remap("SS", [k, r])
-                    P[v_k, v_r] = P_local[v_k, v_r]
+                    C_rf_internal[v_k, v_r] = C_rf_internal_local[v_k, v_r]
 
     @T.prim_func
     def partial_reduction_impl(a: T.handle, b: T.handle) -> None:
-        P = T.match_buffer(a, (8, 16), dtype=dtype, offset_factor=1, scope="global")
-        P_local = T.match_buffer(b, (8, 16), dtype=dtype, offset_factor=1, scope="local")
+        C_rf_internal = T.match_buffer(a, (8, 16), dtype=dtype, offset_factor=1, scope="internal")
+        C_rf_internal_local = T.match_buffer(
+            b, (8, 16), dtype=dtype, offset_factor=1, scope="local"
+        )
         with T.block("root"):
-            T.reads(P_local[0:8, 0:16])
-            T.writes(P[0:8, 0:16])
+            T.reads(C_rf_internal_local[0:8, 0:16])
+            T.writes(C_rf_internal[0:8, 0:16])
             ch = T.env_thread("blockIdx.x")
             T.launch_thread(ch, 64)
             tx = T.env_thread("threadIdx.x")
@@ -376,13 +385,61 @@ def get_partial_reduction_intrin(dtype):
                     1,
                     0,
                     0,
-                    offset=(P_local.in_bank_offset_of([0, 0])[0] + tx * 8) * 2,
+                    offset=(C_rf_internal_local.in_bank_offset_of([0, 0])[0] + tx * 8) * 2,
                 )
                 // 2
             )
-            W_CMD("int32x4", P.access_ptr("rw", offset=addr, ignore_elem_offset=True))
-            W_CMD("int32x4", P.access_ptr("rw", offset=addr, ignore_elem_offset=True))
-            R_CMD("int32x4", P.access_ptr("rw", offset=addr, ignore_elem_offset=True))
+            W_CMD("int32x4", C_rf_internal.access_ptr("rw", offset=addr, ignore_elem_offset=True))
+            W_CMD("int32x4", C_rf_internal.access_ptr("rw", offset=addr, ignore_elem_offset=True))
+            R_CMD("int32x4", C_rf_internal.access_ptr("rw", offset=addr, ignore_elem_offset=True))
+            B_CMD(1)
+
+    return partial_reduction_desc, partial_reduction_impl
+
+
+def get_partial_reduction_intrin_mm(dtype, N):
+    @T.prim_func
+    def partial_reduction_desc(a: T.handle, b: T.handle) -> None:
+        C_rf_internal = T.match_buffer(a, (N, 8, 16), dtype=dtype, offset_factor=1, scope="global")
+        C_rf_internal_local = T.match_buffer(
+            b, (N, 8, 16), dtype=dtype, offset_factor=1, scope="local"
+        )
+        with T.block("root"):
+            T.reads(C_rf_internal_local[0:N, 0:8, 0:16])
+            T.writes(C_rf_internal[0:N, 0:8, 0:16])
+            for j, k, r in T.grid(2, 8, 16):
+                with T.block(""):
+                    v_j, v_k, v_r = T.axis.remap("SSS", [j, k, r])
+                    C_rf_internal[v_j, v_k, v_r] = C_rf_internal_local[v_j, v_k, v_r]
+
+    @T.prim_func
+    def partial_reduction_impl(a: T.handle, b: T.handle) -> None:
+        C_rf_internal = T.match_buffer(a, (N, 8, 16), dtype=dtype, offset_factor=1, scope="global")
+        C_rf_internal_local = T.match_buffer(
+            b, (N, 8, 16), dtype=dtype, offset_factor=1, scope="local"
+        )
+        with T.block("root"):
+            T.reads(C_rf_internal_local[0:N, 0:8, 0:16])
+            T.writes(C_rf_internal[0:N, 0:8, 0:16])
+            ch = T.env_thread("blockIdx.x")
+            T.launch_thread(ch, 64)
+            tx = T.env_thread("threadIdx.x")
+            T.launch_thread(tx, 16)
+            addr = (
+                T.addr_gen(
+                    ch,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                    offset=(C_rf_internal_local.in_bank_offset_of([0, 0, 0])[0] + tx * 8) * 2,
+                )
+                // 2
+            )
+            W_CMD("int32x4", C_rf_internal.access_ptr("rw", offset=addr, ignore_elem_offset=True))
+            W_CMD("int32x4", C_rf_internal.access_ptr("rw", offset=addr, ignore_elem_offset=True))
+            R_CMD("int32x4", C_rf_internal.access_ptr("rw", offset=addr, ignore_elem_offset=True))
             B_CMD(1)
 
     return partial_reduction_desc, partial_reduction_impl
@@ -428,4 +485,9 @@ HBMPIM_PARTIAL_REDUCTION_INTRIN = "hbmpim_partial_reduction_intrin"
 TensorIntrin.register(
     HBMPIM_PARTIAL_REDUCTION_INTRIN,
     *get_partial_reduction_intrin("int16"),
+)
+HBMPIM_PARTIAL_REDUCTION_INTRIN_MM = "hbmpim_partial_reduction_intrin_mm"
+TensorIntrin.register(
+    HBMPIM_PARTIAL_REDUCTION_INTRIN_MM,
+    *get_partial_reduction_intrin_mm("int16", 2),
 )

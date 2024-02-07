@@ -781,10 +781,11 @@ BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv, const 
   return CreateRV<BlockRV>(result);
 }
 
-BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
+BlockRV ConcreteScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis,
+                                      const String& mem_scope) {
   StmtSRef result{nullptr};
   TVM_TIR_SCHEDULE_BEGIN();
-  result = tir::RFactor(state_, this->GetSRef(loop_rv), factor_axis);
+  result = tir::RFactor(state_, this->GetSRef(loop_rv), factor_axis, mem_scope);
   TVM_TIR_SCHEDULE_END("rfactor", this->error_render_level_);
   this->state_->DebugVerify();
   return CreateRV<BlockRV>(result);

@@ -517,7 +517,8 @@ TVM_DLL StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sr
  *                    ndim(B)]`, and the negative index will be normalized to a non-negative one
  * \return The sref of the rfactor block
  */
-TVM_DLL StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis);
+TVM_DLL StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis,
+                         const String& mem_scope = "global");
 /******** Schedule: Block annotation ********/
 
 /*!

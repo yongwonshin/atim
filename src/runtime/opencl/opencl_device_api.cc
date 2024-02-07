@@ -27,6 +27,7 @@
 
 #include <sstream>
 
+#include "hbmpim/hbmpim_common.h"
 #include "opencl_common.h"
 
 #ifdef OPENCL_ENABLE_HOST_PTR
@@ -214,6 +215,9 @@ void* OpenCLWorkspace::CreateHostPtrIfEnabled(cl::BufferDescriptor* desc, Device
 
 void* OpenCLWorkspace::AllocDataSpace(Device dev, size_t size, size_t alignment,
                                       DLDataType type_hint, Optional<String> mem_scope) {
+  if (mem_scope.defined() && mem_scope == "internal") {
+    return HBMPIMWorkspace::Global()->AllocDataSpace(dev, size, alignment, type_hint, mem_scope);
+  }
   this->Init();
   cl_device_id device_id = GetCLDeviceID(dev.device_id);
   auto platform = device_to_platform[device_id];
