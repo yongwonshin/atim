@@ -35,9 +35,6 @@ Block WithAnnotation(const BlockNode* block, const String& attr_key, const Objec
 
 /******** Buffer Related ********/
 Buffer WithScope(const Buffer& buffer, const String& scope) {
-  if (scope == "global") {
-    return buffer;
-  }
   ObjectPtr<BufferNode> new_buffer = make_object<BufferNode>(*buffer.get());
   ObjectPtr<VarNode> new_var = make_object<VarNode>(*buffer->data.get());
   const auto* ptr_type = TVM_TYPE_AS(buffer->data->type_annotation, PointerTypeNode);
