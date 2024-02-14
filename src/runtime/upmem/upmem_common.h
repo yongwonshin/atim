@@ -31,6 +31,7 @@ extern "C" {
 #include <tvm/runtime/packed_func.h>
 
 #include <string>
+#include <chrono>
 
 #include "../workspace_pool.h"
 
@@ -110,6 +111,11 @@ public:
 
   std::unordered_map<int, dpu_set_t> dpu_entry;
   std::unordered_map<void*, DpuVarInfo> dpu_addr_ptr;
+
+  std::chrono::high_resolution_clock::time_point acquire_start;
+  std::chrono::high_resolution_clock::time_point kernel_start;
+  std::chrono::high_resolution_clock::time_point kernel_end;
+  std::chrono::high_resolution_clock::time_point release_end;
   void* recent_host_address;
 };
 

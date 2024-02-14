@@ -30,6 +30,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <chrono>
 
 #include "../file_utils.h"
 #include "../meta_data.h"
@@ -70,26 +71,28 @@ class UPMEMModuleNode : public runtime::ModuleNode {
     } else {
       return PackedFunc([](TVMArgs args, TVMRetValue* rv) {
         UPMEMDeviceAPI* api = UPMEMDeviceAPI::Global();
-        UPMEM_CALL(dpu_launch(api->dpu_set, DPU_SYNCHRONOUS));
-        struct dpu_set_t dpu;
+        api->kernel_start = std::chrono::high_resolution_clock::now();
+        dpu_launch(api->dpu_set, DPU_SYNCHRONOUS);
+        api->kernel_end = std::chrono::high_resolution_clock::now();
+        // struct dpu_set_t dpu;
 
-        FILE* original_stderr = stderr;
-        stderr = freopen("/dev/null", "w", stderr);
-        DPU_FOREACH(api->dpu_set, dpu) {
-          FILE* tempFile = tmpfile();
-          dpu_error_t error = dpu_log_read(dpu, tempFile); 
-          if (error == DPU_OK) {
-            rewind(tempFile);
-            char* buffer = NULL;
-            size_t size = 0;
-            while (getline(&buffer, &size, tempFile) != -1) {
-              printf("%s", buffer);
-            }
-            free(buffer);
-          }
-          fclose(tempFile);
-        }
-        stderr = original_stderr;
+        // FILE* original_stderr = stderr;
+        // stderr = freopen("/dev/null", "w", stderr);
+        // DPU_FOREACH(api->dpu_set, dpu) {
+        //   FILE* tempFile = tmpfile();
+        //   dpu_error_t error = dpu_log_read(dpu, tempFile); 
+        //   if (error == DPU_OK) {
+        //     rewind(tempFile);
+        //     char* buffer = NULL;
+        //     size_t size = 0;
+        //     while (getline(&buffer, &size, tempFile) != -1) {
+        //       printf("%s", buffer);
+        //     }
+        //     free(buffer);
+        //   }
+        //   fclose(tempFile);
+        // }
+        // stderr = original_stderr;
       });
     }
   }

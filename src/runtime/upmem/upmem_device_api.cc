@@ -27,6 +27,7 @@
 #include <tvm/runtime/registry.h>
 
 #include <cstring>
+#include <chrono>
 
 #include "upmem_common.h"
 
@@ -91,10 +92,6 @@ UPMEMDeviceAPI* UPMEMDeviceAPI::Global()
 }
 
 int UPMEMDeviceAPI::AcquireResources(int32_t bank_num) {
-  if (!dpu_entry.empty()) {
-    // LOG(FATAL) << "DPU resources already acquired. Release them first.";
-    return 1;
-  }
   VLOG(3) << "dpu_alloc(" << bank_num << ", NULL, &dpu_set)";
   UPMEM_CALL(dpu_alloc(bank_num, NULL, &(dpu_set)));
 
@@ -181,12 +178,31 @@ TVM_REGISTER_GLOBAL("device_api.upmem").set_body([](TVMArgs args, TVMRetValue* r
   *rv = static_cast<void*>(api);
 });
 
+TVM_REGISTER_GLOBAL("device_api.upmem.kernel_time").set_body([](TVMArgs args, TVMRetValue* rv) {
+  auto api = UPMEMDeviceAPI::Global();
+  auto kernel = api->kernel_end - api->kernel_start;
+  double elapsed_time = std::chrono::duration_cast<std::chrono::nanoseconds>(kernel).count();
+  *rv = static_cast<double>(elapsed_time);
+});
+
+TVM_REGISTER_GLOBAL("device_api.upmem.after_kernel_time").set_body([](TVMArgs args, TVMRetValue* rv) {
+  auto api = UPMEMDeviceAPI::Global();
+  auto after_kernel = api->release_end - api->kernel_end;
+  double elapsed_time = std::chrono::duration_cast<std::chrono::nanoseconds>(after_kernel).count();
+  *rv = static_cast<double>(elapsed_time);
+});
+
 TVM_REGISTER_GLOBAL("device_api.upmem.acquire_resources").set_body([](TVMArgs args, TVMRetValue* rv) {
+  auto api = UPMEMDeviceAPI::Global();
+  api->acquire_start = std::chrono::high_resolution_clock::now();
   int32_t bank_num = args[0];
-  *rv = static_cast<int>(UPMEMDeviceAPI::Global()->AcquireResources(bank_num));
+  if (api->dpu_entry.empty()) {
+    UPMEMDeviceAPI::Global()->AcquireResources(bank_num);
+  }
 });
 
 TVM_REGISTER_GLOBAL("device_api.upmem.release_resources").set_body([](TVMArgs args, TVMRetValue* rv) {
+  UPMEMDeviceAPI::Global()->release_end = std::chrono::high_resolution_clock::now();
   *rv = static_cast<int>(UPMEMDeviceAPI::Global()->ReleaseResources());
 });
 
@@ -249,16 +265,21 @@ TVM_REGISTER_GLOBAL("device_api.upmem.dpu_parallel_transfer").set_body([](TVMArg
 
 class UPMEMTimerNode : public TimerNode {
  public:
-  virtual void Start() { start = 0; }
-  virtual void Stop() { end = 0; }
-  virtual int64_t SyncAndGetElapsedNanos() { return 0; }
+  virtual void Start() { 
+    start_ = std::chrono::high_resolution_clock::now(); 
+  }
+  virtual void Stop() { 
+    duration_ = std::chrono::high_resolution_clock::now() - start_; 
+  }
+  virtual int64_t SyncAndGetElapsedNanos() { return duration_.count(); }
   virtual ~UPMEMTimerNode() {}
 
   static constexpr const char* _type_key = "UPMEMTimerNode";
   TVM_DECLARE_FINAL_OBJECT_INFO(UPMEMTimerNode, TimerNode);
 
  private:
-  uint64_t start, end;
+  std::chrono::high_resolution_clock::time_point start_;
+  std::chrono::duration<int64_t, std::nano> duration_;
 };
 
 TVM_REGISTER_OBJECT_TYPE(UPMEMTimerNode);

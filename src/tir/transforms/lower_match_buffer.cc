@@ -45,11 +45,8 @@ bool IsBankBinded(const ForNode* op) {
 class TermSeparator : public ExprVisitor {
  public:
   PrimExpr Assembler() {
-    PrimExpr e;
+    PrimExpr e = 0;
     for (auto t : terms) {
-      if (!e.defined())
-        e = t.first * t.second;
-      else
         e += t.first * t.second;
     }
     return e;

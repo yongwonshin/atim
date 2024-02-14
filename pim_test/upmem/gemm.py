@@ -1,18 +1,9 @@
-import sys
-sys.path.append("/root/dev/tvm/python")
-
-import os
+from tvm import te as T
 import tvm
-from tvm.target import Target
-from tvm.tir.transform import *
-import numpy as np
-from tvm.script import tir as T
+from base import UPMEMWorkload, cleanup
+from .tensor import host_array
 
-target = tvm.target.Target(target="upmem", host="llvm")
-successes = []
-failures = []
-
-def upmem_gemv_factory(M, N, L, dtype):
+def gemm_prim_schedule(M, N, L, dtype):
     @tvm.script.ir_module
     class UPMEMModule:
         @T.prim_func
@@ -29,114 +20,49 @@ def upmem_gemv_factory(M, N, L, dtype):
                     C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
     return UPMEMModule
 
-def gemmTile(m, n, l, mb, nb, lb, mc, nc, lc, dtype):
-    sch = tvm.tir.Schedule(upmem_gemv_factory(m, n, l, dtype))
+def gemmTile(M, N, L, n_mb, n_nb, n_lb, n_mc, n_nc, n_lc, n_yt, n_rt, dtype):
+    sch = tvm.tir.Schedule(gemm_prim_schedule(M, N, L, dtype))
     block_c = sch.get_block("C")
     _, _, k = sch.get_loops(block_c)
-
-    kb, ko = sch.split(k, factors=[nb, None])
+    kb, ko = sch.split(k, factors=[n_nb, None])
     block_crf = sch.rfactor(kb, factor_axis=0)
-
     ca = sch.cache_read(block_crf, 0, "local")
     cb = sch.cache_read(block_crf, 1, "local")
     cc = sch.cache_write(block_crf, 0, "local")
-
     i, j, kb, ko = sch.get_loops(block_crf)
-    ib, io, ii, ic = sch.split(i, factors=[mb, 16, None, mc])
-    jb, jo, jc = sch.split(j, factors=[lb, None, lc])
-    ko, ki = sch.split(ko, factors=[None, nc])
+    ib, io, ii, ic = sch.split(i, factors=[n_mb, n_yt, None, n_mc])
+    jb, jo, jc = sch.split(j, factors=[n_lb, None, n_lc])
+    ko, ki = sch.split(ko, factors=[None, n_nc])
     sch.reorder(ib, jb, kb, io, jo, ii, ko, ic, jc,ki)
-
     sch.compute_at(ca, ko)
     sch.compute_at(cb, ko)
     sch.reverse_compute_at(cc, ii)
-
     sch.bind(ib, "blockIdx.x")
     sch.bind(jb, "blockIdx.y")
     sch.bind(kb, "blockIdx.z")
     sch.bind(io, "threadIdx.x")
-
     i, _, _ = sch.get_loops(block_c)
-    it, ii = sch.split(i, factors=[16, None])
+    it, ii = sch.split(i, factors=[n_rt, None])
     sch.parallel(it)
-    return sch, (m, n, l, dtype)
+    return sch
 
-def func_test(fname, sch, M, N, L, dtype):
-    try:
-        flag = False
-        with open("./results/" + fname + ".txt", "w") as f:
-            l = tvm.lower(sch.mod)
-            
-            print("Testing", fname)
-            print("[LOWER]", file=f)
-            print(l, file=f)
-            mp, _ = Target.canon_target_map_and_host({ target: l }, "llvm")
-            m = mp[target]
-            m = BindTarget(target)(m)
-            m = VerifyMemory()(m)
-            m = AnnotateEntryFunc()(m)
-            m = AnnotateDeviceRegions()(m)
-            m = ExtractPimTransferSchedule()(m)
-            m = SplitHostDevice()(m)
-            print("[TIR with PIM data copy]\n", file=f)
-            print(m["main"], file=f)
-            
-            func = tvm.build(sch.mod, target=target, name="gemm")
-            print("\n\n[UPMEM source]\n", file=f)
-            print(func.imported_modules[0].get_source(), file=f)
-            device = tvm.upmem(func)
-            
-            if dtype[:5] == "float":
-                na = np.random.rand(M, N).astype(dtype)
-                nb = np.random.rand(N, L).astype(dtype)
-            else:
-                na = np.random.randint(0, 100, (M, N)).astype(dtype)
-                nb = np.random.randint(0, 100, (N, L)).astype(dtype)
-            nc = np.zeros((M, L), dtype=dtype)
-
-            a = tvm.nd.array(na, device, symbol="A")
-            b = tvm.nd.array(nb, device, symbol="B")
-            c = tvm.nd.array(nc, device, symbol="C")
-            func(a, b, c)
-            nc = np.dot(na, nb)
-            
-            print("\n\n[Correctness Test]\n", file=f)
-            print("RESULT", file=f)
-            print(c.asnumpy()[:32], file=f)
-            print("", file=f)
-            print("EXPECTED", file=f)
-            print(nc[:32], file=f)
-            res = np.max(c.asnumpy() - nc)
-            print(res, file=f)
-            if np.abs(res) < 0.01:
-                flag = True
-            else:
-                flag = False
-        if flag:
-            successes.append(fname)
-        else:
-            failures.append(fname)
-    except Exception as e:
-        with open("./errors/" + fname + ".txt", "w") as f:
-            f.write(str(e))
-        failures.append(fname)
+class GEMM(UPMEMWorkload):
+    def __init__(self):
+        required = dict(M=2048, N=2048, L=2048, dtype="int32", n_mb=1, n_nb=1, n_lb=1, 
+                        n_mc=8, n_nc=16, n_lc=8, n_yt=16, n_rt=64)
+        super().__init__(profile="gemm", required=required, symbols=["A", "B", "C"], output_symbol="C")
         
-def gemmTest(m, n, l, mb, nb, lb, mc, nc, lc, dtype, name):
-    sch, args = gemmTile(m, n, l, mb, nb, lb, mc, nc, lc, dtype)
-    func_test(name, sch, *args)
-
-def cleanup():
-    if not os.path.exists("./results"):
-        os.makedirs("./results")
-    if not os.path.exists("./errors"):
-        os.makedirs("./errors")
-    for fname in os.listdir("./results"):
-        os.remove("./results/" + fname)
-    for fname in os.listdir("./errors"):
-        os.remove("./errors/" + fname)
+    def fetch_data(self):
+        self.host.A = host_array(self.M, self.N, self.dtype)
+        self.host.B = host_array(self.N, self.L, self.dtype)
     
-def test_all():
+    def host_version(self):
+        self.host.C = self.host.A @ self.host.B
+        
+if __name__ == "__main__":
     cleanup()
+    gemm = GEMM()
+    """
     gemmTest(512, 512, 512, 4, 4, 4, 8, 16, 8, "int32", "gemm_A")
     gemmTest(512, 1024, 512, 4, 4, 4, 8, 16, 8, "int32", "gemm_B")
     gemmTest(512, 2048, 512, 4, 4, 4, 8, 16, 8, "int32", "gemm_C")
@@ -144,10 +70,8 @@ def test_all():
     gemmTest(2048, 2048, 2048, 4, 4, 4, 8, 16, 8, "int32", "gemm_E")
     gemmTest(2048, 2048, 2048, 8, 8, 8, 8, 16, 8, "int32", "gemm_F")
     gemmTest(2048, 2048, 2048, 8, 8, 8, 8, 32, 8, "int32", "gemm_G")
-
-    for fname in successes:
-        print(fname, "PASS")
-    for fname in failures:
-        print(fname, "FAIL")
-
-test_all()
+    """
+    gemm.test(gemmTile, n_mb=4, n_nb=4, n_lb=4, n_mc=8, n_nc=16, n_lc=8, n_yt=16, n_rt=64)
+    gemm.test(gemmTile, n_mb=8, n_nb=8, n_lb=8, n_mc=8, n_nc=16, n_lc=8, n_yt=16, n_rt=64)
+    gemm.test(gemmTile, n_mb=8, n_nb=8, n_lb=8, n_mc=8, n_nc=32, n_lc=8, n_yt=16, n_rt=64)
+    
