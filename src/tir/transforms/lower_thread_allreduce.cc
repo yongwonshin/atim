@@ -28,6 +28,7 @@
 #include <tvm/tir/expr.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
+#include <tvm/tir/analysis.h>
 
 #include <unordered_set>
 
@@ -40,16 +41,18 @@ namespace tir {
 
 class UpdatePointerStorageScopeAllReduce final : public UpdatePointerStorageScope {
  public:
+  const TargetNode* target_ = nullptr;
   explicit UpdatePointerStorageScopeAllReduce(
-      const std::unordered_map<const VarNode*, String>& new_storage_scopes)
-      : UpdatePointerStorageScope(new_storage_scopes) {}
+      const std::unordered_map<const VarNode*, String>& new_storage_scopes,
+      const TargetNode* target)
+      : UpdatePointerStorageScope(new_storage_scopes), target_(target) {}
 
   Stmt VisitStmt_(const AllocateNode* op) final {
     auto remapped = Downcast<Var>(StmtExprMutator::VisitExpr(op->buffer_var));
     auto new_scope = GetPtrStorageScope(remapped);
     if (new_scope != GetPtrStorageScope(op->buffer_var)) {
       Stmt body = StmtExprMutator::VisitStmt(op->body);
-      if (new_scope == "shared") {
+      if (new_scope == "shared" && target_->kind->name != "upmem") {
         // use volatile access to shared buffer.
         body = AttrStmt(remapped, attr::volatile_scope, 1, body);
       }
@@ -97,8 +100,8 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
 
     if (auto it = alloc_remap_.find(node->buffer_var.get()); it != alloc_remap_.end()) {
       const AllocateNode* repl = it->second.as<AllocateNode>();
-      if (warp_allocs_.count(repl)) {
-        new_storage_scopes_[repl->buffer_var.get()] = "local";
+      if (warp_allocs_.count(repl) || target_->kind->name == "upmem") {
+        new_storage_scopes_[repl->buffer_var.get()] = "shared";
       } else {
         new_storage_scopes_[repl->buffer_var.get()] = "shared";
       }
@@ -146,16 +149,29 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     op = load.get();
 
     if (auto opt = GetRemappedBuffer(load->buffer)) {
-      load.CopyOnWrite()->buffer = opt.value();
+      auto new_load = load.CopyOnWrite();
+      new_load->buffer = opt.value();
+      if (new_load->indices.size() == 0)
+        new_load->global_indices.push_back(0);
     }
     return std::move(load);
   }
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     BufferStore store = Downcast<BufferStore>(StmtExprMutator::VisitStmt_(op));
+    if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
+      std::string lscope = GetPtrStorageScope(load->buffer->data);
+      std::string sscope = GetPtrStorageScope(op->buffer->data);
+      if ((sscope == "global" || sscope == "") && (lscope == "local" || lscope == "shared")) {
+        buffer_stores_.push_back(store.get());
+      }
+    }
 
     if (auto opt = GetRemappedBuffer(store->buffer)) {
-      store.CopyOnWrite()->buffer = opt.value();
+     auto new_store = store.CopyOnWrite();
+     new_store->buffer = opt.value();
+     if (new_store->indices.size() == 0)
+      new_store->global_indices.push_back(0);
     }
     return std::move(store);
   }
@@ -277,6 +293,8 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         break;
       }
     }
+
+    std::string sync_scope = "shared";
 
     std::vector<Stmt> seq;
     std::vector<Var> shared_buffer_vars(size);
@@ -421,7 +439,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         ICHECK(!load_remap_.count(buffers[i]->data.get()));
         PrimExpr pred = const_true(types[i].lanes());
         Buffer buf = shared_bufs[i];
-        PrimExpr val = BufferLoad(buf, zero_indices);
+        BufferLoad val(buf, zero_indices, Array<PrimExpr>({ 0 }));
         ICHECK_EQ(val->dtype, types[i]);
         load_remap_[buffers[i]->data.get()] = val;
         Array<PrimExpr> extents{PrimExpr(1)};
@@ -442,7 +460,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       }
       // This sync is necessary because there might be incomplete read of
       // previous iteration on the same buffer.
-      seq.emplace_back(SyncThread("shared"));
+      seq.emplace_back(SyncThread(sync_scope));
       for (size_t idx = 0; idx < size; ++idx) {
         Buffer buffer = decl_buffer({1}, types[idx], "red_buf" + std::to_string(idx));
 
@@ -450,17 +468,30 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         shared_buffer_vars[idx] = buffer->data;
 
         PrimExpr pred = const_true(types[idx].lanes());
+        BufferLoad load = Downcast<BufferLoad>(values[idx]);
+        PrimExpr global_index = 0;
+        if (load.defined()) {
+          for (const auto& store: buffer_stores_) {
+            ExprDeepEqual expr_equal;
+              if (store->buffer.same_as(load->buffer) && expr_equal(store->indices[0], load->indices[0])) {
+              auto load_value = Downcast<BufferLoad>(store->value);
+              global_index = load_value->global_indices[0];
+            }
+          }
+        }
         seq.emplace_back(BufferStore(shared_bufs[idx], values[idx],
-                                     {BufIndex(reduce_index, group_index, reduce_extent)}));
+                                     {BufIndex(reduce_index, group_index, reduce_extent)}, 
+                                     Array<PrimExpr>({ global_index })));
       }
-      seq.emplace_back(SyncThread("shared"));
+      seq.emplace_back(SyncThread(sync_scope));
       seq.emplace_back(MakeBufAllreduce(combiner, types, shared_bufs, reduce_index, group_index,
                                         reduce_extent, group_extent, contiguous_reduce_extent));
       for (size_t idx = 0; idx < size; ++idx) {
         ICHECK(!load_remap_.count(buffers[idx]->data.get()));
         PrimExpr pred = const_true(types[idx].lanes());
         BufferLoad load(shared_bufs[idx],
-                        {BufIndex(make_zero(reduce_index.dtype()), group_index, reduce_extent)});
+                        {BufIndex(make_zero(reduce_index.dtype()), group_index, reduce_extent)},
+                        Array<PrimExpr>({ 0 }));
         ICHECK_EQ(load->dtype, types[idx]);
         load_remap_[buffers[idx]->data.get()] = load;
         alloc_remap_[buffers[idx]->data.get()] =
@@ -501,7 +532,8 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       Array<PrimExpr> a, b;
       for (size_t i = 0; i < size; ++i) {
         BufferLoad b_load(shared_bufs[i],
-                          {BufIndex(reduce_index + offset, group_index, reduce_extent)});
+                          {BufIndex(reduce_index + offset, group_index, reduce_extent)},
+                          Array<PrimExpr>({ 0 }));
         ICHECK_EQ(b_load->dtype, types[i]);
         b.push_back(b_load);
 
@@ -515,7 +547,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     auto fstore = [&](const Array<PrimExpr>& ret) {
       std::vector<Stmt> stores(size);
       for (size_t i = 0; i < size; ++i) {
-        stores[i] = BufferStore(shared_bufs[i], ret[i], {buf_index});
+        stores[i] = BufferStore(shared_bufs[i], ret[i], {buf_index}, Array<PrimExpr>({ 0 }));
       }
       return SeqStmt::Flatten(stores);
     };
@@ -523,13 +555,16 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       auto ret = fload(offset);
       return fstore(ret);
     };
+
+    std::string sync_scope = "shared";
+
     // Step one, check for
     if (reduce_align > reduce_extent) {
       // reduction with the boundary condition
       reduce_align = reduce_align >> 1;
       PrimExpr cond = reduce_index < (reduce_extent - reduce_align);
       seq.emplace_back(IfThenElse(cond, freduce(reduce_align)));
-      seq.emplace_back(SyncThread("shared"));
+      seq.emplace_back(SyncThread(sync_scope));
     }
 
     // normal synchronization
@@ -541,7 +576,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       reduce_align = reduce_align >> 1;
       PrimExpr cond = reduce_index < reduce_align;
       seq.emplace_back(IfThenElse(cond, freduce(reduce_align)));
-      seq.emplace_back(SyncThread("shared"));
+      seq.emplace_back(SyncThread(sync_scope));
     }
     // in warp synchronization.
     if (reduce_align > 1) {
@@ -694,6 +729,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   // surrounding scope of thread extent.
   std::vector<const AttrStmtNode*> thread_extents_;
   std::vector<const CommReducerNode*> reduce_combiner_;
+  std::vector<const BufferStoreNode*> buffer_stores_;
   // The load remap
   std::unordered_map<const VarNode*, PrimExpr> load_remap_;
   // Allocate remap
@@ -719,7 +755,7 @@ Pass LowerThreadAllreduce() {
     ThreadAllreduceBuilder thread_all_reduce(target_node);
     auto reduce_body = thread_all_reduce(n->body);
     n->body =
-        UpdatePointerStorageScopeAllReduce(thread_all_reduce.new_storage_scopes_)(reduce_body);
+        UpdatePointerStorageScopeAllReduce(thread_all_reduce.new_storage_scopes_, target_node)(reduce_body);
     return f;
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.LowerThreadAllreduce", {});

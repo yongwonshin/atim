@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 @lru_cache(maxsize=4)      
-def host_array(dim, dtype, intdist=50, index=0):
+def host_array(dim, dtype, intdist=50, index=0, new=False):
     if isinstance(dim, int):
         dim = (dim,)
     dimjoin = "_".join(map(str, dim))
@@ -17,7 +17,7 @@ def host_array(dim, dtype, intdist=50, index=0):
     if not os.path.exists("../data"):
         os.makedirs("../data")
 
-    if os.path.exists(fname) and intdist == 50:
+    if os.path.exists(fname) and intdist == 50 and not new:
         return np.fromfile(fname, dtype=dtype).reshape(dim)
     if dtype[:5] == "float":
         return np.random.rand(*dim).astype(dtype)

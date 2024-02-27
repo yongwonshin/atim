@@ -126,8 +126,12 @@ class BufferAllocationLocator : public StmtExprMutator {
     // create buffers to be allocated at each stmts
     for (const auto& buffer : buffer_alloc_recorder) {
       auto it = buffer_lca.find(buffer);
+      auto scope = GetPtrStorageScope(buffer->data);
       if (it != buffer_lca.end()) {
-        const StmtNode* stmt = (*it).second.get();
+        BlockRealize outermost_block_realize = Downcast<BlockRealize>(func->body);
+        ICHECK(outermost_block_realize.defined());
+        Stmt outermost_block = Downcast<Block>(outermost_block_realize->block);
+        const StmtNode* stmt = (scope == "global" || scope == "") ? outermost_block.get() : (*it).second.get();
         if (arg_buffer_vars.count(buffer->data.get())) {
           continue;
         }

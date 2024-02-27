@@ -491,6 +491,40 @@ BufferStore::BufferStore(Buffer buffer, PrimExpr value, Array<PrimExpr> indices,
   data_ = std::move(node);
 }
 
+BufferStore::BufferStore(Buffer buffer, PrimExpr value, Array<PrimExpr> indices, 
+  Array<PrimExpr> global_indices, Span span) {
+  ICHECK_EQ(buffer->shape.size(), indices.size())
+      << "Buffer " << buffer->name << " is " << buffer->shape.size()
+      << "-dimensional, cannot be indexed with the " << indices.size()
+      << "-dimensional indices provided.";
+
+  for (int i = 0; i < static_cast<int>(indices.size()) - 1; i++) {
+    ICHECK(indices[i].dtype().is_scalar())
+        << "Only the last index of a buffer access may be a vector type.";
+  }
+
+  int index_lanes = indices.size() ? indices.back().dtype().lanes() : 1;
+  int buffer_lanes = buffer->dtype.lanes();
+
+  ICHECK_EQ(index_lanes * buffer_lanes, value.dtype().lanes())
+      << "Cannot store value with " << value.dtype().lanes() << ", expected value with "
+      << index_lanes * buffer_lanes << " (" << index_lanes << " index lanes * " << buffer_lanes
+      << " buffer element lanes)";
+  if (buffer->dtype.with_lanes(buffer_lanes * index_lanes) != value.dtype()) {
+    LOG(FATAL) << "TypeError: dtype mismatch on BufferStore: "      //
+               << "buffer's dtype is `" << buffer->dtype            //
+               << "`, the lanes of indexing are: `" << index_lanes  //
+               << "`, but RHS's dtype is `" << value.dtype() << "`";
+  }
+
+  ObjectPtr<BufferStoreNode> node = make_object<BufferStoreNode>();
+  node->buffer = std::move(buffer);
+  node->value = std::move(value);
+  node->indices = std::move(indices);
+  node->global_indices = std::move(global_indices);
+  node->span = std::move(span);
+  data_ = std::move(node);
+}
 TVM_REGISTER_GLOBAL("tir.BufferStore")
     .set_body_typed([](Buffer buffer, PrimExpr value, Array<PrimExpr> indices, Span span) {
       return BufferStore(buffer, value, indices, span);

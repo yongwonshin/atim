@@ -1,7 +1,7 @@
-from tvm import te as T
 import tvm
+from tvm.script import tir as T
 from base import UPMEMWorkload, cleanup
-from .tensor import host_array
+from tensor import host_array
 
 def gemm_prim_schedule(M, N, L, dtype):
     @tvm.script.ir_module
@@ -53,8 +53,8 @@ class GEMM(UPMEMWorkload):
         super().__init__(profile="gemm", required=required, symbols=["A", "B", "C"], output_symbol="C")
         
     def fetch_data(self):
-        self.host.A = host_array(self.M, self.N, self.dtype)
-        self.host.B = host_array(self.N, self.L, self.dtype)
+        self.host.A = host_array((self.M, self.N), self.dtype)
+        self.host.B = host_array((self.N, self.L), self.dtype)
     
     def host_version(self):
         self.host.C = self.host.A @ self.host.B

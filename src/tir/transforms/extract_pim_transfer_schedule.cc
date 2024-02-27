@@ -47,9 +47,9 @@ namespace tir {
 
 class PimKernelFinder: public StmtExprVisitor {
 public:
-  std::vector<Buffer> h2d_explicit, h2d_implicit, d2h, consumed_before_buffer;
-  bool inside_kernel = false;
-  bool before_kernel = true;
+  std::vector<Buffer> h2d_explicit, h2d_implicit, d2h;
+  std::vector<const VarNode*> consumed_before_buffer, allocated_before_buffer, consumed_after_buffer;
+  bool before_kernel = true, inside_kernel = false, after_kernel = false;
   bool is_single_kernel = false;
   Stmt kernel_body;
   int32_t bank_count = 1;
@@ -70,6 +70,31 @@ public:
     ifs.pop_back();
   }
 
+  void postFilter() {
+    std::vector<int> indices_to_remove;
+    for(auto it = h2d_explicit.begin(); it != h2d_explicit.end(); it++) {
+      if (std::find(consumed_before_buffer.begin(), consumed_before_buffer.end(), (*it)->data.get()) != consumed_before_buffer.end()) {
+        h2d_implicit.push_back(*it);
+        indices_to_remove.push_back(it - h2d_explicit.begin());
+      } 
+    }
+    for (int i : indices_to_remove) {
+      h2d_explicit.erase(h2d_explicit.begin() + i);
+    }
+
+    indices_to_remove.clear();
+    for (auto it = d2h.begin(); it != d2h.end(); it++) {
+      if (std::find(allocated_before_buffer.begin(), allocated_before_buffer.end(), (*it)->data.get()) != allocated_before_buffer.end()) {
+        if (std::find(consumed_after_buffer.begin(), consumed_after_buffer.end(), (*it)->data.get()) == consumed_after_buffer.end()) {
+          indices_to_remove.push_back(it - d2h.begin());
+        }
+      }
+    }
+    for (int i : indices_to_remove) {
+      d2h.erase(d2h.begin() + i);
+    }
+  }
+
   void VisitStmt_(const AttrStmtNode* op) {
     if (op->attr_key == tvm::attr::kTarget) {
       if (inside_kernel == false) {
@@ -80,6 +105,7 @@ public:
       before_kernel = false;
       StmtExprVisitor::VisitStmt_(op);
       inside_kernel = false;
+      after_kernel = true;
     } else if (op->attr_key == tvm::tir::attr::thread_extent) {
       const IterVarNode* iv = op->node.as<IterVarNode>();
       ICHECK(iv);
@@ -94,17 +120,6 @@ public:
         is_single_kernel = true;
       }
       StmtExprVisitor::VisitStmt_(op);
-
-      std::vector<int> indices_to_remove;
-      for(auto it = h2d_explicit.begin(); it != h2d_explicit.end(); it++) {
-        if (std::find(consumed_before_buffer.begin(), consumed_before_buffer.end(), *it) != consumed_before_buffer.end()) {
-          h2d_implicit.push_back(*it);
-          indices_to_remove.push_back(it - h2d_explicit.begin());
-        }
-      }
-      for (int i : indices_to_remove) {
-        h2d_explicit.erase(h2d_explicit.begin() + i);
-      }
     } else {
       StmtExprVisitor::VisitStmt_(op);
     }
@@ -114,32 +129,49 @@ public:
     PrimExpr host_index, in_bank_index;
     Buffer buffer;
     if (before_kernel) {
-      consumed_before_buffer.push_back(op->buffer);
+      consumed_before_buffer.push_back(op->buffer->data.get());
     }
     if (inside_kernel) {
       if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
         std::string lscope = GetPtrStorageScope(load->buffer->data);
         std::string sscope = GetPtrStorageScope(op->buffer->data);
-        ICHECK(sscope == "local" || lscope == "local") << "Either source or destination must be local.";
-        if (sscope == "local" && (lscope == "" || lscope == "global")) { // local <- global: h->d pattern
-          ICHECK(op->global_indices.size() == 1) << "In local->global pattern, BufferStore global_indices should be size 1.";
+        if ((sscope == "local" || sscope == "shared") && (lscope == "" || lscope == "global")) { // local <- global: h->d pattern
+          ICHECK(op->global_indices.size() == 1) << "In global->local pattern, BufferStore global_indices should be size 1."
+            << load->buffer << " -> " << op->buffer << ", " << op->global_indices;
           if (is_single_kernel)
             h2d_explicit.push_back(load->buffer);
           else
             h2d_implicit.push_back(load->buffer);
         }
-        if (lscope == "local" && (sscope == "" || sscope == "global")) { // global <- local: d->h pattern
-          ICHECK(load->global_indices.size() == 1) << "In global->local pattern, BufferLoad global_indices should be size 1.";
+        if ((lscope == "local" || lscope == "shared") && (sscope == "" || sscope == "global")) { // global <- local: d->h pattern
+          ICHECK(load->global_indices.size() == 1) << "In local->global pattern, BufferLoad global_indices should be size 1.";
           d2h.push_back(op->buffer);
         }
       }
+    }
+    if (after_kernel) {
+      consumed_after_buffer.push_back(op->buffer->data.get());
     }
     StmtExprVisitor::VisitStmt_(op);
   }
 
   void VisitExpr_(const BufferLoadNode* op) {
     if (before_kernel)
-      consumed_before_buffer.push_back(op->buffer);
+      consumed_before_buffer.push_back(op->buffer->data.get());
+    if (after_kernel)
+      consumed_after_buffer.push_back(op->buffer->data.get());
+    StmtExprVisitor::VisitExpr_(op);
+  }
+
+  void VisitStmt_(const AllocateNode* op) {
+    if (before_kernel) {
+      consumed_before_buffer.push_back(op->buffer_var.get()); 
+      allocated_before_buffer.push_back(op->buffer_var.get());
+    }
+    if (after_kernel) {
+      consumed_after_buffer.push_back(op->buffer_var.get());
+    }
+    StmtExprVisitor::VisitStmt_(op);
   }
 };
 
@@ -228,8 +260,7 @@ public:
     if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
       std::string lscope = GetPtrStorageScope(load->buffer->data);
       std::string sscope = GetPtrStorageScope(op->buffer->data);
-      ICHECK(sscope == "local" || lscope == "local") << "Either source or destination must be local.";
-      if (sscope == "local" && (lscope == "" || lscope == "global")) { // local <- global: h->d pattern
+      if ((sscope == "local" || sscope == "shared") && (lscope == "" || lscope == "global")) { // local <- global: h->d pattern
          ICHECK(op->global_indices.size() == 1) << "In local->global pattern, BufferStore global_indices should be size 1.";
         if (load->buffer->data.get() == target_buffer_->data.get()) {
           found = true;
@@ -240,7 +271,7 @@ public:
             { buffer->data, host_index, in_bank_index, bank_index, 1 }));
         }
       }
-      if (lscope == "local" && (sscope == "" || sscope == "global")) { // global <- local: d->h pattern
+      if ((lscope == "local" || lscope == "shared") && (sscope == "" || sscope == "global")) { // global <- local: d->h pattern
         ICHECK(load->global_indices.size() == 1) << "In global->local pattern, BufferLoad global_indices should be size 1.";
         if (op->buffer->data.get() == target_buffer_->data.get()) {
           found = true;
@@ -354,7 +385,6 @@ public:
         std::string sscope = GetPtrStorageScope(op->buffer->data);
         PrimExpr target_expr;
         Buffer target_buffer;
-        ICHECK(sscope == "local" || lscope == "local") << "Either source or destination must be local.";
         if (sscope == "local" && (lscope == "" || lscope == "global")) { // local <- global: h->d pattern
           if ((smap.find(load->buffer) != smap.end())) {
             target_expr = op->global_indices[0];
@@ -408,6 +438,7 @@ class KernelReplacer: public StmtExprMutator {
 Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map) {
   PimKernelFinder finder;
   finder(stmt);
+  finder.postFilter();
   Stmt kernel_body = finder.kernel_body;
 
   AllocateFreeExtractor v;
@@ -453,11 +484,17 @@ Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map
   for (auto bf : finder.h2d_explicit) {
     seq.push_back(Evaluate(Call(DataType::Int(32), builtin::pim_free_memory(), { bf->data, -1 })));
   }
-  seq.push_back(Evaluate(Call(DataType::Int(32), builtin::pim_release_resources(), { })));
   Stmt res = SeqStmt(seq);
 
-  res = KernelReplacer(res, SeqStmt(prologue))(stmt);
+  res = KernelReplacer(res, SeqStmt::Flatten(prologue))(stmt);
   res = OptimizePimTransferSchedule(res, target);
+
+  Array<Stmt> wrapped = {
+    res,
+    Evaluate(Call(DataType::Int(32), builtin::pim_release_resources(), { }))
+  };
+
+  res = SeqStmt::Flatten(wrapped);
   return res;
 }
 

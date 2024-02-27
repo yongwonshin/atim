@@ -87,15 +87,26 @@ class UPMEMWorkload():
         m = BindTarget(target)(m)
         m = VerifyMemory()(m)
         m = AnnotateEntryFunc()(m)
+        m = ThreadSync("global")(m)
+        m = ThreadSync("shared")(m)
+        m = ThreadSync("shared.dyn")(m)
+        m = MergeDynamicSharedMemoryAllocations()(m)
+        m = ThreadSync("warp")(m)
+        m = InferFragment()(m)
+        m = LowerThreadAllreduce()(m)
         m = AnnotateDeviceRegions()(m)
         m = ExtractPimTransferSchedule()(m)
         m = SplitHostDevice()(m)
         m = SplitPimTransfer()(m)
+        m = MakePackedAPI()(m)
         print("[TIR with PIM data copy]\n", m, file=file)
 
         self.func = tvm.build(sch.mod, target=target, name="kernel")
         print("\n\n[UPMEM source]\n", file=file)
         print(self.func.imported_modules[0].get_source(), file=file)
+
+        print("\n\n[LLVM Source]\n", file=file)
+        print(self.func.get_source(), file=file)
     
     def post_kernel(self, file):
         print("[Correctness Test]", file=file)
@@ -151,8 +162,10 @@ class UPMEMWorkload():
                 after_kernel_times = []
                 for _ in range(self.repeat):
                     self.kernel()
-                    kernel_times.append(tvm._ffi.get_global_func("device_api.upmem.kernel_time")() / 1e6)
-                    after_kernel_times.append(tvm._ffi.get_global_func("device_api.upmem.after_kernel_time")() / 1e6)
+                    ktime = tvm._ffi.get_global_func("device_api.upmem.kernel_time")() / 1e6
+                    aktime = tvm._ffi.get_global_func("device_api.upmem.after_kernel_time")() / 1e6
+                    kernel_times.append(ktime)
+                    after_kernel_times.append(aktime)
                 kernel_time = np.mean(kernel_times)
                 after_kernel_time = np.mean(after_kernel_times)
                 total_time = kernel_time + after_kernel_time

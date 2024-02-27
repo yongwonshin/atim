@@ -54,7 +54,16 @@ class TaskletNumFinder: public StmtExprVisitor {
   }
 };
 
-CodeGenUpmem::CodeGenUpmem() {}
+CodeGenUpmem::CodeGenUpmem() {
+  decl_stream << "#include <stdint.h>\n"
+            << "#include <stdio.h>\n"
+            << "#include <defs.h>\n"
+            << "#include <mram.h>\n"
+            << "#include <alloc.h>\n"
+            << "#include <barrier.h>\n"
+            << "#include <seqread.h>\n"
+            << "\nBARRIER_INIT(barrier, NR_TASKLETS);\n";
+}
 
 void CodeGenUpmem::AddFunction(const PrimFunc& f) {
   // clear previous generated state.
@@ -102,14 +111,6 @@ void CodeGenUpmem::PreFunctionBody(const PrimFunc& f) {
 }
 
 std::string CodeGenUpmem::Finish() {
-  decl_stream << "#include <stdint.h>\n"
-              << "#include <stdio.h>\n"
-              << "#include <defs.h>\n"
-              << "#include <mram.h>\n"
-              << "#include <alloc.h>\n"
-              << "#include <barrier.h>\n"
-              << "#include <seqread.h>\n"
-              << "\nBARRIER_INIT(barrier, NR_TASKLETS);\n";
   return CodeGenC::Finish();
 }
 
@@ -136,14 +137,20 @@ void CodeGenUpmem::VisitStmt_(const AllocateNode* op) {
 
   auto scope = GetPtrStorageScope(op->buffer_var);
   alloc_storage_scope_[op->buffer_var.get()] = scope;
-  PrintStorageScope(scope, stream);
 
-  PrintType(op->dtype, stream);
-  stream << "* " << vid << " = (";
-  PrintType(op->dtype, stream);
-  stream << "*) mem_alloc(" << constant_size << " * sizeof(";
-  PrintType(op->dtype, stream);
-  stream << "));\n";
+  if (scope == "local") {
+    PrintStorageScope(scope, stream);
+
+    PrintType(op->dtype, stream);
+    stream << "* " << vid << " = (";
+    PrintType(op->dtype, stream);
+    stream << "*) mem_alloc(" << constant_size << " * sizeof(";
+    PrintType(op->dtype, stream);
+    stream << "));\n";
+  } else if (scope == "shared") {
+    PrintType(op->dtype, decl_stream);
+    decl_stream << " " << vid << "[" << constant_size << "];\n";
+  }
 
   RegisterHandleType(op->buffer_var.get(), op->dtype);
   this->PrintStmt(op->body);
@@ -192,11 +199,9 @@ void CodeGenUpmem::VisitExpr_(const BufferLoadNode* op, std::ostream& os) {
   std::string scope = GetPtrStorageScope(op->buffer->data);
 
   PrimExpr index;
-  if (alloc_global_index.defined()) {
-    ICHECK(scope == "" || scope == "global") << "In local<-global pattern, BufferLoad scope should be global.";
+  if (alloc_global_index.defined() && (scope == "global" || scope == "")) {
     index = alloc_global_index;
   } else {
-    ICHECK(scope == "local") << "BufferLoad scope should be local, except in local<-global pattern.";
     index = op->indices[0];
   }
 
@@ -220,8 +225,7 @@ void CodeGenUpmem::VisitStmt_(const BufferStoreNode* op) {
   if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
     std::string lscope = GetPtrStorageScope(load->buffer->data);
     std::string sscope = GetPtrStorageScope(op->buffer->data);
-    ICHECK(sscope == "local" || lscope == "local") << "Either source or destination must be local.";
-    if (sscope == "local" && (lscope == "" || lscope == "global")) { // local <- global
+    if ((sscope == "local" || sscope == "shared") && (lscope == "" || lscope == "global")) { // local <- global
       ICHECK(op->global_indices.size() == 1) << "In local->global pattern, BufferStore global_indices should be size 1.";
       alloc_global_index = op->global_indices[0];
     }
@@ -238,6 +242,16 @@ void CodeGenUpmem::VisitStmt_(const BufferStoreNode* op) {
   std::string ref = this->GetBufferRef(value_dtype, op->buffer.get(), index_expr);
   this->PrintIndent();
   stream << ref << " = " << value << ";\n";
+}
+
+void CodeGenUpmem::PrintStorageSync(const CallNode* op) {
+  const std::string& sync = op->args[0].as<StringImmNode>()->value;
+  if (sync == "shared") {
+    this->PrintIndent();
+    this->stream << "barrier_wait(&barrier);\n";
+  } else {
+    LOG(FATAL) << "Not suppored";
+  }
 }
 
 void CodeGenUpmem::VisitStmt_(const ForNode* op) {
@@ -303,12 +317,18 @@ std::string DPUClangCompile(const std::string& code, int tasklet_num, bool use_d
     LOG(FATAL) << "dpu-upmem-dpurte-clang not found in PATH.";
   }
   std::string output_binary = "temp";
-  std::string flags = "-DNR_TASKLETS=" + std::to_string(tasklet_num) + " -O3 -x c";
+  std::string flags = "-DNR_TASKLETS=" + std::to_string(tasklet_num) + " -O2 -x c";
   std::string command = exec + " " + flags + " -o " + output_binary;
   if (use_dummy) {
     command += " dummy_kernel.c";
-    std::system(command.c_str());
-    return "temp";
+    int result = std::system(command.c_str());
+    if (result == 0) {
+      return "temp";
+    } else if (result == -1) {
+      LOG(FATAL) << "Failed to execute pclose command.";
+    } else {
+      LOG(FATAL) << "Failed to compile code for upmem.";
+    }
   }
   command += " -";
   FILE* pipe = popen(command.c_str(), "w");

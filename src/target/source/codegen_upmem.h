@@ -47,6 +47,7 @@ class CodeGenUpmem final : public CodeGenC {
                             // NOLINT(*)
   void BindThreadIndex(const IterVar& iv) final; // NOLINT(*)
   void PrintStorageScope(const std::string& scope, std::ostream& os) final;
+  void PrintStorageSync(const CallNode* op) final; // NOLINT(*)
   // the address of load/store
 
   // overload visitor
