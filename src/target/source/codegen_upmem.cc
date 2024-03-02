@@ -78,7 +78,7 @@ void CodeGenUpmem::AddFunction(const PrimFunc& f) {
       DataType dtype = DataType(String2DLDataType(Downcast<StringImm>(arr[1])->value));
       int size = Downcast<IntImm>(arr[2])->value;
 
-      this->stream << "__mram_noinit ";
+      this->stream << Downcast<StringImm>(arr[3])->value << " "; // __mram_noinit or __mram
       PrintType(dtype, this->stream);
       this->stream << " " << alias << "[" << size << "];\n";
       var_idmap_[arg.get()] = alias;

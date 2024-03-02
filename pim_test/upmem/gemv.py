@@ -1,9 +1,9 @@
-
-import numpy as np
-from base import UPMEMWorkload, cleanup
-from .tensor import host_array
 import tvm
 from tvm.script import tir as T
+from base import UPMEMWorkload, cleanup
+from tensor import host_array
+import numpy as np
+
 
 def upmem_gemv_factory(M, K, dtype):
     @tvm.script.ir_module

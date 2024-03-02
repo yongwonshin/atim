@@ -124,9 +124,9 @@ class UPMEMWorkload():
 
     def is_passed(self):
         if self.dtype[:5] == "float":
-            return np.abs(np.max(self.dev.output.asnumpy() - self.host.output)) < 0.01
+            return np.max(np.abs(self.dev.output.asnumpy() - self.host.output)) < 0.01
         else:
-            return np.abs(np.max(self.dev.output.asnumpy() - self.host.output)) == 0
+            return np.max(np.abs(self.dev.output.asnumpy() - self.host.output)) == 0
 
     def kernel(self):
         self.func(*self.dev)

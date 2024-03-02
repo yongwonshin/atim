@@ -48,8 +48,10 @@ class VA(UPMEMWorkload):
 if __name__ == "__main__":
     cleanup()
     va = VA()
-    
-    for n_b in [64, 128]:
-        for n_c in [64, 128, 256]:
-            va.test(vaTile, n_b=n_b, n_c=n_c, n_t=min(16, 65536 // n_b // n_c))
-        va.test(vaTile, n_b=n_b, n_c=256, n_t=min(16, 256//n_b))
+    # va.test(vaTile, n_b=64, n_c=256, n_t=4)
+
+    for n_b, n_t, n_c in [
+        (1,16,256), (2,16,256), (4,16,256), (8,16,256), (16,16,256), (32,8,256), 
+        (64,4,256), (128,2,256), (256,1,256), (512,1,128), (1024,1,64), (2048,1,16), 
+        (64,16,64), (64,8,128), (64,4,256), (128,8,64), (128,4,128), (128,2,256)]:
+        va.test(vaTile, n_b=n_b, n_c=n_c, n_t=n_t)
