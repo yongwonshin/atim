@@ -47,7 +47,7 @@ class TermSeparator : public ExprVisitor {
   PrimExpr Assembler() {
     PrimExpr e = 0;
     for (auto t : terms) {
-        e += t.first * t.second;
+      e += t.first * t.second;
     }
     return e;
   }
@@ -598,13 +598,14 @@ class Test : public StmtExprMutator {
 
   Stmt VisitStmt_(const BlockNode* op) final {
     for (auto buffer : op->alloc_buffers) {
-      alloc_loop_level_.Set(match_buffer_map_.at(buffer->name), loop_order_.size());
+      alloc_loop_level_.Set(match_buffer_map_.Get(buffer->name).value_or(buffer->name),
+                            loop_order_.size());
       size_t size = 1;
       for (PrimExpr dim : buffer->shape) {
         int64_t pval = Downcast<IntImm>(dim)->value;
         size *= pval;
       }
-      buffer_size_.Set(match_buffer_map_.at(buffer->name), size);
+      buffer_size_.Set(match_buffer_map_.Get(buffer->name).value_or(buffer->name), size);
     }
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     return stmt;
