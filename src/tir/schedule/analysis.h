@@ -648,6 +648,7 @@ bool IsSpatial(const StmtSRef& block_sref);
  * \return A boolean flag indicating if the block has a trivial binding
  */
 bool IsTrivialBinding(const ScheduleState& self, const StmtSRef& block_sref);
+bool IsTrivialBindingOrTryReorder(const Schedule& sch, const BlockRV& block_rv);
 
 /*!
  * \brief Checks if the given block has data reuse opportunity and thus multi-level tiling is
@@ -656,7 +657,7 @@ bool IsTrivialBinding(const ScheduleState& self, const StmtSRef& block_sref);
  * \param block_sref The block to be checked
  * \return A boolean indicating whether the block has data reuse opportunity
  */
-bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref);
+bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref, bool* try_reorder = nullptr);
 
 /*!
  * \brief Checks if all the blocks in the PrimFunc is spatial

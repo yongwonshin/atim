@@ -244,13 +244,24 @@ ExprRV ConcreteScheduleNode::SampleCategorical(const Array<Integer>& candidates,
 
 Array<ExprRV> ConcreteScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
                                                       int max_innermost_factor,
+                                                      int min_innermost_factor,
                                                       Optional<Array<Integer>> decision) {
   TVM_TIR_SCHEDULE_BEGIN();
   return CreateRV(tir::SamplePerfectTile(&this->rand_state_, this->GetSRef(loop_rv), n,
-                                         max_innermost_factor, &decision));
+                                         max_innermost_factor, min_innermost_factor, &decision));
   TVM_TIR_SCHEDULE_END("sample-perfect-tile", this->error_render_level_);
   throw;
 }
+
+// Array<ExprRV> ConcreteScheduleNode::SamplePerfectTile2(const LoopRV& loop_rv, int n,
+//                                                        int min_innermost_factor,
+//                                                        Optional<Array<Integer>> decision) {
+//   TVM_TIR_SCHEDULE_BEGIN();
+//   return CreateRV(tir::SamplePerfectTile2(&this->rand_state_, this->GetSRef(loop_rv), n,
+//                                           min_innermost_factor, &decision));
+//   TVM_TIR_SCHEDULE_END("sample-perfect-tile", this->error_render_level_);
+//   throw;
+// }
 
 Array<ExprRV> ConcreteScheduleNode::SamplePartitionedTile(const LoopRV& loop_rv, int n,
                                                           int partition_pos, int innerpart_factor,

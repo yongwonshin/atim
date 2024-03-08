@@ -75,6 +75,9 @@ TVM_DLL std::function<int32_t()> MakeMultinomialSampler(
 TVM_DLL std::vector<int64_t> SamplePerfectTile(
     support::LinearCongruentialEngine::TRandState* rand_state,  //
     int32_t extent, int32_t n_splits);
+// TVM_DLL std::vector<int64_t> SamplePerfectTile2(
+//     support::LinearCongruentialEngine::TRandState* rand_state,  //
+//     int32_t extent, int32_t n_splits);
 /*!
  * \brief Sample the factors to perfect tile a specific loop
  * \param rand_state The random state
@@ -85,7 +88,10 @@ TVM_DLL std::vector<int64_t> SamplePerfectTile(
  */
 TVM_DLL std::vector<int64_t> SamplePerfectTile(
     support::LinearCongruentialEngine::TRandState* rand_state,  //
-    int32_t extent, int32_t n_split, int32_t max_innermost_factor);
+    int32_t extent, int32_t n_split, int32_t max_innermost_factor, int32_t min_innermost_factor);
+// TVM_DLL std::vector<int64_t> SamplePerfectTile2(
+//     support::LinearCongruentialEngine::TRandState* rand_state,  //
+//     int32_t extent, int32_t n_split, int32_t min_innermost_factor);
 /*!
  * \brief Sample the factors to perfect tile a specific loop
  * \param rand_state The random state
@@ -98,7 +104,11 @@ TVM_DLL std::vector<int64_t> SamplePerfectTile(
 TVM_DLL std::vector<int64_t> SamplePerfectTile(
     support::LinearCongruentialEngine::TRandState* rand_state,  //
     const tir::StmtSRef& loop_sref, int32_t n_split, int32_t max_innermost_factor,
-    Optional<Array<Integer>>* decision);
+    int32_t min_innermost_factor, Optional<Array<Integer>>* decision);
+// TVM_DLL std::vector<int64_t> SamplePerfectTile2(
+//     support::LinearCongruentialEngine::TRandState* rand_state,  //
+//     const tir::StmtSRef& loop_sref, int32_t n_split, int32_t min_innermost_factor,
+//     Optional<Array<Integer>>* decision);
 /*!
  * \brief Sample the factors to a partitioned tile for a specific loop
  *

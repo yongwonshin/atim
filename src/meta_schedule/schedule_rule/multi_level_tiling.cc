@@ -102,12 +102,36 @@ void MultiLevelTilingNode::InitializeWithTuneContext(const TuneContext& context)
 
 // Entry of the mega rule; Inherited from ScheduleRuleNode
 Array<Schedule> MultiLevelTilingNode::Apply(const Schedule& sch, const BlockRV& block_rv) {
+  // std::cerr << "MultiLevelTilingNode::Apply: "
+  //           << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
+  bool try_reorder = false;
+  if ((filter_fn_ && filter_fn_.value()(sch, sch->GetSRef(block_rv))) ||
+      NeedsMultiLevelTiling(sch->state(), sch->GetSRef(block_rv), &try_reorder)) {
+    sch->Annotate(block_rv, tir::attr::meta_schedule_tiling_structure, structure);
+
+    Array<Schedule> results;
+    for (auto&& state : ApplySubRules({State(sch, block_rv)})) {
+      results.push_back(std::move(state->sch));
+    }
+    return results;
+  }
+  if (try_reorder && IsTrivialBindingOrTryReorder(sch, block_rv)) {
+    // std::cerr << "RECOVER SUCCESSFUL: " << std::endl;
+    // std::cerr << sch->mod() << std::endl;
+  }
   if ((filter_fn_ && filter_fn_.value()(sch, sch->GetSRef(block_rv))) ||
       NeedsMultiLevelTiling(sch->state(), sch->GetSRef(block_rv))) {
     sch->Annotate(block_rv, tir::attr::meta_schedule_tiling_structure, structure);
 
     Array<Schedule> results;
     for (auto&& state : ApplySubRules({State(sch, block_rv)})) {
+      results.push_back(std::move(state->sch));
+    }
+    return results;
+  }
+  {
+    Array<Schedule> results;
+    for (auto&& state : ApplyExtraSubRules({State(sch, block_rv)})) {
       results.push_back(std::move(state->sch));
     }
     return results;
@@ -127,6 +151,10 @@ std::vector<State> MultiLevelTilingNode::ApplySubRules(std::vector<State> states
   states = SubRule(std::move(states), [&](State state) { return AddReadReuse(std::move(state)); });
   states =
       SubRule(std::move(states), [&](State state) { return AddAsyncPipeline(std::move(state)); });
+  return states;
+}
+
+std::vector<State> MultiLevelTilingNode::ApplyExtraSubRules(std::vector<State> states) {
   return states;
 }
 
@@ -180,14 +208,24 @@ std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
 }
 
 std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> MultiLevelTilingNode::SplitLoop(
-    const Schedule& sch, BlockRV block, LoopRV loop, int n_tiles) const {
-  Array<tir::ExprRV> factors = sch->SamplePerfectTile(
-      /*loop=*/loop,
-      /*n=*/n_tiles,
-      /*max_innermost_factor=*/max_innermost_factor);
-  Array<tir::LoopRV> splits = sch->Split(/*loop=*/loop,
-                                         /*factors=*/{factors.begin(), factors.end()});
-  return {factors, splits};
+    const Schedule& sch, BlockRV block, LoopRV loop, int n_tiles,
+    Array<Optional<PrimExpr>> split_factors) const {
+  if (split_factors.empty()) {
+    Array<tir::ExprRV> factors = sch->SamplePerfectTile(
+        /*loop=*/loop,
+        /*n=*/n_tiles,
+        /*max_innermost_factor=*/max_innermost_factor);
+    Array<tir::LoopRV> splits = sch->Split(/*loop=*/loop,
+                                           /*factors=*/{factors.begin(), factors.end()});
+    return {factors, splits};
+  } else {
+    Array<tir::ExprRV> factors = sch->SamplePerfectTile(
+        /*loop=*/loop,
+        /*n=*/n_tiles,
+        /*max_innermost_factor=*/max_innermost_factor);
+    Array<tir::LoopRV> splits = sch->Split(/*loop=*/loop, split_factors);
+    return {factors, splits};  // TODO[ywshin]: we should modify "factors" later
+  }
 }
 
 std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
@@ -203,10 +241,12 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   state->tile_factors.resize(tiles.size());
   std::vector<Array<tir::ExprRV>> tile_factors;
   tile_factors.resize(tiles.size());
+  int s = 0, r = 0;
   for (int i = 0, n = loops.size(); i < n; ++i) {
     LoopRV loop = loops[i];
     const std::vector<int>* idx = nullptr;
 
+    Array<Optional<PrimExpr>> split_factors;
     if (iter_types[i] == IterVarType::kDataPar) {
       idx = &s_indices_;
       if (spatial_loop_product != -1) {
@@ -216,8 +256,16 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
           spatial_loop_product = -1;
         }
       }
+      if (!this->s_split_factors.empty()) {
+        split_factors = this->s_split_factors[s];
+        s++;
+      }
     } else if (iter_types[i] == IterVarType::kCommReduce) {
       idx = &r_indices_;
+      if (!this->r_split_factors.empty()) {
+        split_factors = this->r_split_factors[r];
+        r++;
+      }
     } else {
       continue;
     }
@@ -227,7 +275,7 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
     if (n_tiles == 1) {
       tiles[idx->at(0)].push_back(loop);
     } else {
-      auto [factors, splits] = SplitLoop(sch, block_rv, loop, n_tiles);
+      auto [factors, splits] = SplitLoop(sch, block_rv, loop, n_tiles, split_factors);
 
       // Put every tile to its slot
       for (int j = 0; j < n_tiles; ++j) {
@@ -242,9 +290,25 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   // Step 4. Bind the tiles to threads
   int n_binds = std::min(tile_binds.size(), tiles.size());
   for (int i = 0; i < n_binds; ++i) {
-    LoopRV fused = sch->Fuse(tiles[i]);
-    sch->Bind(fused, tile_binds[i]);
-    tiles[i] = {fused};
+    if (!tile_binds[i].empty()) {
+      LoopRV fused = sch->Fuse(tiles[i]);
+      sch->Bind(fused, tile_binds[i]);
+      tiles[i] = {fused};
+    }
+  }
+  int n_annotations = std::min(annotations.size(), tiles.size());
+  for (int i = 0; i < n_annotations; ++i) {
+    LoopRV fused = tiles[i][0];
+    if (tiles[i].size() > 1) {
+      fused = sch->Fuse(tiles[i]);
+      tiles[i] = {fused};
+    }
+    auto annotation_for_fused = annotations[i];
+    for (auto annotation : annotation_for_fused) {
+      if (!annotation.first.empty()) {
+        sch->Annotate(fused, annotation.first, annotation.second);
+      }
+    }
   }
   state->tiles = Array<Array<LoopRV>>{tiles.begin(), tiles.end()};
   if (this->thread_warp_size_ != -1) {
@@ -270,19 +334,26 @@ std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
   const BlockRV& block_rv = state->block_rv;
   std::vector<State> results;
   results.reserve(config.levels.size());
-  for (int level : config.levels) {
+  for (int i = 0; i < config.levels.size(); i++) {
+    Schedule& sch = state->sch;
+    int level = config.levels[i];
     State new_state = state->Copy();
-    Schedule& sch = new_state->sch;
+    if (!config.sep) {
+      sch = new_state->sch;
+    }
     const LoopRV& loop_rv = state->tiles[level - 1].back();
     // Enumerate all buffers that are read but not written
     std::vector<int> read_buffer_ndims = tir::GetReadBufferNDims(sch->GetSRef(block_rv));
-    for (int i = 0, n_reads = read_buffer_ndims.size(); i < n_reads; ++i) {
-      int buffer_ndim = read_buffer_ndims[i];
+    for (int j = 0, n_reads = read_buffer_ndims.size(); j < n_reads; ++j) {
+      if (config.sep && i != j) {
+        continue;
+      }
+      int buffer_ndim = read_buffer_ndims[j];
       if (buffer_ndim == -1) {
         continue;
       }
       // Do cache_read
-      BlockRV cache_read_block = sch->CacheRead(block_rv, i, config.scope, {block_rv});
+      BlockRV cache_read_block = sch->CacheRead(block_rv, j, config.scope, {block_rv});
       // Insert cache_read block to the proper place
       sch->ComputeAt(cache_read_block, loop_rv, true);
       // Fuse the iterators of the cache_read
@@ -290,9 +361,18 @@ std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
       sch->Fuse(Array<LoopRV>{buffer_loops.end() - buffer_ndim,  //
                               buffer_loops.end()});
       AnnotateCooperativeFetching(&sch, cache_read_block);
-      new_state->read_reuse.emplace(i, cache_read_block);
+      if (!config.sep) {
+        new_state->read_reuse.emplace(j, cache_read_block);
+      } else {
+        state->read_reuse.emplace(j, cache_read_block);
+      }
     }
-    results.push_back(std::move(new_state));
+    if (!config.sep) {
+      results.push_back(std::move(new_state));
+    }
+  }
+  if (config.sep) {
+    results.push_back(std::move(state));
   }
   return results;
 }

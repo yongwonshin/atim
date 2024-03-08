@@ -118,6 +118,8 @@ std::unordered_set<const VarNode*> CollectVarsUsedInBufferDefinition(const Stmt&
         usage(dim);
       }
       usage(buf->elem_offset);
+      usage(buf->in_bank_elem_offset);
+      usage(buf->bank_index);
 
       // Track for use in LetStmtNode mutator
       for (const auto& var : usage.undefined_) {

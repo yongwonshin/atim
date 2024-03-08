@@ -1311,17 +1311,20 @@ struct RFactorTraits : public UnpackedInstTraits<RFactorTraits> {
 
  private:
   static constexpr size_t kNumInputs = 1;
-  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumAttrs = 2;
   static constexpr size_t kNumDecisions = 0;
 
-  static BlockRV UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, Integer factor_axis) {
-    return sch->RFactor(loop_rv, factor_axis->value);
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, Integer factor_axis,
+                                         String mem_scope) {
+    return sch->RFactor(loop_rv, factor_axis->value, mem_scope);
   }
 
-  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Integer factor_axis) {
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Integer factor_axis,
+                                 String mem_scope) {
     PythonAPICall py("rfactor");
     py.Input("loop", loop_rv);
     py.Input("factor_axis", factor_axis->value);
+    py.Input("mem_scope", mem_scope);
     py.SingleOutput(outputs);
     return py.Str();
   }

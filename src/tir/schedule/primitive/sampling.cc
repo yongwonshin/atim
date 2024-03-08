@@ -292,25 +292,125 @@ std::vector<int64_t> SamplePerfectTile(support::LinearCongruentialEngine::TRandS
   return result;
 }
 
+// std::vector<int64_t> SamplePerfectTile2(support::LinearCongruentialEngine::TRandState*
+// rand_state,
+//                                         int32_t extent, int32_t n_splits) {
+//   CHECK_GE(extent, 1) << "ValueError: Cannot tile a loop with 0 or negative extent";
+//   CHECK_GE(n_splits, 1) << "ValueError: Cannot tile a loop to 0 or negative splits";
+//   // Handle special case that we can potentially accelerate
+//   if (n_splits == 1) {
+//     return {extent};
+//   }
+//   if (extent == 1) {
+//     return std::vector<int64_t>(n_splits, 1);
+//   }
+//   // Enumerate each pair (i, j), we define
+//   //    (a, p) = (j, 1)             if i == -1 (in this case j must be a prime number)
+//   //             (primes[i], j)     if i != -1
+//   // Then the factorization is
+//   //    extent = (a_1 ^ p_1) * (a_2 ^ p_2) ... (a_l ^ p_l)
+//   const PrimeTable* prime_tab = PrimeTable::Global();
+//   std::vector<std::pair<int32_t, int32_t>> factorized = prime_tab->Factorize(extent);
+//   if (n_splits == 2) {
+//     // n_splits = 2, this can be taken special care of,
+//     // because general reservoir sampling can be avoided to accelerate the sampling
+//     int32_t result0 = 1;
+//     int32_t result1 = 1;
+//     for (const std::pair<int32_t, int32_t>& ij : factorized) {
+//       // Case 1: (a, p) = (j, 1), where j is a prime number
+//       if (ij.first == -1) {
+//         (SampleInt(rand_state, 0, 2) ? result1 : result0) *= ij.second;
+//         continue;
+//       }
+//       // Case 2: (a = primes[i], p = 1)
+//       int32_t p = ij.second;
+//       const int32_t* pow = prime_tab->pow_tab[ij.first].data() - 1;
+//       int32_t x1 = SampleInt(rand_state, 0, p + 1);
+//       int32_t x2 = p - x1;
+//       if (x1 != 0) {
+//         result0 *= pow[x1];
+//       }
+//       if (x2 != 0) {
+//         result1 *= pow[x2];
+//       }
+//     }
+//     return {result0, result1};
+//   }
+//   // Data range:
+//   //    2 <= extent <= 2^31 - 1
+//   //    3 <= n_splits <= max tiling splits
+//   //    1 <= p <= 31
+//   std::vector<int64_t> result(n_splits, 1);
+//   for (const std::pair<int32_t, int32_t>& ij : factorized) {
+//     // Handle special cases to accelerate sampling
+//     // Case 1: (a, p) = (j, 1), where j is a prime number
+//     if (ij.first == -1) {
+//       result[SampleInt(rand_state, 0, n_splits)] *= ij.second;
+//       continue;
+//     }
+//     // Case 2: (a = primes[i], p = 1)
+//     int32_t p = ij.second;
+//     if (p == 1) {
+//       result[SampleInt(rand_state, 0, n_splits)] *= prime_tab->primes[ij.first];
+//       continue;
+//     }
+//     // The general case. We have to sample uniformly from the solution of:
+//     //    x_1 + x_2 + ... + x_{n_splits} = p
+//     // where x_i >= 0
+//     // Data range:
+//     //    2 <= p <= 31
+//     //    3 <= n_splits <= max tiling splits
+//     std::vector<int32_t> sampled =
+//         SampleWithoutReplacement(rand_state, p + n_splits - 1, n_splits - 1);
+//     std::sort(sampled.begin(), sampled.end());
+//     sampled.push_back(p + n_splits - 1);
+//     const int32_t* pow = prime_tab->pow_tab[ij.first].data() - 1;
+//     for (int32_t i = 0, last = -1; i < n_splits; ++i) {
+//       int32_t x = sampled[i] - last - 1;
+//       last = sampled[i];
+//       if (x != 0) {
+//         result[i] *= pow[x];
+//       }
+//     }
+//   }
+//   return result;
+// }
+
 std::vector<int64_t> SamplePerfectTile(support::LinearCongruentialEngine::TRandState* rand_state,
                                        int32_t extent, int32_t n_splits,
-                                       int32_t max_innermost_factor) {
+                                       int32_t max_innermost_factor, int32_t min_innermost_factor) {
   if (max_innermost_factor == -1) {
     return SamplePerfectTile(rand_state, extent, n_splits);
   }
   CHECK_GE(n_splits, 2) << "ValueError: Cannot tile a loop into " << n_splits << " splits";
   while (true) {
     std::vector<int64_t> result = SamplePerfectTile(rand_state, extent, n_splits);
-    if (result.back() <= max_innermost_factor) {
+    if (result.back() <= max_innermost_factor && result.back() >= min_innermost_factor) {
       return result;
     }
   }
 }
 
+// std::vector<int64_t> SamplePerfectTile2(support::LinearCongruentialEngine::TRandState*
+// rand_state,
+//                                         int32_t extent, int32_t n_splits,
+//                                         int32_t min_innermost_factor) {
+//   if (min_innermost_factor == -1) {
+//     return SamplePerfectTile2(rand_state, extent, n_splits);
+//   }
+//   CHECK_GE(n_splits, 2) << "ValueError: Cannot tile a loop into " << n_splits << " splits";
+//   while (true) {
+//     std::vector<int64_t> result = SamplePerfectTile2(rand_state, extent, n_splits);
+//     if (result.back() >= min_innermost_factor) {
+//       return result;
+//     }
+//   }
+// }
+
 std::vector<int64_t> SamplePerfectTile(
     support::LinearCongruentialEngine::TRandState* rand_state,  //
     const tir::StmtSRef& loop_sref, int32_t n_splits, int32_t max_innermost_factor,
-    Optional<Array<Integer>>* decision) {
+    int32_t min_innermost_factor, Optional<Array<Integer>>* decision) {
   const ForNode* loop = TVM_SREF_TO_FOR(loop_sref);
   const int64_t* extent = GetLoopIntExtent(loop);
   std::vector<int64_t> result;
@@ -337,7 +437,8 @@ std::vector<int64_t> SamplePerfectTile(
     result[0] = len;
   } else {
     // Case 3. Use fresh new sampling result
-    result = SamplePerfectTile(rand_state, *extent, n_splits, max_innermost_factor);
+    result = SamplePerfectTile(rand_state, *extent, n_splits, max_innermost_factor,
+                               min_innermost_factor);
     if (max_innermost_factor != -1) {
       ICHECK_LE(result.back(), max_innermost_factor);
     }
@@ -345,6 +446,45 @@ std::vector<int64_t> SamplePerfectTile(
   *decision = support::AsArray<int64_t, Integer>(result);
   return result;
 }
+
+// std::vector<int64_t> SamplePerfectTile2(
+//     support::LinearCongruentialEngine::TRandState* rand_state,  //
+//     const tir::StmtSRef& loop_sref, int32_t n_splits, int32_t min_innermost_factor,
+//     Optional<Array<Integer>>* decision) {
+//   const ForNode* loop = TVM_SREF_TO_FOR(loop_sref);
+//   const int64_t* extent = GetLoopIntExtent(loop);
+//   std::vector<int64_t> result;
+//   if (extent == nullptr) {
+//     // Case 1. Handle loops with non-constant length
+//     result = std::vector<int64_t>(n_splits, 1);
+//     result[0] = -1;
+//   } else if (decision->defined()) {
+//     // Case 2. Use previous decision
+//     result = support::AsVector<Integer, int64_t>(decision->value());
+//     int n = result.size();
+//     ICHECK_GE(n, 2);
+//     int64_t len = *extent;
+//     for (int i = n - 1; i > 0; --i) {
+//       int64_t& l = result[i];
+//       // A previous decision could become invalid because of the change of outer tiles
+//       // To handle this case properly, we check if the tiling strategy is still perfect.
+//       // If not, we use a trivial default solution (1, 1, ..., 1, L) for rest of the tiles
+//       if (len % l != 0) {
+//         l = len;
+//       }
+//       len /= l;
+//     }
+//     result[0] = len;
+//   } else {
+//     // Case 3. Use fresh new sampling result
+//     result = SamplePerfectTile2(rand_state, *extent, n_splits, min_innermost_factor);
+//     if (min_innermost_factor != -1) {
+//       ICHECK_LE(result.back(), min_innermost_factor);
+//     }
+//   }
+//   *decision = support::AsArray<int64_t, Integer>(result);
+//   return result;
+// }
 
 TVM_DLL std::vector<int64_t> SamplePartitionedTile(
     support::LinearCongruentialEngine::TRandState* rand_state,  //
@@ -503,21 +643,25 @@ struct SamplePerfectTileTraits : public UnpackedInstTraits<SamplePerfectTileTrai
 
  private:
   static constexpr size_t kNumInputs = 1;
-  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumAttrs = 3;
   static constexpr size_t kNumDecisions = 1;
 
   static Array<ExprRV> UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, Integer n,
                                                Integer max_innermost_factor,
+                                               Integer min_innermost_factor,
                                                Optional<Array<Integer>> decision) {
-    return sch->SamplePerfectTile(loop_rv, n->value, max_innermost_factor->value, decision);
+    return sch->SamplePerfectTile(loop_rv, n->value, max_innermost_factor->value,
+                                  min_innermost_factor->value, decision);
   }
 
   static String UnpackedAsPython(Array<String> outputs, String loop_rv, Integer n,
-                                 Integer max_innermost_factor, Optional<Array<Integer>> decision) {
+                                 Integer max_innermost_factor, Integer min_innermost_factor,
+                                 Optional<Array<Integer>> decision) {
     PythonAPICall py("sample_perfect_tile");
     py.Input("loop", loop_rv);
     py.Input("n", n->value);
     py.Input("max_innermost_factor", max_innermost_factor->value);
+    py.Input("min_innermost_factor", min_innermost_factor->value);
     py.Decision(decision);
     py.OutputList(outputs);
     return py.Str();
@@ -526,6 +670,37 @@ struct SamplePerfectTileTraits : public UnpackedInstTraits<SamplePerfectTileTrai
   template <typename>
   friend struct ::tvm::tir::UnpackedInstTraits;
 };
+
+// struct SamplePerfectTile2Traits : public UnpackedInstTraits<SamplePerfectTile2Traits> {
+//   static constexpr const char* kName = "SamplePerfectTile2";
+//   static constexpr bool kIsPure = true;
+
+//  private:
+//   static constexpr size_t kNumInputs = 1;
+//   static constexpr size_t kNumAttrs = 2;
+//   static constexpr size_t kNumDecisions = 1;
+
+//   static Array<ExprRV> UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, Integer n,
+//                                                Integer min_innermost_factor,
+//                                                Optional<Array<Integer>> decision) {
+//     return sch->SamplePerfectTile2(loop_rv, n->value, min_innermost_factor->value, decision);
+//   }
+
+//   static String UnpackedAsPython(Array<String> outputs, String loop_rv, Integer n,
+//                                  Integer min_innermost_factor, Optional<Array<Integer>> decision)
+//                                  {
+//     PythonAPICall py("sample_perfect_tile");
+//     py.Input("loop", loop_rv);
+//     py.Input("n", n->value);
+//     py.Input("min_innermost_factor", min_innermost_factor->value);
+//     py.Decision(decision);
+//     py.OutputList(outputs);
+//     return py.Str();
+//   }
+
+//   template <typename>
+//   friend struct ::tvm::tir::UnpackedInstTraits;
+// };
 
 struct SamplePartitionedTileTraits : public UnpackedInstTraits<SamplePartitionedTileTraits> {
   static constexpr const char* kName = "SamplePartitionedTile";
@@ -591,6 +766,7 @@ struct SampleComputeLocationTraits : public UnpackedInstTraits<SampleComputeLoca
 
 TVM_REGISTER_INST_KIND_TRAITS(SampleCategoricalTraits);
 TVM_REGISTER_INST_KIND_TRAITS(SamplePerfectTileTraits);
+// TVM_REGISTER_INST_KIND_TRAITS(SamplePerfectTile2Traits);
 TVM_REGISTER_INST_KIND_TRAITS(SamplePartitionedTileTraits);
 TVM_REGISTER_INST_KIND_TRAITS(SampleComputeLocationTraits);
 

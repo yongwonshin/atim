@@ -107,7 +107,8 @@ class MatchBufferLower : public StmtExprMutator {
     }
 
     for (auto match_buffer : op->match_buffers) {
-      if (match_buffer->buffer->name == "C_rf_internal") {  // TODO[ywshin]
+      match_buffer_map_.Set(match_buffer->source->buffer->name, match_buffer->buffer->name);
+      if (match_buffer->buffer.scope() == "internal") {
         IntImm buffer_size = Downcast<IntImm>(match_buffer->source->region[0]->extent);
         for (int i = 1; i < match_buffer->source->region.size(); i++) {
           buffer_size *= Downcast<IntImm>(match_buffer->source->region[i]->extent);
@@ -196,7 +197,7 @@ class MatchBufferLower : public StmtExprMutator {
     op = expr.as<BufferLoadNode>();
     ICHECK(op != nullptr);
 
-    if (op->buffer->name == "C_rf_internal") {  // TODO[ywshin]
+    if (op->buffer.scope() == "internal") {
       BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(op));
       BufferLoadNode* op_ = load.CopyOnWrite();
 
@@ -209,8 +210,12 @@ class MatchBufferLower : public StmtExprMutator {
 
       RewriteBufferAccess(op_->buffer->name, flattened, &op_->global_indices,
                           op_->buffer->shape.size(),
-                          std::get<0>(internel_buffer_index_map_[op_->buffer->name]),
-                          std::get<1>(internel_buffer_index_map_[op_->buffer->name]));
+                          internel_buffer_index_map_.count(op_->buffer->name) > 0
+                              ? std::get<0>(internel_buffer_index_map_[op_->buffer->name])
+                              : PrimExpr(),
+                          internel_buffer_index_map_.count(op_->buffer->name) > 0
+                              ? std::get<1>(internel_buffer_index_map_[op_->buffer->name])
+                              : 0);
       return std::move(load);
     }
 
@@ -409,10 +414,10 @@ class MatchBufferLower : public StmtExprMutator {
                            const PrimExpr& match_buffer_index, int64_t buffer_size) const {
     TermSeparator sep;
     sep(index);
-    TermSeparator sep2;
-    sep2(match_buffer_index);
     auto it = internal_buffer_loop_level_.find(buffer_name);
     if (it != internal_buffer_loop_level_.end()) {
+      TermSeparator sep2;
+      sep2(match_buffer_index);
       int loop_level = (*it).second->value;
       int scale = buffer_size;
       for (int i = loop_level - 1; i >= 0; i--) {
@@ -440,6 +445,7 @@ class MatchBufferLower : public StmtExprMutator {
  public:
   Map<Var, String> in_bank_elem_offset_map_;
   Map<Var, String> bank_index_map_;
+  Map<String, String> match_buffer_map_;
 
  private:
   std::map<std::string, std::tuple<PrimExpr, int64_t>> internel_buffer_index_map_;
@@ -457,10 +463,12 @@ class MatchBufferLower : public StmtExprMutator {
 
 class Test : public StmtExprMutator {
  public:
-  explicit Test(Map<Var, String>& in_bank_elem_offset_map, Map<Var, String>& bank_index_map)
+  explicit Test(Map<Var, String>& in_bank_elem_offset_map, Map<Var, String>& bank_index_map,
+                Map<String, String>& match_buffer_map)
       : StmtExprMutator() {
     this->in_bank_elem_offset_map_ = std::move(in_bank_elem_offset_map);
     this->bank_index_map_ = std::move(bank_index_map);
+    this->match_buffer_map_ = std::move(match_buffer_map);
   }
   PrimExpr VisitExpr_(const LetNode* op) final {
     Let l = GetRef<Let>(op);
@@ -495,7 +503,7 @@ class Test : public StmtExprMutator {
     }
     {
       auto it = bank_index_map_.find(op->var);
-      if (it != in_bank_elem_offset_map_.end()) {
+      if (it != bank_index_map_.end()) {
         String buffer_name = (*it).second;
         auto it2 = alloc_loop_level_.find(buffer_name);
         if (it2 != alloc_loop_level_.end()) {
@@ -590,13 +598,13 @@ class Test : public StmtExprMutator {
 
   Stmt VisitStmt_(const BlockNode* op) final {
     for (auto buffer : op->alloc_buffers) {
-      alloc_loop_level_.Set(buffer->name, loop_order_.size());
+      alloc_loop_level_.Set(match_buffer_map_.at(buffer->name), loop_order_.size());
       size_t size = 1;
       for (PrimExpr dim : buffer->shape) {
         int64_t pval = Downcast<IntImm>(dim)->value;
         size *= pval;
       }
-      buffer_size_.Set(buffer->name, size);
+      buffer_size_.Set(match_buffer_map_.at(buffer->name), size);
     }
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     return stmt;
@@ -624,6 +632,7 @@ class Test : public StmtExprMutator {
  private:
   Map<Var, String> in_bank_elem_offset_map_;
   Map<Var, String> bank_index_map_;
+  Map<String, String> match_buffer_map_;
   std::vector<arith::IntSet> loop_range_;
   std::vector<const ForNode*> loop_order_;
   Map<String, Integer> alloc_loop_level_;
@@ -635,7 +644,8 @@ PrimFunc LowerMatchBuffer(PrimFunc func) {
   auto fptr = func.CopyOnWrite();
   auto pass = MatchBufferLower(func);
   fptr->body = pass(std::move(fptr->body));
-  fptr->body = Test(pass.in_bank_elem_offset_map_, pass.bank_index_map_)(std::move(func->body));
+  fptr->body = Test(pass.in_bank_elem_offset_map_, pass.bank_index_map_,
+                    pass.match_buffer_map_)(std::move(fptr->body));
   return func;
 }
 

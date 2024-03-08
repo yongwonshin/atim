@@ -132,6 +132,75 @@ Array<ScheduleRule> ScheduleRule::DefaultX86(const String& type) {
   };
 }
 
+Array<ScheduleRule> ScheduleRule::DefaultHBMPIM() {
+  int N_CHAN = 64;
+  int N_BANK = 16;
+  int N_PU = 8;
+  int N_GRF_A = 8;
+  int N_GRF_B = 8;
+  int N_ELEM_IN_GRF = 16;
+
+  enum BankOrdering : int { DENSE = 1, EVEN = 2, ODD = 3 };
+  Array<Map<String, String>> intrin_groups = {
+      {
+          {"load_a", "hbmpim_weight_intrin"},
+          {"load_b", "hbmpim_input_intrin"},
+          {"compute", "hbmpim_mac_intrin"},
+          {"partial_reduction", "hbmpim_partial_reduction_intrin"},
+      },
+  };
+  return {ScheduleRule::ApplyCustomRule(), ScheduleRule::InlineConstantScalars(),
+          ScheduleRule::AutoInline(
+              /*into_producer=*/false,
+              /*into_consumer=*/true,
+              /*inline_const_tensor=*/true,
+              /*disallow_if_then_else=*/true,
+              /*require_injective=*/true,
+              /*require_ordered=*/true,
+              /*disallow_op=*/Array<String>{"tir.exp"}),
+          ScheduleRule::AddPIMRFactor(
+              /*vector_len=*/16,
+              /*mem_scope=*/"internal"),
+          ScheduleRule::MultiLevelTilingHBMPIM(
+              /*intrin_groups=*/intrin_groups,
+              /*structure=*/"SSSRRS", /*SSSRRSR*/
+              /*tile_binds=*/Array<String>{"blockIdx.x", "", "puIdx.x"},
+              /*max_innermost_factor=*/Integer(8),
+              /*vector_load_lens=*/Array<Integer>{1},
+              /*reuse_read=*/
+              Map<String, ObjectRef>{
+                  {"req", String("must")},
+                  {"levels", Array<Integer>{6, 5}},  //
+                  {"scope", String("local")},
+                  {"sep", Bool(true)},
+                  {"intrin", Array<Array<ObjectRef>>{{String("load_a"), Integer(-1)},
+                                                     {String("load_b"), Integer(-1)}}}},
+              /*reuse_write=*/
+              Map<String, ObjectRef>{
+                  {"req", String("must")},
+                  {"levels", Array<Integer>{3}},  //
+                  {"scope", String("local")},
+                  {"sep", Bool(true)},
+                  {"intrin", Array<Array<ObjectRef>>{{String("partial_reduction"), Integer(-2)}}}},
+              /*reordering=*/Array<Integer>{1, 0, 2, 4, 3, 5},
+              /*s_split_factors=*/
+              Array<Array<Integer>>{{0, N_CHAN, N_PU, N_GRF_B}, {}},
+              /*r_split_factors=*/
+              Array<Array<Integer>>{{0, N_BANK / N_PU}},
+              /*annotations=*/
+              Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
+                                            {{"pim", Bool(true)}, {"change_pim_mode", Bool(true)}},
+                                            {{"bank", Integer(BankOrdering::DENSE)}},
+                                            {{"bank", Integer(BankOrdering::DENSE)}},
+                                            {},
+                                            {{"barrier", Bool(true)}}},
+              /*reduction_tile_binds=*/Array<String>{"blockIdx.x", "", "bankIdx.x", "threadIdx.x"},
+              /*reduction_annotations=*/
+              Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
+                                            {},
+                                            {{"bank", Integer(BankOrdering::ODD)}}})};
+}
+
 Array<ScheduleRule> ScheduleRule::DefaultCUDA() {
   return {
       ScheduleRule::ApplyCustomRule(),

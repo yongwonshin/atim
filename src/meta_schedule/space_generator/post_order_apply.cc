@@ -118,10 +118,16 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
 
     std::vector<ScheduleAndUnvisitedBlocks> stack;
     Array<tir::Schedule> result{sch};
+    Array<tir::BlockRV> org_all_blocks = BlockCollector::Collect(sch, f_block_filter_);
     Array<tir::BlockRV> all_blocks = BlockCollector::Collect(sch, f_block_filter_);
 
     for (ScheduleRule sch_rule : sch_rules.value()) {
       for (const tir::Schedule& sch : result) {
+        if (ScheduleRule::IsMultiLevelTilingHBMPIM(sch_rule)) {
+          all_blocks = BlockCollector::Collect(sch, f_block_filter_);
+        } else {
+          all_blocks = org_all_blocks;
+        }
         stack.emplace_back(sch, all_blocks);
       }
       result.clear();
@@ -135,8 +141,8 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
           continue;
         }
         // otherwise, get the last block that is not visited
-        tir::BlockRV block_rv = blocks.back();
-        blocks.pop_back();
+        tir::BlockRV block_rv = blocks.front();
+        blocks.erase(blocks.begin());
         if (!sch->HasBlock(block_rv)) {
           stack.emplace_back(sch, blocks);
           continue;
@@ -147,6 +153,16 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
             continue;
           }
         }
+        Optional<Integer> rfactor_producer = tir::GetAnn<Integer>(
+            sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_producer_block);
+        Optional<Integer> rfactor_consumer = tir::GetAnn<Integer>(
+            sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_consumer_block);
+        if (ScheduleRule::IsMultiLevelTilingHBMPIM(sch_rule) && !rfactor_producer.defined() &&
+            !rfactor_consumer.defined()) {
+          stack.emplace_back(sch, blocks);
+          continue;
+        }
+
         Array<tir::Schedule> applied = sch_rule->Apply(sch, /*block=*/block_rv);
         for (const tir::Schedule& sch : applied) {
           stack.emplace_back(sch, blocks);

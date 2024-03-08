@@ -42,6 +42,8 @@ Map<String, ExprDoc> BufferAttrs(tir::Buffer buffer, const ObjectPath& buffer_p,
     });
   };
   update_use_count(buffer->elem_offset);
+  update_use_count(buffer->in_bank_elem_offset);
+  update_use_count(buffer->bank_index);
   update_use_count(buffer->data);
   for (const PrimExpr& e : buffer->strides) {
     update_use_count(e);
@@ -145,6 +147,35 @@ Map<String, ExprDoc> BufferAttrs(tir::Buffer buffer, const ObjectPath& buffer_p,
     kwargs.Set("elem_offset",
                d->AsDoc<ExprDoc>(buffer->elem_offset,  //
                                  buffer_p->Attr("elem_offset")));
+  }
+  if (const auto* int_imm = buffer->in_bank_elem_offset.as<IntImmNode>()) {
+    if (int_imm->value != 0) {
+      kwargs.Set("in_bank_elem_offset",
+                 d->AsDoc<ExprDoc>(buffer->in_bank_elem_offset,  //
+                                   buffer_p->Attr("in_bank_elem_offset")));
+    }
+  } else if (is_new_var(buffer->in_bank_elem_offset)) {
+    try_inline_def(buffer->in_bank_elem_offset, buffer_p->Attr("in_bank_elem_offset"), [=]() {
+      return d->AsDoc<ExprDoc>(buffer, buffer_p)->Attr("in_bank_elem_offset");
+    });
+  } else {
+    kwargs.Set("in_bank_elem_offset",
+               d->AsDoc<ExprDoc>(buffer->in_bank_elem_offset,  //
+                                 buffer_p->Attr("in_bank_elem_offset")));
+  }
+  if (const auto* int_imm = buffer->bank_index.as<IntImmNode>()) {
+    if (int_imm->value != 0) {
+      kwargs.Set("bank_index",
+                 d->AsDoc<ExprDoc>(buffer->bank_index,  //
+                                   buffer_p->Attr("bank_index")));
+    }
+  } else if (is_new_var(buffer->bank_index)) {
+    try_inline_def(buffer->bank_index, buffer_p->Attr("bank_index"),
+                   [=]() { return d->AsDoc<ExprDoc>(buffer, buffer_p)->Attr("bank_index"); });
+  } else {
+    kwargs.Set("bank_index",
+               d->AsDoc<ExprDoc>(buffer->bank_index,  //
+                                 buffer_p->Attr("bank_index")));
   }
   // Step 6. Handle `buffer.scope`
   {

@@ -65,11 +65,11 @@ class ThreadReindexer : public StmtExprMutator {
     return StmtExprMutator::VisitStmt_(op);
   }
   PrimExpr VisitExpr_(const BufferLoadNode* _op) {
-    if (_op->buffer->name == "C_rf_internal") {  // TODO[ywshin]
+    if (_op->buffer.scope() == "internal") {
       active2_ = true;
     }
     BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(_op));
-    if (_op->buffer->name == "C_rf_internal") {  // TODO[ywshin]
+    if (_op->buffer.scope() == "internal") {
       active2_ = false;
     }
     return std::move(load);
@@ -373,7 +373,7 @@ void CodeGenHBMPIM::VisitExpr_(const CallNode* op, std::ostream& os) {
 }
 
 void CodeGenHBMPIM::VisitStmt_(const BufferStoreNode* op) {
-  if (op->buffer->name == "C_rf_internal") {  // TODO[ywshin]
+  if (op->buffer.scope() == "internal") {
     LOG(FATAL) << "Internal buffer store is NOT implemented: " << op->buffer << "!";
   }
   CodeGenC::VisitStmt_(op);
@@ -436,7 +436,7 @@ std::string CodeGenHBMPIM::GetBufferRef(DataType t, const BufferNode* buffer, st
 }
 
 void CodeGenHBMPIM::VisitExpr_(const BufferLoadNode* op, std::ostream& os) {
-  if (op->buffer->name == "C_rf_internal") {  // TODO[ywshin]
+  if (op->buffer.scope() == "internal") {
     BankIndexInspector inspector(bank_ordering_map_, bank_extent_map_, thread_vars_);
     PrimExpr bank_index = inspector.Inspect(op->indices[0]);
     PrimExpr offset = op->global_indices[0];

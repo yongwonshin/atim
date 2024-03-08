@@ -1,7 +1,7 @@
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
-# regarding copyright ownershiC_rf_internal.  The ASF licenses this file
+# regarding copyright ownership.  The ASF licenses this file
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
@@ -102,7 +102,7 @@ def get_input_intrin(dtype):
             tx = T.env_thread("threadIdx.x")
             T.launch_thread(tx, 16)
 
-            addr = T.addr_gen(ch, 0, 0, B_local.bank_index() % 2, 0x3FFF, 0x8, tx * 16)
+            addr = T.addr_gen(ch, 0, 0, B_local.bank_index_() % 2, 0x3FFF, 0x8, tx * 16)
             W_CMD_R("int32x4", addr, B.access_ptr("r", offset=tx * 8), ptr="pim_ctr")
             R_CMD(
                 "int32x4",
@@ -152,8 +152,8 @@ def get_input_intrin_mm(dtype, N):
             tx = T.env_thread("threadIdx.x")
             T.launch_thread(tx, 16)
 
-            offset = (tx % 8) * 8 + (tx // 8) * 1024  # TODO[ywshin]
-            addr = T.addr_gen(ch, 0, 0, B_local.bank_index() % 2, 0x3FFF, 0x8, tx * 16)
+            offset = (tx % 8) * 8 + (tx // 8) * 128  # TODO[ywshin]: check for validation
+            addr = T.addr_gen(ch, 0, 0, B_local.bank_index_() % 2, 0x3FFF, 0x8, tx * 16)
             W_CMD_R("int32x4", addr, B.access_ptr("r", offset=offset), ptr="pim_ctr")
             R_CMD(
                 "int32x4",
@@ -197,10 +197,10 @@ def get_weight_intrin(dtype):
                         ch,
                         0,
                         0,
-                        A_local.bank_index() % 2,
+                        A_local.bank_index_() % 2,
                         0,
                         0,
-                        offset=A_local.in_bank_offset_of([tx * 8])[0] * 2,
+                        offset=A_local.in_bank_offset_of_([tx * 8])[0] * 2,
                     )
                     // 2,
                     ignore_elem_offset=True,
@@ -219,7 +219,7 @@ def get_weight_intrin(dtype):
         #         with T.block(""):
         #             v_i = T.axis.remap("S", [i])
         #             A_local[v_i] = A[v_i]
-        #             # A_local.in_bank_offset_of([tx * 16])[0]
+        #             # A_local.in_bank_offset_of_([tx * 16])[0]
 
     return weight_desc, weight_impl
 
@@ -256,10 +256,10 @@ def get_weight_intrin_mm(dtype, N):
                         ch,
                         0,
                         0,
-                        A_local.bank_index() % 2,
+                        A_local.bank_index_() % 2,
                         0,
                         0,
-                        offset=A_local.in_bank_offset_of([(tx // N) * 8])[0] * 2,
+                        offset=A_local.in_bank_offset_of_([(tx // N) * 8])[0] * 2,
                     )
                     // 2,
                     ignore_elem_offset=True,
@@ -280,8 +280,8 @@ def get_mac_intrin(dtype):
             T.writes(C_rf_internal_local[0:16])
             for k, r in T.grid(8, 16):
                 with T.block(""):
-                    # v_k, v_r = T.axis.remap("RS", [k, r])
-                    v_r, v_k = T.axis.remap("SR", [r, k])
+                    v_k, v_r = T.axis.remap("RS", [k, r])
+                    # v_r, v_k = T.axis.remap("SR", [r, k])
                     C_rf_internal_local[v_r] = (
                         C_rf_internal_local[v_r] + A_local[v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
                     )
@@ -302,7 +302,7 @@ def get_mac_intrin(dtype):
         #         T.W_CMD(
         #             C_rf_internal.access_ptr(
         #                 "r",
-        #                 offset=T.addr_gen(ch=ch, bk=1, offset=C_rf_internal.in_bank_offset_of([tx * 16])[0]),
+        #                 offset=T.addr_gen(ch=ch, bk=1, offset=C_rf_internal.in_bank_offset_of_([tx * 16])[0]),
         #             )
         #         )
         #     )
@@ -349,6 +349,36 @@ def get_mac_intrin_mm(dtype, N):
     return mac_desc, mac_impl
 
 
+def get_mv_intrin(dtype):
+    @T.prim_func
+    def mv_desc(a: T.handle, b: T.handle, p: T.handle) -> None:
+        A_local = T.match_buffer(a, (8, 128), dtype=dtype, offset_factor=1, scope="local")
+        B_local = T.match_buffer(b, (128,), dtype=dtype, offset_factor=1, scope="local")
+        C_rf_internal_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
+        with T.block("root"):
+            T.reads(C_rf_internal_local[0:16], A_local[0:8, 0:128], B_local[0:128])
+            T.writes(C_rf_internal_local[0:16])
+            for i, k, r in T.grid(8, 8, 16):
+                with T.block(""):
+                    v_i, v_k, v_r = T.axis.remap("SRS", [i, k, r])
+                    # v_r, v_k = T.axis.remap("SSR", [r, k])
+                    C_rf_internal_local[v_r] = (
+                        C_rf_internal_local[v_r]
+                        + A_local[v_i, v_k * 16 + v_r] * B_local[v_k * 16 + v_r]
+                    )
+
+    @T.prim_func
+    def mv_impl(a: T.handle, b: T.handle, p: T.handle) -> None:
+        A_local = T.match_buffer(a, (8, 128), dtype=dtype, offset_factor=1, scope="local")
+        B_local = T.match_buffer(b, (128,), dtype=dtype, offset_factor=1, scope="local")
+        C_rf_internal_local = T.match_buffer(p, (16,), dtype=dtype, offset_factor=1, scope="local")
+        with T.block("root"):
+            T.reads(C_rf_internal_local[0:16], A_local[0:8, 0:128], B_local[0:128])
+            T.writes(C_rf_internal_local[0:16])
+
+    return mv_desc, mv_impl
+
+
 def get_partial_reduction_intrin(dtype):
     @T.prim_func
     def partial_reduction_desc(a: T.handle, b: T.handle) -> None:
@@ -385,7 +415,7 @@ def get_partial_reduction_intrin(dtype):
                     1,
                     0,
                     0,
-                    offset=(C_rf_internal_local.in_bank_offset_of([0, 0])[0] + tx * 8) * 2,
+                    offset=(C_rf_internal_local.in_bank_offset_of_([0, 0])[0] + tx * 8) * 2,
                 )
                 // 2
             )
@@ -433,7 +463,7 @@ def get_partial_reduction_intrin_mm(dtype, N):
                     1,
                     0,
                     0,
-                    offset=(C_rf_internal_local.in_bank_offset_of([0, 0, 0])[0] + tx * 8) * 2,
+                    offset=(C_rf_internal_local.in_bank_offset_of_([0, 0, 0])[0] + tx * 8) * 2,
                 )
                 // 2
             )
@@ -479,6 +509,12 @@ HBMPIM_MAC_INTRIN_MM = "hbmpim_mac_intrin_mm"
 TensorIntrin.register(
     HBMPIM_MAC_INTRIN_MM,
     *get_mac_intrin_mm("int16", 2),
+)
+
+HBMPIM_MV_INTRIN = "hbmpim_mv_intrin"
+TensorIntrin.register(
+    HBMPIM_MV_INTRIN,
+    *get_mv_intrin("int16"),
 )
 
 HBMPIM_PARTIAL_REDUCTION_INTRIN = "hbmpim_partial_reduction_intrin"

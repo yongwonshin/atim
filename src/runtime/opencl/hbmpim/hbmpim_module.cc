@@ -215,5 +215,17 @@ Module HBMPIMModuleCreate(std::string data, std::string fmt,
   return Module(n);
 }
 
+Module HBMPIMModuleLoadBinary(void* strm) {
+  dmlc::Stream* stream = static_cast<dmlc::Stream*>(strm);
+  std::string data;
+  std::unordered_map<std::string, FunctionInfo> fmap;
+  std::string fmt;
+  stream->Read(&fmt);
+  stream->Read(&fmap);
+  stream->Read(&data);
+  return HBMPIMModuleCreate(data, fmt, fmap, data);
+}
+
+TVM_REGISTER_GLOBAL("runtime.module.loadbinary_hbmpim").set_body_typed(HBMPIMModuleLoadBinary);
 }  // namespace runtime
 }  // namespace tvm

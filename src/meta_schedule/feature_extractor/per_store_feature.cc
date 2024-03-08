@@ -336,6 +336,9 @@ struct LoopNest {
   ForVec threadIdx_y;  // The loops whose ForKind are kThreadBinding to threadIdx.y
   ForVec threadIdx_z;  // The loops whose ForKind are kThreadBinding to threadIdx.z
   ForVec vthread;      // The loops whose ForKind are kThreadBinding to vthread.*
+  // TODO[ywshin]
+  ForVec puIdx;    // The loops whose ForKind are kThreadBinding to puIdx.*
+  ForVec bankIdx;  // The loops whose ForKind are kThreadBinding to bankIdx.*
 
   /*!
    * \brief Push a new loop into the loop nest
@@ -374,6 +377,10 @@ struct LoopNest {
         ref_loops = &threadIdx_z;
       } else if (support::StartsWith(thread_tag, "vthread")) {
         ref_loops = &vthread;
+      } else if (support::StartsWith(thread_tag, "puIdx")) {
+        ref_loops = &puIdx;
+      } else if (support::StartsWith(thread_tag, "bankIdx")) {
+        ref_loops = &bankIdx;
       } else {
         LOG(FATAL) << "ValueError: Unable to recognize thread tag: " << thread_tag;
       }
@@ -1402,7 +1409,8 @@ class PerStoreFeatureNode : public FeatureExtractorNode {
     auto f = [this, is_gpu, &feature_group6, &candidates, &results](int, int task_id) -> void {
       const auto& candidate = candidates[task_id];
       std::vector<std::vector<double>> features;
-      ExtractSingle(DeepCopyIRModule(candidate->sch->mod()), is_gpu, &features);
+      // TODO[ywshin]: IDK why DeepCopyIRModule encloses the module
+      ExtractSingle(candidate->sch->mod(), is_gpu, &features);
       if (extract_workload) {
         for (auto& feature : features) {
           feature_group6->Export(&feature);

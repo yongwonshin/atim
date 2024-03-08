@@ -185,7 +185,7 @@ class Buffer(Object, Scriptable):
         """
         return _ffi_api.BufferOffsetOf(self, indices)  # type: ignore
 
-    def in_bank_offset_of(self, indices):
+    def in_bank_offset_of_(self, indices):
         """Determine the offset of the provided indices in the flattened buffer.
 
         Parameters
@@ -202,7 +202,7 @@ class Buffer(Object, Scriptable):
         """
         return _ffi_api.BufferInBankOffsetOf(self, indices)  # type: ignore
 
-    def bank_index(self):
+    def bank_index_(self):
         return _ffi_api.BufferBankIndex(self)
 
     def __getitem__(self, indices):

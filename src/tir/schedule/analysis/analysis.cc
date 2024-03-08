@@ -1448,24 +1448,81 @@ bool IsTrivialBinding(const ScheduleState& self, const StmtSRef& block_sref) {
   Array<StmtSRef> loops = GetLoops(block_sref);
   Array<PrimExpr> binds = GetBlockRealize(self, block_sref)->iter_values;
   if (loops.size() != binds.size()) {
+    // std::cerr << "NOT IsTrivialBinding 1: " << std::endl;
     return false;
   }
   for (int i = 0, n = loops.size(); i < n; ++i) {
     const ForNode* loop = TVM_SREF_TO_FOR(loops[i]);
     if (binds[i].get() != loop->loop_var.get()) {
+      // std::cerr << "NOT IsTrivialBinding 2: " << std::endl;
       return false;
     }
   }
   return true;
 }
 
-bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref) {
+bool IsTrivialBindingOrTryReorder(const Schedule& sch, const BlockRV& block_rv) {
+  const ScheduleState& self = sch->state();
+  const StmtSRef& block_sref = sch->GetSRef(block_rv);
+
+  TVM_SREF_TO_BLOCK(block_sref);
+  Array<StmtSRef> loops = GetLoops(block_sref);
+  Array<PrimExpr> binds = GetBlockRealize(self, block_sref)->iter_values;
+  if (loops.size() != binds.size()) {
+    return false;
+  }
+
+  bool is_trivial_binding = true;
+  Array<Integer> new_order;
+  size_t n = loops.size();
+  for (int i = 0; i < n; i++) {
+    const ForNode* loop = TVM_SREF_TO_FOR(loops[i]);
+    if (binds[i].get() != loop->loop_var.get()) {
+      is_trivial_binding = false;
+    }
+    for (int j = 0; j < n; j++) {
+      if (binds[j].get() == loop->loop_var.get()) {
+        new_order.push_back(Integer(j));
+      }
+    }
+  }
+
+  if (is_trivial_binding) {
+    return true;
+  }
+
+  if (new_order.size() != n) {
+    return false;
+  }
+
+  sch->ReorderBlockIterVar(block_rv, new_order);
+
+  return true;
+}
+
+bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref,
+                           bool* try_reorder) {
   if (HasBeenMultiLevelTiled(block_sref)) {
+    // std::cerr << "NOT NeedsMultiLevelTiling: 1" << std::endl;
     return false;
   }
   const BlockNode* block = TVM_SREF_TO_BLOCK(block_sref);
   if (block->writes.size() != 1 || block->reads.empty() || IsSpatial(block_sref) ||
-      !IsTrivialBinding(self, block_sref)) {
+      (false || !IsTrivialBinding(self, block_sref))) {
+    // std::cerr << "NOT NeedsMultiLevelTiling: 2" << std::endl;
+    // std::cerr << (int)(block->writes.size() != 1) << std::endl;
+    // std::cerr << (int)(block->reads.empty()) << std::endl;
+    // std::cerr << IsSpatial(block_sref) << std::endl;
+    // std::cerr << !IsTrivialBinding(self, block_sref) << std::endl;
+    if (block->writes.size() == 1 && !block->reads.empty() && !IsSpatial(block_sref) &&
+        !IsTrivialBinding(self, block_sref)) {
+      if (try_reorder != nullptr) {
+        // std::cerr << "try_reorder: true" << std::endl;
+        *try_reorder = true;
+      } else {
+        // std::cerr << "try_reorder: false" << std::endl;
+      }
+    }
     return false;
   }
   const BufferNode* write_buffer = block->writes[0]->buffer.get();
@@ -1492,6 +1549,7 @@ bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref
     const Array<Range>& regions = buffer_region->region;
     // Step 2.1. Duplication of read buffers are not allowed
     if (read_buffers.insert(buffer).second == false) {
+      // std::cerr << "NOT NeedsMultiLevelTiling: 3" << std::endl;
       return false;
     }
     // Step 2.2. Skip the reduction buffer
@@ -1502,6 +1560,7 @@ bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref
     std::unordered_set<const VarNode*> vars;
     for (const Range& range : regions) {
       if (as_const_int(range->extent) == nullptr) {
+        // std::cerr << "NOT NeedsMultiLevelTiling: 4" << std::endl;
         return false;
       }
       for (const Var& var : UndefinedVars(range->min)) {
@@ -1517,6 +1576,10 @@ bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref
     }
     total_unused_block_vars += n_unused_block_vars;
   }
+  // if (total_unused_block_vars < 1) {
+  //   std::cerr << "NOT NeedsMultiLevelTiling: 5: " << (int)(total_unused_block_vars >= 1)
+  //             << std::endl;
+  // }
   return total_unused_block_vars >= 1;
 }
 
@@ -1723,6 +1786,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
       block_loops.push_back(loop);
       block_loop_vars.insert(loop->loop_var.get());
       if (!analyzer.CanProve(loop->min == 0)) {
+        // std::cerr << "NOT GetTensorizeLoopMapping: 1" << std::endl;
         return NullOpt;
       }
     }
@@ -1740,6 +1804,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
   std::unordered_map<int, int> block_index_to_padding;  // padding of each block iter if necessary
 
   if (offset < 0) {
+    // std::cerr << "NOT GetTensorizeLoopMapping: 2" << std::endl;
     return NullOpt;
   }
 
@@ -1779,9 +1844,14 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
         desc_loop = desc_loops[i];
         iter_type_desc = iter_types_desc[i];
         break;
+      } else {
+        // std::cerr << "desc_bind: " << desc_bind << std::endl;
+        // std::cerr << "desc_loops[i]->loop_var: " << desc_loops[i]->loop_var << std::endl;
+        // std::cerr << "residual: " << residual << std::endl;
       }
     }
     if (desc_loop == nullptr || desc_loop->extent.as<IntImmNode>() == nullptr) {
+      // std::cerr << "NOT GetTensorizeLoopMapping: 3" << std::endl;
       return NullOpt;
     }
 
@@ -1798,7 +1868,10 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
       }
     }
 
-    if (!block_bind.defined()) return NullOpt;
+    if (!block_bind.defined()) {
+      // std::cerr << "NOT GetTensorizeLoopMapping: 4" << std::endl;
+      return NullOpt;
+    }
 
     // Step 3.3. Find the corresponding loop of the target block
     for (int i = 0, n = block_loops.size(); i < n; ++i) {
@@ -1822,6 +1895,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
 
       // Check divisibility
       if (!int_block_extent) {
+        // std::cerr << "NOT GetTensorizeLoopMapping: 5" << std::endl;
         return NullOpt;
       }
       int64_t remainder = int_block_extent->value % int_desc_extent->value;
@@ -1831,6 +1905,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
           // divisible if padding is allowed.
           block_index_to_padding[current_block_ind] = int_desc_extent->value;
         } else {
+          // std::cerr << "NOT GetTensorizeLoopMapping: 6" << std::endl;
           return NullOpt;
         }
       }
@@ -1845,6 +1920,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
   }
   if (!block_index_to_padding.empty()) {
     if (!allow_padding) {
+      // std::cerr << "NOT GetTensorizeLoopMapping: 7" << std::endl;
       return NullOpt;
     }
     Array<Integer> paddings;

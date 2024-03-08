@@ -69,18 +69,37 @@ ExprRV TracedScheduleNode::SampleCategorical(const Array<Integer>& candidates,
 
 Array<ExprRV> TracedScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
                                                     int max_innermost_factor,
+                                                    int min_innermost_factor,
                                                     Optional<Array<Integer>> decision) {
-  Array<ExprRV> results = CreateRV(tir::SamplePerfectTile(
-      &this->rand_state_, this->GetSRef(loop_rv), n, max_innermost_factor, &decision));
+  Array<ExprRV> results =
+      CreateRV(tir::SamplePerfectTile(&this->rand_state_, this->GetSRef(loop_rv), n,
+                                      max_innermost_factor, min_innermost_factor, &decision));
 
   static const InstructionKind& kind = InstructionKind::Get("SamplePerfectTile");
-  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,  //
-                                      /*inputs=*/{loop_rv},
-                                      /*attrs=*/{Integer(n), Integer(max_innermost_factor)},
-                                      /*outputs=*/{results.begin(), results.end()}),
-                 /*decision=*/decision);
+  trace_->Append(
+      /*inst=*/Instruction(
+          /*kind=*/kind,  //
+          /*inputs=*/{loop_rv},
+          /*attrs=*/{Integer(n), Integer(max_innermost_factor), Integer(min_innermost_factor)},
+          /*outputs=*/{results.begin(), results.end()}),
+      /*decision=*/decision);
   return results;
 }
+
+// Array<ExprRV> TracedScheduleNode::SamplePerfectTile2(const LoopRV& loop_rv, int n,
+//                                                      int min_innermost_factor,
+//                                                      Optional<Array<Integer>> decision) {
+//   Array<ExprRV> results = CreateRV(tir::SamplePerfectTile2(
+//       &this->rand_state_, this->GetSRef(loop_rv), n, min_innermost_factor, &decision));
+
+//   static const InstructionKind& kind = InstructionKind::Get("SamplePerfectTile2");
+//   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,  //
+//                                       /*inputs=*/{loop_rv},
+//                                       /*attrs=*/{Integer(n), Integer(min_innermost_factor)},
+//                                       /*outputs=*/{results.begin(), results.end()}),
+//                  /*decision=*/decision);
+//   return results;
+// }
 
 Array<ExprRV> TracedScheduleNode::SamplePartitionedTile(const LoopRV& loop_rv, int n,
                                                         int partition_pos, int innerpart_factor,
@@ -522,7 +541,7 @@ BlockRV TracedScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis,
   static const InstructionKind& kind = InstructionKind::Get("RFactor");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{loop_rv},
-                                      /*attrs=*/{Integer(factor_axis)},
+                                      /*attrs=*/{Integer(factor_axis), String(mem_scope)},
                                       /*outputs=*/{result}));
   return result;
 }

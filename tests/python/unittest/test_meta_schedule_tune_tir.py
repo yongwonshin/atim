@@ -46,6 +46,23 @@ def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:
             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
+M = 4096 * 2
+K = 1024 * 2
+
+
+@T.prim_func
+def matvec(a: T.handle, b: T.handle, c: T.handle) -> None:
+    A = T.match_buffer(a, (M, K), dtype="int16")
+    B = T.match_buffer(b, (K,), dtype="int16")
+    C = T.match_buffer(c, (M,), dtype="int16")
+    for i, k in T.grid(M, K):
+        with T.block("update"):
+            vi, vk = T.axis.remap("SR", [i, k])
+            with T.init():
+                C[vi] = 0
+            C[vi] = C[vi] + A[vi, vk] * B[vk]
+
+
 @T.prim_func
 def two_step(a: T.handle, c: T.handle) -> None:
     A = T.match_buffer(a, (1024, 1024), "float32")
@@ -73,6 +90,25 @@ def test_tune_matmul_cpu():
             num_trials_per_iter=16,
         )
         sch = ms.tir_integration.compile_tir(database, matmul, target)
+        if sch is None:
+            print("No valid schedule found!")
+        else:
+            sch.mod.show()
+            sch.trace.show()
+
+
+def test_tune_matmul_hbmpim():
+    with tempfile.TemporaryDirectory() as work_dir:
+        target = Target("hbmpim")
+        database = ms.tir_integration.tune_tir(
+            mod=matvec,
+            target=target,
+            work_dir=work_dir,
+            max_trials_global=1,
+            num_trials_per_iter=1,
+            per_iter_timeout_sec=120,  # NOTE: timeout 에러가 조용하게 발생하는 버그가 있으니 유의해야 한다.
+        )
+        sch = ms.tir_integration.compile_tir(database, matvec, target)
         if sch is None:
             print("No valid schedule found!")
         else:
@@ -179,7 +215,8 @@ def test_tune_block_cpu():
 
 
 if __name__ == """__main__""":
-    test_tune_matmul_cpu()
-    test_tune_matmul_cuda()
-    test_tune_run_module_via_rpc()
-    test_tune_block_cpu()
+    test_tune_matmul_hbmpim()
+    # test_tune_matmul_cpu()
+    # test_tune_matmul_cuda()
+    # test_tune_run_module_via_rpc()
+    # test_tune_block_cpu()

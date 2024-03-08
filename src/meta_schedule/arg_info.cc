@@ -88,11 +88,15 @@ Array<ArgInfo> ArgInfo::FromPrimFunc(const tir::PrimFunc& func) {
   using support::AsVector;
   Array<ArgInfo> result;
   result.reserve(func->params.size());
+  // TODO[ywshin]: memory scope is always global, but should be "internal" for the first argument.
+  bool is_first = true;
   for (const tir::Var& arg : func->params) {
     if (Optional<tir::Buffer> _buffer = func->buffer_map.Get(arg)) {
       tir::Buffer buffer = _buffer.value();
       result.push_back(TensorInfo(/*dtype=*/buffer->dtype,
-                                  /*shape=*/AsVector<PrimExpr, int64_t>(buffer->shape)));
+                                  /*shape=*/AsVector<PrimExpr, int64_t>(buffer->shape),
+                                  /*mem_scope=*/is_first ? "internal" : "global"));
+      is_first = false;
     } else {
       LOG(FATAL) << "ValueError: Unsupported argument type: " << arg;
     }
@@ -111,10 +115,11 @@ Array<ArgInfo> ArgInfo::FromEntryFunc(const IRModule& mod, bool remove_preproc) 
 
 /******** TensorInfo ********/
 
-TensorInfo::TensorInfo(runtime::DataType dtype, runtime::ShapeTuple shape) {
+TensorInfo::TensorInfo(runtime::DataType dtype, runtime::ShapeTuple shape, String mem_scope) {
   ObjectPtr<TensorInfoNode> n = make_object<TensorInfoNode>();
   n->dtype = dtype;
   n->shape = shape;
+  n->mem_scope = mem_scope;
   this->data_ = std::move(n);
 }
 
@@ -122,15 +127,17 @@ ObjectRef TensorInfoNode::AsJSON() const {
   static String tag = "TENSOR";
   String dtype = DLDataType2String(this->dtype);
   Array<Integer> shape = support::AsArray(this->shape);
-  return Array<ObjectRef>{tag, dtype, shape};
+  String mem_scope = this->mem_scope;
+  return Array<ObjectRef>{tag, dtype, shape, mem_scope};
 }
 
 TensorInfo TensorInfo::FromJSON(const ObjectRef& json_obj) {
   DLDataType dtype;
   Array<Integer> shape;
+  String mem_scope;
   try {
     const ArrayNode* json_array = json_obj.as<ArrayNode>();
-    CHECK(json_array && json_array->size() == 3);
+    CHECK(json_array && json_array->size() == 4);
     // Load json[1] => dtype
     {
       String dtype_str = Downcast<String>(json_array->at(1));
@@ -138,6 +145,8 @@ TensorInfo TensorInfo::FromJSON(const ObjectRef& json_obj) {
     }
     // Load json[2] => shape
     shape = AsIntArray(json_array->at(2));
+    // Load json[3] => mem_scope
+    mem_scope = Downcast<String>(json_array->at(3));
   } catch (const std::runtime_error& e) {  // includes tvm::Error and dmlc::Error
     LOG(FATAL) << "ValueError: Unable to parse the JSON object: " << json_obj
                << "\nThe error is: " << e.what();
@@ -145,7 +154,7 @@ TensorInfo TensorInfo::FromJSON(const ObjectRef& json_obj) {
   std::vector<int64_t> s;
   std::transform(shape.begin(), shape.end(), std::back_inserter(s),
                  [](Integer i) { return i.IntValue(); });
-  return TensorInfo(DataType(dtype), ShapeTuple(s.begin(), s.end()));
+  return TensorInfo(DataType(dtype), ShapeTuple(s.begin(), s.end()), mem_scope);
 }
 
 /******** Repr ********/

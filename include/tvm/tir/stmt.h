@@ -238,7 +238,7 @@ class BufferStoreNode : public StmtNode {
     v->Visit("buffer", &buffer);
     v->Visit("value", &value);
     v->Visit("indices", &indices);
-    v->Visit("global_indices", &global_indices);
+    // v->Visit("global_indices", &global_indices);
     v->Visit("span", &span);
   }
 
@@ -1608,6 +1608,12 @@ constexpr const char* meta_schedule_thread_extent_high_inclusive =
 /*! \brief Mark the block whose producer needs to be applied by rule Random-Compute-Location */
 constexpr const char* meta_schedule_random_compute_producer =
     "meta_schedule.random_compute_producer";
+
+constexpr const char* meta_schedule_rfactor_consumer_block =
+    "meta_schedule.meta_schedule_rfactor_consumer_block";
+
+constexpr const char* meta_schedule_rfactor_producer_block =
+    "meta_schedule.meta_schedule_rfactor_producer_block";
 
 /*! \brief Mark auto-parallel setting on the block. */
 constexpr const char* meta_schedule_parallel = "meta_schedule.parallel";

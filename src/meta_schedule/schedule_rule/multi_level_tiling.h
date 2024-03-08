@@ -22,6 +22,7 @@
 #include <tvm/meta_schedule/schedule_rule.h>
 #include <tvm/tir/schedule/schedule.h>
 
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -84,6 +85,8 @@ struct ReuseConfig {
   std::vector<int> levels;
   /*! \brief The storage scope */
   String scope;
+  bool sep;
+  std::vector<std::tuple<String, int>> intrin;
 
   /*! \brief Default constructor: no data reuse */
   ReuseConfig() : req(ReuseType::kNoReuse) {}
@@ -92,8 +95,17 @@ struct ReuseConfig {
   explicit ReuseConfig(const Map<String, ObjectRef>& config)
       : req(Str2ReuseType(Downcast<String>(config.at("req")))),
         levels(support::AsVector<Integer, int>(Downcast<Array<Integer>>(config.at("levels")))),
-        scope(Downcast<String>(config.at("scope"))) {
-    ICHECK_EQ(config.size(), 3);
+        scope(Downcast<String>(config.at("scope"))),
+        sep(Downcast<Bool>(config.count("sep") > 0 ? config.at("sep") : Bool(false))) {
+    ICHECK_GE(config.size(), 3);
+    ICHECK_LE(config.size(), 5);
+    if (config.count("intrin") > 0) {
+      auto intrins = Downcast<Array<Array<ObjectRef>>>(config.at("intrin"));
+      for (auto intrin_tuple : intrins) {
+        intrin.push_back(
+            {Downcast<String>(intrin_tuple[0]), Downcast<Integer>(intrin_tuple[1]).IntValue()});
+      }
+    }
   }
 };
 
@@ -115,6 +127,9 @@ class StateNode : public Object {
   std::unordered_map<int, tir::BlockRV> read_reuse;
   /*! \brief The mapping from buffer index to write cache block. */
   std::unordered_map<int, tir::BlockRV> write_reuse;
+  std::vector<int> reordering;
+  Array<Array<Optional<PrimExpr>>> s_split_factors;
+  Array<Array<Optional<PrimExpr>>> r_split_factors;
 
   /*!
    * \brief Create a copy of the state. The underlying schedule is copied. Schedule rules that
@@ -179,11 +194,11 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
 
  protected:
   virtual std::vector<State> ApplySubRules(std::vector<State> states);
+  virtual std::vector<State> ApplyExtraSubRules(std::vector<State> states);
 
-  virtual std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> SplitLoop(const tir::Schedule& sch,
-                                                                      tir::BlockRV block,
-                                                                      tir::LoopRV loop,
-                                                                      int n_tiles) const;
+  virtual std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> SplitLoop(
+      const tir::Schedule& sch, tir::BlockRV block, tir::LoopRV loop, int n_tiles,
+      Array<Optional<PrimExpr>> split_factors = {}) const;
 
   // Annotate a block to use cooperative fetching
   void AnnotateCooperativeFetching(tir::Schedule* sch, const tir::BlockRV& block) const;
@@ -205,6 +220,13 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
   ReuseConfig reuse_read_;
   /*! \brief Data reuse configuration for writing */
   ReuseConfig reuse_write_;
+  std::vector<int> reordering;
+  Array<Array<Optional<PrimExpr>>> s_split_factors;
+  Array<Array<Optional<PrimExpr>>> r_split_factors;
+  Array<Map<String, ObjectRef>> annotations;
+  Array<String> reduction_tile_binds;
+  Array<Map<String, ObjectRef>> reduction_annotations;
+  std::vector<int> rfactor_reordering;
   /*! \brief The indices of spatial tiles in `structure` */
   std::vector<int> s_indices_;
   /*! \brief The indices of reduction tiles in `structure` */
@@ -223,6 +245,7 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("structure", &structure);
     v->Visit("tile_binds", &tile_binds);
+    v->Visit("annotations", &annotations);
     v->Visit("max_innermost_factor", &max_innermost_factor);
     // `vector_load_lens` is not visited
     // `reuse_read_` is not visited
@@ -238,30 +261,105 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
 };
 
 template <typename NodeType>
-ObjectPtr<NodeType> MultiLevelTilingInitCommon(String structure, Optional<Array<String>> tile_binds,
-                                               Optional<Integer> max_innermost_factor,
-                                               Optional<Array<Integer>> vector_load_lens,
-                                               Optional<Map<String, ObjectRef>> reuse_read,
-                                               Optional<Map<String, ObjectRef>> reuse_write) {
+ObjectPtr<NodeType> MultiLevelTilingInitCommon(
+    String structure, Optional<Array<String>> tile_binds, Optional<Integer> max_innermost_factor,
+    Optional<Array<Integer>> vector_load_lens, Optional<Map<String, ObjectRef>> reuse_read,
+    Optional<Map<String, ObjectRef>> reuse_write, Optional<Array<Integer>> reordering = NullOpt,
+    Optional<Array<Array<Integer>>> s_split_factors = NullOpt,
+    Optional<Array<Array<Integer>>> r_split_factors = NullOpt,
+    Optional<Array<Map<String, ObjectRef>>> annotations = NullOpt,
+    Optional<Array<String>> reduction_tile_binds = NullOpt,
+    Optional<Array<Map<String, ObjectRef>>> reduction_annotations = NullOpt) {
   ObjectPtr<NodeType> n = make_object<NodeType>();
   n->structure = structure;
   n->tile_binds = tile_binds.value_or({});
+  n->annotations = annotations.value_or({});
+  n->reduction_tile_binds = reduction_tile_binds.value_or({});
+  n->reduction_annotations = reduction_annotations.value_or({});
   n->max_innermost_factor = max_innermost_factor.value_or(Integer(-1))->value;
   n->vector_load_lens = vector_load_lens.defined()
                             ? support::AsVector<Integer, int>(vector_load_lens.value())
                             : std::vector<int>();
   n->reuse_read_ = reuse_read.defined() ? ReuseConfig(reuse_read.value()) : ReuseConfig();
   n->reuse_write_ = reuse_write.defined() ? ReuseConfig(reuse_write.value()) : ReuseConfig();
+  if (reordering.defined()) {
+    ICHECK_EQ(structure.size(), reordering.value().size());
+    auto reorder_value = reordering.value();
+    n->reordering.reserve(reorder_value.size());
+    for (int i = 0; i < reorder_value.size(); i++) {
+      n->reordering.push_back(reorder_value[i].IntValue());
+    }
+  }
+  if (s_split_factors.defined()) {
+    for (auto factors : s_split_factors.value()) {
+      Array<Optional<PrimExpr>> split_factors;
+      for (auto factor : factors) {
+        if (factor == 0) {
+          split_factors.push_back(NullOpt);
+        } else {
+          split_factors.push_back(factor);
+        }
+      }
+      n->s_split_factors.push_back(split_factors);
+    }
+  }
+  if (r_split_factors.defined()) {
+    for (auto factors : r_split_factors.value()) {
+      Array<Optional<PrimExpr>> split_factors;
+      for (auto factor : factors) {
+        if (factor == 0) {
+          split_factors.push_back(NullOpt);
+        } else {
+          split_factors.push_back(factor);
+        }
+      }
+      n->r_split_factors.push_back(split_factors);
+    }
+  }
   for (int i = 0, len = structure.size(); i < len; ++i) {
     char c = structure.data()[i];
     if (c == 'S') {
-      n->s_indices_.push_back(i);
+      if (!reordering.defined()) {
+        n->s_indices_.push_back(i);
+      } else {
+        n->s_indices_.push_back(n->reordering[i]);
+      }
     } else if (c == 'R') {
-      n->r_indices_.push_back(i);
+      if (!reordering.defined()) {
+        n->r_indices_.push_back(i);
+      } else {
+        n->r_indices_.push_back(n->reordering[i]);
+      }
     } else {
       LOG(FATAL) << "ValueError: Invalid tiling structure: " << structure;
     }
   }
+  if (reordering.defined()) {
+    int n_s_indices = n->s_indices_.size();
+    n->rfactor_reordering.reserve(n_s_indices);
+    for (int i = 0; i < n_s_indices; i++) {
+      n->rfactor_reordering.push_back(-1);
+    }
+
+    int checked_min = INT32_MIN;
+    int cur_idx = -1;
+    for (int i = 0; i < n_s_indices; i++) {
+      int cur_min = INT32_MAX;
+      for (int j = 0; j < n_s_indices; j++) {
+        int elem = n->s_indices_[j];
+        if (elem <= checked_min) {
+          continue;
+        }
+        if (cur_min > elem) {
+          cur_min = elem;
+          cur_idx = j;
+        }
+      }
+      checked_min = cur_min;
+      n->rfactor_reordering[cur_idx] = i;
+    }
+  }
+
   n->thread_warp_size_ = -1;
   n->max_threads_per_block_ = -1;
   return n;

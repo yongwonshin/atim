@@ -21,66 +21,47 @@
 namespace tvm {
 namespace meta_schedule {
 
-class AddRFactorNode : public ScheduleRuleNode {
+class AddPIMRFactorNode : public ScheduleRuleNode {
  public:
   // Inherited from ScheduleRuleNode
-  void InitializeWithTuneContext(const TuneContext& context) final {
-    ICHECK(context->target.defined());
-    Target target = context->target.value();
-    this->max_parallel_basic_ = GetTargetNumCores(target);
-    if (this->max_jobs_per_core != -1) {
-      this->max_parallel_extent_ = max_parallel_basic_ * max_jobs_per_core;
-    }
-  }
+  void InitializeWithTuneContext(const TuneContext& context) final {}
 
   // Inherited from ScheduleRuleNode
   Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv);
 
   // Inherited from ScheduleRuleNode
   ScheduleRule Clone() const final {
-    ObjectPtr<AddRFactorNode> n = make_object<AddRFactorNode>(*this);
+    ObjectPtr<AddPIMRFactorNode> n = make_object<AddPIMRFactorNode>(*this);
     return ScheduleRule(n);
   }
 
  public:
-  /*!
-   * \brief The maximum number of jobs to be launched per core.
-   * It sets the uplimit of parallelism, i.e. `num_cores * max_jobs_per_core`.
-   * Use -1 to disable parallelism.
-   */
-  int max_jobs_per_core;
-  /*! \brief The maximum size of the innermost factor */
-  int max_innermost_factor;
-  /*! \brief The number of uplimit of parallelism. */
-  int max_parallel_extent_;
-  /*! \brief The number of cores. */
-  int max_parallel_basic_;
+  int vector_len;
+  String mem_scope;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("max_jobs_per_core", &max_jobs_per_core);
-    v->Visit("max_innermost_factor", &max_innermost_factor);
-    // `max_parallel_extent_` is not visited
-    // `max_parallel_basic_` is not visited
+    v->Visit("vector_len", &vector_len);
+    v->Visit("mem_scope", &mem_scope);
   }
 
-  static constexpr const char* _type_key = "meta_schedule.AddRFactor";
-  TVM_DECLARE_FINAL_OBJECT_INFO(AddRFactorNode, ScheduleRuleNode);
+  static constexpr const char* _type_key = "meta_schedule.AddPIMRFactor";
+  TVM_DECLARE_FINAL_OBJECT_INFO(AddPIMRFactorNode, ScheduleRuleNode);
 };
 
-ScheduleRule ScheduleRule::AddRFactor(int max_jobs_per_core,
-                                      Optional<Integer> max_innermost_factor) {
-  ObjectPtr<AddRFactorNode> n = make_object<AddRFactorNode>();
-  n->max_jobs_per_core = max_jobs_per_core;
-  n->max_innermost_factor = max_innermost_factor.value_or(Integer(-1))->value;
-  n->max_parallel_extent_ = -1;
-  n->max_parallel_basic_ = -1;
+ScheduleRule ScheduleRule::AddPIMRFactor(int vector_len, const String& mem_scope) {
+  ObjectPtr<AddPIMRFactorNode> n = make_object<AddPIMRFactorNode>();
+  n->vector_len = vector_len;
+  n->mem_scope = mem_scope;
   return ScheduleRule(n);
 }
 
-Array<tir::Schedule> AddRFactorNode::Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv) {
+Array<tir::Schedule> AddPIMRFactorNode::Apply(const tir::Schedule& sch,
+                                              const tir::BlockRV& block_rv) {
   tir::StmtSRef block_sref = sch->GetSRef(block_rv);
-  if (!NeedsRFactorOrCrossThreadReduction(sch->state(), block_sref, max_parallel_extent_,
-                                          max_parallel_basic_)) {
+  Array<tir::LoopRV> loops = sch->GetLoops(block_rv);
+  if (loops.empty()) {
+    // std::cerr << "NOT RFACTORED: " << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint
+    //           << std::endl;
     return {sch};
   }
 
@@ -95,7 +76,7 @@ Array<tir::Schedule> AddRFactorNode::Apply(const tir::Schedule& sch, const tir::
   ReorderAndFuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
 
   // Split the fused reduction loop.
-  Array<tir::ExprRV> factors = sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor);
+  Array<tir::ExprRV> factors = sch->SamplePerfectTile(fused_reduce_loop, 2, vector_len, vector_len);
   Array<tir::LoopRV> split_loops = sch->Split(fused_reduce_loop, {factors.begin(), factors.end()});
 
   Array<tir::Schedule> res;
@@ -103,18 +84,23 @@ Array<tir::Schedule> AddRFactorNode::Apply(const tir::Schedule& sch, const tir::
     tir::Schedule sch_tmp = sch->Copy();
     sch_tmp->Seed(sch->ForkSeed());
     try {
-      const tir::BlockRV& block_rf = sch_tmp->RFactor(split_loop, num_spatial_loops);
+      const tir::BlockRV& block_rf = sch_tmp->RFactor(split_loop, num_spatial_loops, mem_scope);
       Array<tir::LoopRV> axes = sch_tmp->GetLoops(block_rf);
+      // Array<tir::LoopRV> split_loops_ = sch_tmp->Split(axes[1], {NullOpt, Integer(8)});
+      // sch_tmp->Blockize(split_loops_[1]);
       ICHECK_GT(axes.size(), num_spatial_loops);
 
       // Annotate that the rfactor block, which is now the producer of the original block, needs to
       // be considered by the rule Random-Compute-Location.
       sch_tmp->Annotate(block_rv, tir::attr::meta_schedule_random_compute_producer, Integer(1));
+      sch_tmp->Annotate(block_rf, tir::attr::meta_schedule_rfactor_producer_block, Integer(1));
+      sch_tmp->Annotate(block_rv, tir::attr::meta_schedule_rfactor_consumer_block, Integer(1));
       res.push_back(sch_tmp);
-      // std::cerr << "AFTER RFACTOR: "
+      // std::cerr << "AFTER PIM RFACTOR: "
       //           << sch_tmp->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
-      std::cerr << sch_tmp->mod() << std::endl;
+      // std::cerr << sch_tmp->mod() << std::endl;
     } catch (const tvm::runtime::Error& e) {
+      // std::cerr << "ERROR WHILE RFACTORING" << std::endl;
     }
   }
 
@@ -122,9 +108,13 @@ Array<tir::Schedule> AddRFactorNode::Apply(const tir::Schedule& sch, const tir::
   return res;
 }
 
-TVM_REGISTER_NODE_TYPE(AddRFactorNode);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleRuleAddRFactor")
-    .set_body_typed(ScheduleRule::AddRFactor);
+bool ScheduleRule::IsAddPIMRFactor(const ScheduleRule& rule) {
+  return rule->IsInstance<AddPIMRFactorNode>();
+}
+
+TVM_REGISTER_NODE_TYPE(AddPIMRFactorNode);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleRuleAddPIMRFactor")
+    .set_body_typed(ScheduleRule::AddPIMRFactor);
 
 }  // namespace meta_schedule
 }  // namespace tvm

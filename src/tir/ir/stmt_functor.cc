@@ -139,8 +139,8 @@ void StmtVisitor::VisitStmt_(const BlockNode* op) {
              [this, fvisit_buffer_region](const MatchBufferRegion& match_buffer_region) {
                fvisit_buffer_region(match_buffer_region->source);
                this->VisitExpr(match_buffer_region->buffer->elem_offset);
-               //  if (match_buffer_region->buffer->in_bank_elem_offset.defined())
-               //  this->VisitExpr(match_buffer_region->buffer->in_bank_elem_offset);
+               this->VisitExpr(match_buffer_region->buffer->bank_index);
+               this->VisitExpr(match_buffer_region->buffer->in_bank_elem_offset);
                VisitArray(match_buffer_region->buffer->strides,
                           [this](const PrimExpr& e) { this->VisitExpr(e); });
                VisitArray(match_buffer_region->buffer->shape,
