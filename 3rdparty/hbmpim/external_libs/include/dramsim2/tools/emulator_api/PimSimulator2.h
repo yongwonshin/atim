@@ -52,6 +52,7 @@ class PimSimulator2 {
   void read_result_gemv_tree(uint16_t* output_data, uint64_t addr, size_t output_dim,
                              size_t batch_dim, int num_input_tile);
   size_t get_cycle();
+  void reset_cycle();
 
  private:
   void run();
