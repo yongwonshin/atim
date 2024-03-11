@@ -148,6 +148,37 @@ class PimCrfBinGen {
 };
 
 }  // namespace pim_library
+
+/*! \brief HBMPIM timer node */
+class HBMPIMTimerNode : public TimerNode {
+ public:
+  // Timer start
+  virtual void Start() {
+    // TVMSynchronize(device_.device_type, device_.device_id, nullptr);
+    this->start_ =
+        dynamic_cast<cl::HBMPIMWorkspace*>(cl::HBMPIMWorkspace::Global())->pim_sim_.get_cycle();
+  }
+  // Timer stop
+  virtual void Stop() {
+    // TVMSynchronize(device_.device_type, device_.device_id, nullptr);
+    this->duration_ =
+        dynamic_cast<cl::HBMPIMWorkspace*>(cl::HBMPIMWorkspace::Global())->pim_sim_.get_cycle() -
+        start_;
+  }
+  virtual int64_t SyncAndGetElapsedNanos() { return this->duration_; }
+  // destructor
+  virtual ~HBMPIMTimerNode() {}
+
+  explicit HBMPIMTimerNode(Device dev) : device_(dev) {}
+
+  static constexpr const char* _type_key = "HBMPIMTimerNode";
+  TVM_DECLARE_FINAL_OBJECT_INFO(HBMPIMTimerNode, TimerNode);
+
+ private:
+  int64_t start_, duration_;
+  Device device_;
+};
+
 }  // namespace runtime
 }  // namespace tvm
 #endif  // TVM_RUNTIME_OPENCL_HBMPIM_HBMPIM_COMMON_H_

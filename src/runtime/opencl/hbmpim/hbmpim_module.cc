@@ -85,12 +85,12 @@ class HBMPIMWrappedFunc {
       if (func_name_ == "main_kernel") {
         // XXX: crf bin size affects correcteness, but not simulation time
         ICHECK_EQ(args.type_codes[1], DLDataTypeCode::kDLOpaqueHandle);
-        // void* buffer = (*static_cast<cl::BufferDescriptor**>(void_args[1]))->host_ptr;
-        // arg = w->GetCrfBin(pim_library::PimOpType::OP_GEMV, w->buffer_size_map_[buffer]);
-        arg = w->GetCrfBin(pim_library::PimOpType::OP_GEMV,
-                           pim_library::vega20_pbi.num_grf_A *
-                               pim_library::vega20_pbi.num_elem_per_grf *
-                               pim_library::vega20_pbi.num_grf_B * sizeof(half_float::half));
+        void* buffer = (*static_cast<cl::BufferDescriptor**>(void_args[1]))->host_ptr;
+        arg = w->GetCrfBin(pim_library::PimOpType::OP_GEMV, w->buffer_size_map_[buffer]);
+        // arg = w->GetCrfBin(pim_library::PimOpType::OP_GEMV,
+        //                    pim_library::vega20_pbi.num_grf_A *
+        //                        pim_library::vega20_pbi.num_elem_per_grf *
+        //                        pim_library::vega20_pbi.num_grf_B * sizeof(half_float::half));
         arg = (void*)&(static_cast<cl::BufferDescriptor*>(arg)->buffer);
       }
       OPENCL_CALL(clSetKernelArg(kernel, i, arg_size_[i], arg));

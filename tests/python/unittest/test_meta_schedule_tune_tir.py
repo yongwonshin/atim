@@ -107,6 +107,7 @@ def test_tune_matmul_hbmpim():
             max_trials_global=1,
             num_trials_per_iter=1,
             per_iter_timeout_sec=180,  # NOTE: timeout 에러가 조용하게 발생하는 버그가 있으니 유의해야 한다.
+            min_repeat_ms=0,
         )
         sch = ms.tir_integration.compile_tir(database, matvec, target)
         if sch is None:

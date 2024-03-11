@@ -421,5 +421,11 @@ TVM_REGISTER_GLOBAL("device_api.hbmpim").set_body([](TVMArgs args, TVMRetValue* 
 });
 
 }  // namespace cl
+
+TVM_REGISTER_OBJECT_TYPE(HBMPIMTimerNode);
+TVM_REGISTER_GLOBAL("profiling.timer.hbmpim").set_body_typed([](Device dev) {
+  return Timer(make_object<HBMPIMTimerNode>(dev));
+});
+
 }  // namespace runtime
 }  // namespace tvm

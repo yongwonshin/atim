@@ -54,9 +54,14 @@ class EvaluatorConfig(NamedTuple):
     enable_cpu_cache_flush: bool = False
 
     @staticmethod
-    def _normalized(config: Optional["EvaluatorConfig"]) -> "EvaluatorConfig":
+    def _normalized(
+        config: Optional["EvaluatorConfig"], min_repeat_ms: Optional[int] = None
+    ) -> "EvaluatorConfig":
         if config is None:
-            return EvaluatorConfig()
+            if min_repeat_ms is None:
+                return EvaluatorConfig()
+            else:
+                return EvaluatorConfig(min_repeat_ms=min_repeat_ms)
         config = EvaluatorConfig(
             number=config.number,
             repeat=config.repeat,

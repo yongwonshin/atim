@@ -42,6 +42,7 @@ def tune_tasks(
     task_scheduler: TaskScheduler.TaskSchedulerType = "gradient",
     module_equality: str = "structural",
     per_iter_timeout_sec: Optional[int] = None,
+    min_repeat_ms: Optional[int] = None,
 ) -> Database:
     """Tune a list of tasks. Using a task scheduler.
 
@@ -105,7 +106,9 @@ def tune_tasks(
     if not isinstance(runner, Runner):
         if per_iter_timeout_sec is not None:
             timeout_sec = per_iter_timeout_sec * num_trials_per_iter
-        runner = Runner.create(runner, max_workers=num_cores, timeout_sec=timeout_sec)
+        runner = Runner.create(
+            runner, max_workers=num_cores, timeout_sec=timeout_sec, min_repeat_ms=min_repeat_ms
+        )
     if database == "json":
         database = Database.create(database, work_dir=work_dir, module_equality=module_equality)
     elif not isinstance(database, Database):
