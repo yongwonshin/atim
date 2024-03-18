@@ -62,7 +62,10 @@ CodeGenUpmem::CodeGenUpmem() {
               << "#include <alloc.h>\n"
               << "#include <barrier.h>\n"
               << "#include <seqread.h>\n"
-              << "\nBARRIER_INIT(barrier, NR_TASKLETS);\n";
+              << "\nBARRIER_INIT(barrier, NR_TASKLETS);\n\n"
+              << "__host int32_t blockIdx_x;\n"
+              << "__host int32_t blockIdx_y;\n"
+              << "__host int32_t blockIdx_z;\n\n";
 }
 
 void CodeGenUpmem::AddFunction(const PrimFunc& f) {
@@ -119,8 +122,10 @@ void CodeGenUpmem::BindThreadIndex(const IterVar& iv) {
   std::ostringstream os;
   if (ts.rank == 1) {
     var_idmap_[iv->var.get()] = "tasklet_id";
-  } else {
-    var_idmap_[iv->var.get()] = "0";  // TODO
+  } else if (ts.rank == 0) {
+    if (ts.dim_index == 0) var_idmap_[iv->var.get()] = "blockIdx_x";
+    if (ts.dim_index == 1) var_idmap_[iv->var.get()] = "blockIdx_y";
+    if (ts.dim_index == 2) var_idmap_[iv->var.get()] = "blockIdx_z";
   }
 }
 
@@ -189,63 +194,6 @@ const bool isFlatEqual(const PrimExpr& a, const PrimExpr& b, std::string lvar) {
   return false;
 }
 
-void CodeGenUpmem::VisitExpr_(const BufferLoadNode* op, std::ostream& os) {
-  ICHECK_EQ(op->indices.size(), 1) << "Load from non-flat memory not supported.";
-
-  DataType value_dtype = op->dtype;
-  DataType element_dtype = op->buffer->dtype;
-  ICHECK_EQ(value_dtype.lanes(), element_dtype.lanes()) << "Vectorization not supported.";
-  std::string scope = GetPtrStorageScope(op->buffer->data);
-
-  PrimExpr index;
-  if (alloc_global_index.defined() && (scope == "global" || scope == "")) {
-    index = alloc_global_index;
-  } else {
-    index = op->indices[0];
-  }
-
-  Var buffer_var = op->buffer->data;
-  std::string ref = GetBufferRef(op->dtype, op->buffer.get(), index);
-  HandleVolatileLoads(ref, op, os);
-}
-
-void CodeGenUpmem::VisitStmt_(const BufferStoreNode* op) {
-  ICHECK_EQ(op->indices.size(), 1) << "Store to non-flat memory not supported.";
-
-  DataType value_dtype = op->value.dtype();
-  DataType element_dtype = op->buffer->dtype;
-  ICHECK_EQ(value_dtype.lanes(), element_dtype.lanes()) << "Vectorization not supported.";
-
-  PrimExpr index_expr = op->indices[0];
-
-  // Most store<-load pattern should be intercepted in ForNode visit, using mram_read or mram_write.
-  // TODO: move mram_read/mram_write into LowerIntrinsic
-
-  if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
-    std::string lscope = GetPtrStorageScope(load->buffer->data);
-    std::string sscope = GetPtrStorageScope(op->buffer->data);
-    if ((sscope == "local" || sscope == "shared") &&
-        (lscope == "" || lscope == "global")) {  // local <- global
-      ICHECK(op->global_indices.size() == 1)
-          << "In local->global pattern, BufferStore global_indices should be size 1.";
-      alloc_global_index = op->global_indices[0];
-    }
-    if (lscope == "local" && (sscope == "" || sscope == "global")) {  // global <- local
-      ICHECK(load->global_indices.size() == 1)
-          << "In global->local pattern, BufferLoad global_indices should be size 1.";
-      index_expr = load->global_indices[0];
-    }
-  }
-  std::string value = PrintExpr(op->value);
-  alloc_global_index = PrimExpr();
-
-  Var buffer_var = op->buffer->data;
-  // stream << "// " << value_dtype;
-  std::string ref = this->GetBufferRef(value_dtype, op->buffer.get(), index_expr);
-  this->PrintIndent();
-  stream << ref << " = " << value << ";\n";
-}
-
 void CodeGenUpmem::PrintStorageSync(const CallNode* op) {
   const std::string& sync = op->args[0].as<StringImmNode>()->value;
   if (sync == "shared") {
@@ -256,61 +204,26 @@ void CodeGenUpmem::PrintStorageSync(const CallNode* op) {
   }
 }
 
-void CodeGenUpmem::VisitStmt_(const ForNode* op) {
-  PrintIndent();
-  std::string lvar = op->loop_var->name_hint;
-  ICHECK(is_zero(op->min));
-
-  if (const BufferStoreNode* store = op->body.as<BufferStoreNode>()) {
-    if (const BufferLoadNode* load = store->value.as<BufferLoadNode>()) {
-      if (isFlatEqual(store->indices[0], load->indices[0], lvar)) {
-        // mram_ pattern
-        std::string lscope = GetPtrStorageScope(load->buffer->data);
-        std::string sscope = GetPtrStorageScope(store->buffer->data);
-        std::string sid = GetVarID(store->buffer->data.get());
-        std::string lid = GetVarID(load->buffer->data.get());
-
-        std::stringstream size_stream;
-        size_stream << op->extent << " * "
-                    << "sizeof(";
-        PrintType(load->buffer->dtype, size_stream);
-        size_stream << ")";
-        std::string size = size_stream.str();
-
-        if (sscope == "local" && (lscope == "" || lscope == "global")) {
-          ICHECK(store->global_indices.size() == 1)
-              << "In local->global pattern, BufferStore global_indices should be size 1.";
-          std::string l_ptr = lid + " + " + PrintExpr(GetIndexStrided(store->global_indices[0]));
-          std::string s_ptr = sid + " + " + PrintExpr(GetIndexStrided(store->indices[0]));
-          stream << "mram_read((__mram_ptr void*)(" << l_ptr << "), " << s_ptr << ", " << size
-                 << ");\n";
-          return;
-        } else if ((sscope == "" || sscope == "global") && lscope == "local") {
-          std::string l_ptr = lid + " + " + PrintExpr(GetIndexStrided(load->indices[0]));
-          std::string s_ptr = sid + " + " + PrintExpr(GetIndexStrided(load->global_indices[0]));
-          ICHECK(load->global_indices.size() == 1)
-              << "In global->local pattern, BufferLoad global_indices should be size 1.";
-          stream << "mram_write(" << l_ptr << ", (__mram_ptr void*)(" << s_ptr << "), " << size
-                 << ");\n";
-          return;
-        }
-      }
-    }
+void CodeGenUpmem::VisitExpr_(const CallNode* op, std::ostream& os) {
+  if (op->op.same_as(builtin::dpu_mram_read())) {
+    ICHECK(is_const_int(op->args[4])) << "mram transfer size must be constant";
+    int size = Downcast<IntImm>(op->args[4])->value;
+    std::string func_name = (size % 8 == 0) ? "mram_read" : "mram_read_unaligned";
+    this->PrintIndent();
+    stream << func_name << "((__mram_ptr void*)(" << PrintExpr(op->args[0]) << " + "
+           << PrintExpr(op->args[1]) << "), " << PrintExpr(op->args[2]) << " + "
+           << PrintExpr(op->args[3]) << ", " << PrintExpr(op->args[4]) << ");\n";
+  } else if (op->op.same_as(builtin::dpu_mram_write())) {
+    ICHECK(is_const_int(op->args[4])) << "mram transfer size must be constant";
+    int size = Downcast<IntImm>(op->args[4])->value;
+    std::string func_name = (size % 8 == 0) ? "mram_write" : "mram_write_unaligned";
+    this->PrintIndent();
+    stream << func_name << "(" << PrintExpr(op->args[0]) << " + " << PrintExpr(op->args[1])
+           << ", (__mram_ptr void*)(" << PrintExpr(op->args[2]) << " + " << PrintExpr(op->args[3])
+           << "), " << PrintExpr(op->args[4]) << ");\n";
+  } else {
+    CodeGenC::VisitExpr_(op, os);
   }
-
-  std::string extent = PrintExpr(op->extent);
-  std::string vid = AllocVarID(op->loop_var.get());
-  stream << "for (";
-  PrintType(op->loop_var.dtype(), stream);
-  stream << ' ' << vid << " = 0; " << vid << " < " << extent << "; ++" << vid << ") {\n";
-  int for_scope = BeginScope();
-  for_tags.push(vid);
-  PrintStmt(op->body);
-  // check if body is mram_read or mram_write
-  for_tags.pop();
-  this->EndScope(for_scope);
-  PrintIndent();
-  stream << "}\n";
 }
 
 void CodeGenUpmem::PrintStorageScope(const std::string& scope, std::ostream& os) {}
@@ -326,6 +239,7 @@ std::string DPUClangCompile(const std::string& code, int tasklet_num,
   std::string flags = "-DNR_TASKLETS=" + std::to_string(tasklet_num) + " -O2 -x c";
   std::string command = exec + " " + flags + " -o " + output_binary;
   if (use_dummy) {
+    return "temp";
     command += " dummy_kernel.c";
     int result = std::system(command.c_str());
     if (result == 0) {

@@ -75,7 +75,7 @@ class UPMEMDeviceAPI final : public DeviceAPI {
 
   void FreeDataSpace(Device dev, void* ptr);
 
-  int AcquireResources(int32_t bank_num);
+  int AcquireResources(TVMArgs banks);
 
   int ReleaseResources();
 
@@ -92,9 +92,11 @@ class UPMEMDeviceAPI final : public DeviceAPI {
 
   int Broadcast(void* handle, uint64_t host_addr, int size);
 
-  int PrepareXfer(void* handle, uint64_t host_addr, int bank_index);
+  int InitXfer(void* handle, uint64_t in_bank_addr, uint64_t size, int direction);
 
-  int PushXfer(void* handle, uint64_t in_bank_addr, int size, int direction);
+  int BindXfer(int bank_index, uint64_t host_addr, uint64_t size);
+
+  int PushXfer();
 
  protected:
   void CopyDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset, size_t size,
@@ -114,6 +116,19 @@ class UPMEMDeviceAPI final : public DeviceAPI {
 
   std::unordered_map<int, dpu_set_t> dpu_entry;
   std::unordered_map<void*, DpuVarInfo> dpu_addr_ptr;
+
+  void* xfer_handle = nullptr;
+  uint64_t xfer_offset = 0;
+  _dpu_xfer_t xfer_direction = DPU_XFER_TO_DPU;
+  uint64_t xfer_bulk_size = 0;
+
+  struct TemporaryMapInfo {
+    void* temp_ptr;
+    void* dest_ptr;
+    uint64_t size;
+  };
+
+  std::unordered_map<int, TemporaryMapInfo> d2h_temp;
 
   std::chrono::high_resolution_clock::time_point acquire_start;
   std::chrono::high_resolution_clock::time_point kernel_start;

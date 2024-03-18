@@ -367,6 +367,12 @@ TVM_DLL Pass LowerIntrin();
 TVM_DLL Pass LowerWarpMemory();
 
 /*!
+ * \brief Lower MRAM-WRAM transfer for UPMEM kernel code.
+ * \return The pass.
+*/
+TVM_DLL Pass LowerUpmemDeviceMemoryTransfer();
+
+/*!
  * \brief Lower attached storage access information on device.
  *
  * \note Run this pass after all storage access analysis finish.

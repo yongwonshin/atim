@@ -99,6 +99,9 @@ class UPMEMWorkload():
         m = SplitHostDevice()(m)
         m = SplitPimTransfer()(m)
         m = MakePackedAPI()(m)
+        m = FP8StorageLegalize()(m)
+        m = BF16StorageLegalize()(m)
+        m = LowerDeviceKernelLaunch()(m)
         print("[TIR with PIM data copy]\n", m, file=file)
 
         self.func = tvm.build(sch.mod, target=target, name="kernel")
@@ -110,9 +113,13 @@ class UPMEMWorkload():
     
     def post_kernel(self, file):
         print("[Correctness Test]", file=file)
-        print("Host: ", self.host.output.flatten()[:10], file=file)
-        print("Device: ", self.dev.output.asnumpy().flatten()[:10], file=file)
+        print("Host: ", self.host.output.flatten()[-32:], file=file)
+        print("Device: ", self.dev.output.asnumpy().flatten()[-32:], file=file)
         print("Maximum Difference: ", np.max(np.abs(self.dev.output.asnumpy() - self.host.output)), file=file)
+
+        different_indices = np.where(self.host.output.flatten() != self.dev.output.asnumpy().flatten())[0]  # 값이 다른 인덱스 찾기
+        for idx in different_indices:
+            print(f"Index: {idx}, Host: {self.host.output.flatten()[idx]}, Device: {self.dev.output.asnumpy().flatten()[idx]}", file=file)
     
     @abstractmethod
     def fetch_data(self):

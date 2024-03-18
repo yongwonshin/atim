@@ -35,6 +35,7 @@
 
 #include "../../arith/interval_set.h"
 #include "../../runtime/thread_storage_scope.h"
+#include "../analysis/var_use_def_analysis.h"
 #include "ir_utils.h"
 #include "pim_transfer_schedule.h"
 #include "remove_no_op.h"
@@ -63,6 +64,52 @@ class AllocateFreeOnce : public StmtExprMutator {
   }
 };
 
+class EliminateBranch : public StmtExprMutator {
+ public:
+  Map<Var, Range> dom_map;
+  Array<Var> loop_vars;
+  bool inside_copy_loop = false;
+
+  Stmt VisitStmt_(const ForNode* op) final {
+    dom_map.Set(op->loop_var, Range::FromMinExtent(0, op->extent));
+    loop_vars.push_back(op->loop_var);
+    bool prev_inside_copy_loop = inside_copy_loop;
+    inside_copy_loop |= (op->annotations.find("bank") != op->annotations.end());
+
+    Stmt stmt = StmtExprMutator::VisitStmt_(op);
+    dom_map.erase(op->loop_var);
+
+    if (const IfThenElseNode* branch = op->body.as<IfThenElseNode>()) {
+      if (inside_copy_loop) {
+        VarUseDefAnalyzer use_def({}, false);
+        use_def(branch->condition);
+
+        auto constraint = arith::SolveLinearInequalities(
+            arith::IntConstraints({op->loop_var}, dom_map, {branch->condition}));
+        auto bounds = constraint.first.at(op->loop_var);
+
+        auto extent = op->extent;
+        if (bounds->upper.size() >= 1) {
+          auto boundary_value = bounds->upper[0] + 1;
+          for (size_t i = 1; i < bounds->upper.size(); i++) {
+            boundary_value = Min(extent, bounds->upper[i] + 1);
+          }
+
+          extent = Max(0, Min(extent, boundary_value));
+          arith::Analyzer ana;
+          extent = ana.Simplify(extent);
+        }
+
+        stmt = For(op->loop_var, op->min, extent, op->kind, branch->then_case, NullOpt,
+                   {{"bulk", op->extent}});
+      }
+    }
+    inside_copy_loop = prev_inside_copy_loop;
+    loop_vars.pop_back();
+    return stmt;
+  }
+};
+
 class BulkPimCopy : public StmtExprMutator {
  public:
   class FindBulkConstant : public StmtExprVisitor {
@@ -71,6 +118,7 @@ class BulkPimCopy : public StmtExprMutator {
     IntImm factor;
     bool found = false, is_single_target = false;
     bool mulnode_traversing = false, mulnode_found_var = false, mulnode_found_imm = false;
+
     FindBulkConstant(Var target_var, IntImm factor) : target_var(target_var), factor(factor) {
       if (!factor.defined() || is_one(factor)) {
         is_single_target = true;
@@ -123,15 +171,42 @@ class BulkPimCopy : public StmtExprMutator {
       if (const CallNode* call = eval->value.as<CallNode>()) {
         if (call->op.same_as(builtin::pim_transfer_device_to_host()) ||
             call->op.same_as(builtin::pim_transfer_host_to_device())) {
-          ICHECK(call->args.size() == 5);
-          ICHECK(is_const_number(call->args[4]));
-          IntImm size = Downcast<IntImm>(call->args[4]);
+          ICHECK(call->args.size() == 6);
+          PrimExpr clamp_value;
+          if (const MaxNode* max_ = call->args[4].as<MaxNode>()) {
+            if (const MinNode* min_ = max_->b.as<MinNode>()) {
+              if (is_zero(max_->a)) clamp_value = min_->b;
+            }
+          }
+          if (!is_const_number(call->args[4]) && !clamp_value.defined()) {
+            return StmtExprMutator::VisitStmt_(op);
+          }
+          IntImm size = Downcast<IntImm>(call->args[5]);
           PrimExpr host = GetBulkOffset(call->args[1], op->loop_var, size);
           PrimExpr pim = GetBulkOffset(call->args[2], op->loop_var, size);
           if (host.defined() && pim.defined()) {
-            PrimExpr new_extent = arith::Analyzer().Simplify(op->extent * size);
+            PrimExpr bulk_size, new_extent;
+            if (is_const_int(op->extent)) {
+              bulk_size = arith::Analyzer().Simplify(op->extent * size);
+              new_extent = bulk_size;
+            } else {
+              ICHECK(!clamp_value.defined());
+              ICHECK(is_one(size));
+              ICHECK(op->annotations.find("bulk") != op->annotations.end());
+              bulk_size = Downcast<IntImm>(op->annotations["bulk"]);
+              new_extent = op->extent;
+            }
+            if (clamp_value.defined()) {
+              clamp_value = arith::Analyzer().Simplify(clamp_value + op->loop_var * size);
+              VarUseDefAnalyzer use_def({}, false);
+              use_def(clamp_value);
+              if (use_def.use_count_.count(op->loop_var.get()) > 0) {
+                return StmtExprMutator::VisitStmt_(op);
+              }
+              new_extent = Max(0, Min(bulk_size, clamp_value));
+            }
             return Evaluate(Call(DataType::Int(32), call->op,
-                                 {call->args[0], host, pim, call->args[3], new_extent}));
+                                 {call->args[0], host, pim, call->args[3], new_extent, bulk_size}));
           }
         }
       }
@@ -159,22 +234,23 @@ class UpmemParallelTransfer : public StmtExprMutator {
     if (const CallNode* call = op->value.as<CallNode>()) {
       if (call->op.same_as(builtin::pim_transfer_device_to_host()) ||
           call->op.same_as(builtin::pim_transfer_host_to_device())) {
-        // bank var should not be in the in-bank-address
         PrimExpr direction = call->op.same_as(builtin::pim_transfer_device_to_host())
                                  ? make_const(DataType::Int(32), 0)
                                  : make_const(DataType::Int(32), 1);
+        Stmt initialize_transfer =
+            Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer_init(),
+                          {call->args[0], call->args[2], call->args[5], direction}));
         Stmt nested_func_call =
-            Evaluate(Call(DataType::Int(32), builtin::dpu_prepare_parallel_transfer(),
-                          {call->args[0], call->args[1], call->args[3]}));
+            Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer_bind(),
+                          {call->args[3], call->args[1], call->args[4]}));
         for (auto it = loop_stack.rbegin(); it != loop_stack.rend(); ++it) {
           const ForNode* loop = *it;
           nested_func_call =
               For(loop->loop_var, 0, loop->extent, ForKind::kSerial, nested_func_call, NullOpt);
         }
         Stmt commit_transfer =
-            Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer(),
-                          {call->args[0], call->args[2], call->args[4], direction}));
-        return SeqStmt({nested_func_call, commit_transfer});
+            Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer_commit(), {}));
+        return SeqStmt({initialize_transfer, nested_func_call, commit_transfer});
       }
     }
     return StmtExprMutator::VisitStmt_(op);
@@ -183,6 +259,7 @@ class UpmemParallelTransfer : public StmtExprMutator {
 
 Stmt OptimizePimTransferSchedule(Stmt stmt, Target target) {
   Stmt res = AllocateFreeOnce()(std::move(stmt));
+  res = EliminateBranch()(std::move(res));
   res = BulkPimCopy()(std::move(res));
 
   if (target->HasKey("upmem")) res = UpmemParallelTransfer()(std::move(res));

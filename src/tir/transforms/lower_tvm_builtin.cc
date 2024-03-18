@@ -339,10 +339,12 @@ class BuiltinLower : public StmtExprMutator {
       return MakePimFreeMemory(op);
     } else if (op->op.same_as(builtin::pim_broadcast())) {
       return MakePimBroadcast(op);
-    } else if (op->op.same_as(builtin::dpu_parallel_transfer())) {
-      return MakeDpuParallelTransfer(op);
-    } else if (op->op.same_as(builtin::dpu_prepare_parallel_transfer())) {
-      return MakeDpuPrepareParallelTransfer(op);
+    } else if (op->op.same_as(builtin::dpu_parallel_transfer_commit())) {
+      return MakeDpuParllelTransferCommit(op);
+    } else if (op->op.same_as(builtin::dpu_parallel_transfer_bind())) {
+      return MakeDpuParallelTransferBind(op);
+    } else if (op->op.same_as(builtin::dpu_parallel_transfer_init())) {
+      return MakeDpuParallelTransferInit(op);
     } else {
       return StmtExprMutator::VisitExpr_(op);
     }
@@ -402,10 +404,9 @@ class BuiltinLower : public StmtExprMutator {
   }
 
   PrimExpr MakePimAcquireResources(const CallNode* op) {
-    PrimExpr num = op->args[0];
-
-    auto method_name = GetDeviceMethodName("acquire_resources");
-    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name, num});
+    Array<PrimExpr> args(op->args);
+    args.insert(args.begin(), GetDeviceMethodName("acquire_resources"));
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), args);
     return VisitExpr(call_packed);
   }
 
@@ -452,7 +453,7 @@ class BuiltinLower : public StmtExprMutator {
   }
 
   PrimExpr MakePimTransferHostToDevice(const CallNode* op) {
-    ICHECK(op->args.size() == 5) << "pim_transfer_host_to_device expects 5 arguments";
+    ICHECK(op->args.size() == 5) << "pim_transfer_host_to_device expects 6 arguments";
     PrimExpr buffer_var = op->args[0];
     PrimExpr host_address = op->args[1];
     PrimExpr in_bank_address = op->args[2];
@@ -467,7 +468,7 @@ class BuiltinLower : public StmtExprMutator {
   }
 
   PrimExpr MakePimTransferDeviceToHost(const CallNode* op) {
-    ICHECK(op->args.size() == 5) << "pim_transfer_device_to_host expects 5 arguments";
+    ICHECK(op->args.size() == 5) << "pim_transfer_device_to_host expects 6 arguments";
     PrimExpr buffer_var = op->args[0];
     PrimExpr host_address = op->args[1];
     PrimExpr in_bank_address = op->args[2];
@@ -493,28 +494,40 @@ class BuiltinLower : public StmtExprMutator {
     return VisitExpr(call_packed);
   }
 
-  PrimExpr MakeDpuPrepareParallelTransfer(const CallNode* op) {
-    ICHECK(op->args.size() == 3) << "dpu_prepare_parallel_transfer expects 4 arguments";
-    PrimExpr buffer_var = op->args[0];
-    PrimExpr host_address = op->args[1];
-    PrimExpr bank_index = op->args[2];
+  /*
+  TVM_DLL const Op& dpu_parallel_transfer_init(); // buffer, dpu_offset, bulk_size, direction
+  TVM_DLL const Op& dpu_parallel_transfer_bind(); // dpu_id, host_offset, size
+  */
 
-    auto method_name = GetDeviceMethodName("dpu_prepare_parallel_transfer");
-    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(),
-                            {method_name, buffer_var, host_address, bank_index});
-    return VisitExpr(call_packed);
-  }
-
-  PrimExpr MakeDpuParallelTransfer(const CallNode* op) {
-    ICHECK(op->args.size() == 4) << "dpu_parallel_transfer expects 3 arguments";
+  PrimExpr MakeDpuParallelTransferInit(const CallNode* op) {
+    ICHECK(op->args.size() == 4) << "dpu_parallel_transfer_init expects 4 arguments";
     PrimExpr buffer_var = op->args[0];
     PrimExpr in_bank_address = op->args[1];
     PrimExpr size = op->args[2];
     PrimExpr is_h2d = op->args[3];
 
-    auto method_name = GetDeviceMethodName("dpu_parallel_transfer");
+    auto method_name = GetDeviceMethodName("dpu_parallel_transfer_init");
     Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(),
                             {method_name, buffer_var, in_bank_address, size, is_h2d});
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakeDpuParallelTransferBind(const CallNode* op) {
+    ICHECK(op->args.size() == 3) << "dpu_parallel_transfer_bind expects 3 arguments";
+    PrimExpr bank_index = op->args[0];
+    PrimExpr host_address = op->args[1];
+    PrimExpr size = op->args[2];
+
+    auto method_name = GetDeviceMethodName("dpu_parallel_transfer_bind");
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(),
+                            {method_name, bank_index, host_address, size});
+    return VisitExpr(call_packed);
+  }
+
+  PrimExpr MakeDpuParllelTransferCommit(const CallNode* op) {
+    ICHECK(op->args.size() == 0) << "dpu_parallel_transfer_commit expects 0 arguments";
+    auto method_name = GetDeviceMethodName("dpu_parallel_transfer_commit");
+    Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(), {method_name});
     return VisitExpr(call_packed);
   }
 

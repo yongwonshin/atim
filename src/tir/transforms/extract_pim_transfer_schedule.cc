@@ -56,6 +56,7 @@ class PimKernelFinder : public StmtExprVisitor {
   bool is_single_kernel = false;
   Stmt kernel_body;
   int32_t bank_count = 1;
+  std::vector<PrimExpr> bank_array;
   std::vector<const ForNode*> loops;
   std::vector<const IfThenElseNode*> ifs;
 
@@ -84,8 +85,11 @@ class PimKernelFinder : public StmtExprVisitor {
   }
 
   Stmt GetAcquireStmt() {
+    if (bank_array.empty()) {
+      bank_array.push_back(1);
+    }
     return Evaluate(
-        Call(DataType::Int(32), builtin::pim_acquire_resources(), {PrimExpr(bank_count)}));
+        Call(DataType::Int(32), builtin::pim_acquire_resources(), Array<PrimExpr>(bank_array)));
   }
 
   Stmt GetFreeStmt(Var var) {
@@ -166,7 +170,9 @@ class PimKernelFinder : public StmtExprVisitor {
       if (scope.rank == 0) {
         auto imm = op->value.as<IntImmNode>();
         ICHECK(imm) << "Bank index must be constant.";
-        bank_count *= imm->value;
+        int32_t value = imm->value;
+        bank_count *= value;
+        bank_array.push_back(value);
       }
       vmap.Set(iv->var, op->value - 1);
       if (ifs.empty() && loops.empty()) {
@@ -261,6 +267,7 @@ class ScheduleExtractor : public StmtExprVisitor {
   Stmt res_stmt;
   PrimExpr bank_index = 0, host_index = 0;
   std::vector<Var> loops;
+  std::vector<PrimExpr> conds;
   Map<Var, PrimExpr> vmap;
   Map<Var, Range> rmap;
 
@@ -294,6 +301,12 @@ class ScheduleExtractor : public StmtExprVisitor {
     loops.pop_back();
     rmap.erase(op->loop_var);
     vmap.erase(op->loop_var);
+  }
+
+  void VisitStmt_(const IfThenElseNode* op) {
+    conds.push_back(Substitute(op->condition, vmap));
+    StmtExprVisitor::VisitStmt_(op);
+    conds.pop_back();
   }
 
   void VisitStmt_(const AttrStmtNode* op) {
@@ -348,7 +361,7 @@ class ScheduleExtractor : public StmtExprVisitor {
           in_bank_index = Substitute(op->global_indices[0], vmap);
           buffer = load->buffer;
           res_stmt = Evaluate(Call(DataType::Int(32), builtin::pim_transfer_host_to_device(),
-                                   {buffer->data, host_index, in_bank_index, bank_index, 1}));
+                                   {buffer->data, host_index, in_bank_index, bank_index, 1, 1}));
         }
       }
       if ((lscope == "local" || lscope == "shared") &&
@@ -361,15 +374,18 @@ class ScheduleExtractor : public StmtExprVisitor {
           in_bank_index = Substitute(load->global_indices[0], vmap);
           buffer = op->buffer;
           res_stmt = Evaluate(Call(DataType::Int(32), builtin::pim_transfer_device_to_host(),
-                                   {buffer->data, host_index, in_bank_index, bank_index, 1}));
+                                   {buffer->data, host_index, in_bank_index, bank_index, 1, 1}));
         }
       }
       if (found) {
+        for (auto it = conds.rbegin(); it != conds.rend(); it++) {
+          res_stmt = IfThenElse(*it, std::move(res_stmt), NullOpt);
+        }
         for (auto it = loops.rbegin(); it != loops.rend(); it++) {
           auto v = *it;
           Var new_var = Downcast<Var>(vmap[v]);
-          bool is_bank = support::StartsWith(new_var->name_hint,
-                                             "blockIdx");  // todo-stonerdk: a little bit hack
+          bool is_bank = support::StartsWith(new_var->name_hint, "blockIdx");
+          // todo-stonerdk: a little bit hack
           IsVarUsed visitor(new_var);
           visitor(host_index);
           if (visitor.found || is_bank) {

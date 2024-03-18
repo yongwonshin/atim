@@ -68,12 +68,16 @@ void UPMEMDeviceAPI::GetAttr(Device dev, DeviceAttrKind kind, TVMRetValue* rv) {
 void* UPMEMDeviceAPI::AllocDataSpace(Device dev, size_t nbytes, size_t alignment,
                                      DLDataType type_hint, Optional<String> mem_scope) {
   void* ptr;
-  int ret = posix_memalign(&ptr, alignment, nbytes);
+  VLOG(3) << "Attempt to alloc dataspace " << nbytes << " bytes with alignment " << alignment;
+  int ret = posix_memalign(&ptr, 32, nbytes);
   if (ret != 0) throw std::bad_alloc();
   return ptr;
 }
 
-void UPMEMDeviceAPI::FreeDataSpace(Device dev, void* ptr) { free(ptr); }
+void UPMEMDeviceAPI::FreeDataSpace(Device dev, void* ptr) {
+  VLOG(3) << "Attempt to free dataspace " << ptr;
+  free(ptr);
+}
 
 void UPMEMDeviceAPI::CopyDataFromTo(const void* from, size_t from_offset, void* to,
                                     size_t to_offset, size_t size, Device dev_from, Device dev_to,
@@ -99,7 +103,16 @@ UPMEMDeviceAPI* UPMEMDeviceAPI::Global() {
   return inst;
 }
 
-int UPMEMDeviceAPI::AcquireResources(int32_t bank_num) {
+int UPMEMDeviceAPI::AcquireResources(TVMArgs banks) {
+  int32_t bank_num = 1;
+  std::vector<int32_t> bank_vec;
+  for (int32_t i = 0; i < banks.num_args; i++) {
+    int32_t n = banks[i];
+    bank_vec.push_back(n);
+    bank_num *= n;
+  }
+
+  std::vector<std::string> symbols({"blockIdx_x", "blockIdx_y", "blockIdx_z"});
   VLOG(3) << "dpu_alloc(" << bank_num << ", NULL, &dpu_set)";
   UPMEM_CALL(dpu_alloc(bank_num, NULL, &(dpu_set)));
 
@@ -114,14 +127,25 @@ int UPMEMDeviceAPI::AcquireResources(int32_t bank_num) {
   UPMEM_CALL(dpu_load(dpu_set, "./temp", NULL));  // todo-stonerdk: hack
   dpu_set_t dpu;
   int32_t i;
-  DPU_FOREACH(dpu_set, dpu, i)
-  dpu_entry[i] = dpu;
+  int* dpu_indices = new int[nr_dpus];
+
+  DPU_FOREACH(dpu_set, dpu, i) { dpu_entry[i] = dpu; }
+  for (int32_t j = 0; j < banks.num_args; j++) {
+    DPU_FOREACH(dpu_set, dpu, i) {
+      int k = i;
+      for (int u = 0; u < j; u++) k /= bank_vec[banks.num_args - u - 2];
+      if (j < banks.num_args - 1) k %= bank_vec[banks.num_args - j - 2];
+      dpu_indices[i] = k;
+      dpu_prepare_xfer(dpu, &dpu_indices[i]);
+    }
+    UPMEM_CALL(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, symbols[j].c_str(), 0, 4, DPU_XFER_DEFAULT));
+  }
+
   return 0;
 }
 
 int UPMEMDeviceAPI::ReleaseResources() {
   if (dpu_entry.empty()) {
-    // LOG(FATAL) << "DPU resource is already empty.";
     return 1;
   } else {
     VLOG(3) << "dpu_free(dpu_set)";
@@ -137,7 +161,12 @@ void UPMEMDeviceAPI::SetPimMemoryEntry(void* handle, std::string var_name, DataT
   dpu_addr_ptr[handle] = {dtype.bytes(), var_name};
 }
 
-void UPMEMDeviceAPI::ErasePimMemoryEntry(void* handle) { dpu_addr_ptr.erase(handle); }
+void UPMEMDeviceAPI::ErasePimMemoryEntry(void* handle) {
+  VLOG(3) << "Attempt to erase PIM memory entry for " << handle;
+  if (dpu_addr_ptr.find(handle) != dpu_addr_ptr.end()) {
+    dpu_addr_ptr.erase(handle);
+  }
+}
 
 int UPMEMDeviceAPI::TransferHostToDevice(void* handle, uint64_t host_addr, uint64_t in_bank_addr,
                                          int bank_index, int size) {
@@ -164,23 +193,54 @@ int UPMEMDeviceAPI::Broadcast(void* handle, uint64_t host_addr, int size) {
   return 0;
 }
 
-int UPMEMDeviceAPI::PrepareXfer(void* handle, uint64_t host_addr, int bank_index) {
-  VLOG(3) << "dpu_prepare_xfer(" << bank_index << ", " << handle << " + (" << host_addr << ") * "
-          << GetBytes(handle) << ")";
-  UPMEM_CALL(dpu_prepare_xfer(dpu_entry[bank_index], HostOffset(handle, host_addr)));
+int UPMEMDeviceAPI::InitXfer(void* handle, uint64_t in_bank_addr, uint64_t size, int direction) {
+  xfer_handle = handle;
+  xfer_offset = in_bank_addr;
+  xfer_direction = direction == 1 ? DPU_XFER_TO_DPU : DPU_XFER_FROM_DPU;
+  xfer_bulk_size = size;
   return 0;
 }
 
-int UPMEMDeviceAPI::PushXfer(void* handle, uint64_t in_bank_addr, int size, int direction) {
-  _dpu_xfer_t xfer = direction == 1 ? DPU_XFER_TO_DPU : DPU_XFER_FROM_DPU;
-  uint32_t in_bank_addr_cast = static_cast<uint32_t>(in_bank_addr);
-  VLOG(3) << "dpu_push_xfer(dpu_set, "
-          << (xfer == DPU_XFER_TO_DPU ? "DPU_XFER_TO_DPU" : "DPU_XFER_FROM_DPU") << ", "
-          << std::string(GetSymbolName(handle)) << ", " << in_bank_addr_cast << ", " << size
-          << " * " << GetBytes(handle) << ", DPU_XFER_DEFAULT);";
-  UPMEM_CALL(dpu_push_xfer(dpu_set, xfer, GetSymbolName(handle).c_str(),
-                           in_bank_addr_cast * GetBytes(handle), size * GetBytes(handle),
-                           DPU_XFER_DEFAULT));
+int UPMEMDeviceAPI::BindXfer(int bank_index, uint64_t host_addr, uint64_t size) {
+  if (xfer_handle == nullptr)
+    LOG(FATAL) << "No xfer handle is set. InitXfer should be invoked first.";
+  if (size > xfer_bulk_size) {
+    LOG(FATAL) << "Bulk size " << size << " exceeds the maximum size " << xfer_bulk_size;
+  }
+  if (xfer_direction == DPU_XFER_FROM_DPU && size < xfer_bulk_size) {
+    void* new_ptr = malloc(std::max(8ul, xfer_bulk_size * GetBytes(xfer_handle)));
+    d2h_temp[bank_index] = {new_ptr, HostOffset(xfer_handle, host_addr), size};
+    UPMEM_CALL(dpu_prepare_xfer(dpu_entry[bank_index], new_ptr));
+    VLOG(3) << "USETMP - dpu_prepare_xfer(" << bank_index << ", " << new_ptr << ")";
+  } else {
+    UPMEM_CALL(dpu_prepare_xfer(dpu_entry[bank_index], HostOffset(xfer_handle, host_addr)));
+    VLOG(3) << "dpu_prepare_xfer(" << bank_index << ", " << xfer_handle << " + (" << host_addr
+            << ") * " << GetBytes(xfer_handle) << ")";
+  }
+  return 0;
+}
+
+int UPMEMDeviceAPI::PushXfer() {
+  UPMEM_CALL(dpu_push_xfer(dpu_set, xfer_direction, GetSymbolName(xfer_handle).c_str(),
+                           static_cast<uint32_t>(xfer_offset) * GetBytes(xfer_handle),
+                           xfer_bulk_size * GetBytes(xfer_handle), DPU_XFER_DEFAULT));
+  VLOG(3) << "dpu_push_xfer(" << xfer_direction << ", " << GetSymbolName(xfer_handle) << ", "
+          << xfer_offset << ", " << xfer_bulk_size << " * " << GetBytes(xfer_handle) << ")";
+  if (xfer_direction == DPU_XFER_FROM_DPU) {
+    for (auto& kv : d2h_temp) {
+      if (kv.second.size > 0)
+        memcpy(kv.second.dest_ptr, kv.second.temp_ptr, kv.second.size * GetBytes(xfer_handle));
+    }
+  }
+
+  for (auto& kv : d2h_temp) {
+    free(kv.second.temp_ptr);
+  }
+
+  d2h_temp.clear();
+  xfer_handle = nullptr;
+  xfer_offset = 0;
+  xfer_bulk_size = 0;
   return 0;
 }
 
@@ -209,9 +269,8 @@ TVM_REGISTER_GLOBAL("device_api.upmem.acquire_resources")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
       auto api = UPMEMDeviceAPI::Global();
       api->acquire_start = std::chrono::high_resolution_clock::now();
-      int32_t bank_num = args[0];
       if (api->dpu_entry.empty()) {
-        UPMEMDeviceAPI::Global()->AcquireResources(bank_num);
+        UPMEMDeviceAPI::Global()->AcquireResources(args);
       }
     });
 
@@ -266,23 +325,27 @@ TVM_REGISTER_GLOBAL("device_api.upmem.pim_broadcast").set_body([](TVMArgs args, 
   *rv = static_cast<int>(UPMEMDeviceAPI::Global()->Broadcast(handle, host_address, size));
 });
 
-TVM_REGISTER_GLOBAL("device_api.upmem.dpu_prepare_parallel_transfer")
-    .set_body([](TVMArgs args, TVMRetValue* rv) {
-      void* handle = args[0];
-      uint64_t host_address = args[1];
-      int bank_index = args[2];
-      *rv =
-          static_cast<int>(UPMEMDeviceAPI::Global()->PrepareXfer(handle, host_address, bank_index));
-    });
-
-TVM_REGISTER_GLOBAL("device_api.upmem.dpu_parallel_transfer")
+TVM_REGISTER_GLOBAL("device_api.upmem.dpu_parallel_transfer_init")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
       void* handle = args[0];
       uint64_t in_bank_addr = args[1];
-      int size = args[2];
+      uint64_t size = args[2];
       int direction = args[3];
       *rv = static_cast<int>(
-          UPMEMDeviceAPI::Global()->PushXfer(handle, in_bank_addr, size, direction));
+          UPMEMDeviceAPI::Global()->InitXfer(handle, in_bank_addr, size, direction));
+    });
+
+TVM_REGISTER_GLOBAL("device_api.upmem.dpu_parallel_transfer_bind")
+    .set_body([](TVMArgs args, TVMRetValue* rv) {
+      int bank_index = args[0];
+      uint64_t host_address = args[1];
+      uint64_t size = args[2];
+      *rv = static_cast<int>(UPMEMDeviceAPI::Global()->BindXfer(bank_index, host_address, size));
+    });
+
+TVM_REGISTER_GLOBAL("device_api.upmem.dpu_parallel_transfer_commit")
+    .set_body([](TVMArgs args, TVMRetValue* rv) {
+      *rv = static_cast<int>(UPMEMDeviceAPI::Global()->PushXfer());
     });
 
 class UPMEMTimerNode : public TimerNode {

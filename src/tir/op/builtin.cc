@@ -411,11 +411,23 @@ TIR_DEFINE_BUILTIN_FUNC(pim_allocate_memory)
 TIR_DEFINE_BUILTIN_FUNC(pim_free_memory)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 
-TIR_DEFINE_BUILTIN_FUNC(dpu_prepare_parallel_transfer)
+TIR_DEFINE_BUILTIN_FUNC(dpu_parallel_transfer_init)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 
-TIR_DEFINE_BUILTIN_FUNC(dpu_parallel_transfer)
+TIR_DEFINE_BUILTIN_FUNC(dpu_parallel_transfer_bind)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
+TIR_DEFINE_BUILTIN_FUNC(dpu_parallel_transfer_commit)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
+TIR_DEFINE_BUILTIN_FUNC(dpu_mram_read)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
+TIR_DEFINE_BUILTIN_FUNC(dpu_mram_write)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
+TIR_DEFINE_BUILTIN_FUNC(clamp).set_attr<TCallEffectKind>("TCallEffectKind",
+                                                         Integer(CallEffectKind::kOpaque));
 
 }  // namespace builtin
 }  // namespace tir

@@ -814,21 +814,26 @@ TVM_DLL const Op& pim_acquire_resources();
 // ()
 TVM_DLL const Op& pim_release_resources();
 // buffer handle, size, (bank index or -1)
-TVM_DLL const Op& pim_allocate_memory(); 
+TVM_DLL const Op& pim_allocate_memory();
 // buffer handle, (bank index or -1)
-TVM_DLL const Op& pim_free_memory(); 
-// buffer, host address, in bank address, bank index, size (not bytes)
-TVM_DLL const Op& pim_transfer_host_to_device(); 
-// buffer, host address, in_bank address, bank index, size (not bytes)
-TVM_DLL const Op& pim_transfer_device_to_host(); 
+TVM_DLL const Op& pim_free_memory();
+// buffer, host address, in bank address, bank index, size (not bytes), bulk_size
+TVM_DLL const Op& pim_transfer_host_to_device();
+// buffer, host address, in_bank address, bank index, size (not bytes), bulk_size
+TVM_DLL const Op& pim_transfer_device_to_host();
 // buffer, host address, size (not bytes)
-TVM_DLL const Op& pim_broadcast(); 
+TVM_DLL const Op& pim_broadcast();
 
 
 // Currently only used for UPMEM (opportunity to promote if some other devices are able to support parallel xfer)
-TVM_DLL const Op& dpu_prepare_parallel_transfer(); // buffer, host address, bank index, is_h2d
-TVM_DLL const Op& dpu_parallel_transfer(); // buffer, in bank address, size
+TVM_DLL const Op& dpu_parallel_transfer_init(); // buffer, dpu_offset, bulk_size, direction
+TVM_DLL const Op& dpu_parallel_transfer_bind(); // dpu_id, host_offset, size
+TVM_DLL const Op& dpu_parallel_transfer_commit();
 
+TVM_DLL const Op& dpu_mram_read();
+TVM_DLL const Op& dpu_mram_write();
+
+TVM_DLL const Op& clamp();
 /*! \brief The kind of structure field info used in intrinsic */
 enum TVMStructFieldKind : int {
   // array head address

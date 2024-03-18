@@ -52,10 +52,11 @@ class CodeGenUpmem final : public CodeGenC {
 
   // overload visitor
   void VisitStmt_(const AllocateNode* op) final;  // NOLINT(*)
-  void VisitStmt_(const ForNode* op) final;
 
-  void VisitExpr_(const BufferLoadNode* op, std::ostream& os) final;
-  void VisitStmt_(const BufferStoreNode* op) final;
+  void VisitExpr_(const CallNode* op, std::ostream& os) final;
+
+  // void VisitExpr_(const BufferLoadNode* op, std::ostream& os) final;
+  // void VisitStmt_(const BufferStoreNode* op) final;
 
  private:
   // whether enable fp16 and fp64 extension
