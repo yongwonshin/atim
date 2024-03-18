@@ -34,6 +34,6 @@ namespace tir {
 Stmt OptimizePimTransferSchedule(Stmt stmt, Target target);
 
 }
-}
+}  // namespace tvm
 
 #endif

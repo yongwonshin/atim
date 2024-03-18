@@ -42,8 +42,9 @@ namespace tvm {
 namespace tir {
 
 class PimTransferSplitter : public StmtMutator {
-public:
-  explicit PimTransferSplitter(IRModule* transfer_mod, GlobalVarSupply global_var_supply, const Target& target)
+ public:
+  explicit PimTransferSplitter(IRModule* transfer_mod, GlobalVarSupply global_var_supply,
+                               const Target& target)
       : transfer_mod_(transfer_mod), global_var_supply_(global_var_supply), target(target) {}
 
   Stmt VisitStmt_(const AttrStmtNode* op) final {
@@ -51,22 +52,23 @@ public:
       std::string var_name = Downcast<StringImm>(op->value)->value;
       VarUseDefAnalyzer use_def({}, false);
       use_def(op->body);
-      Buffer buf =  Downcast<Buffer>(op->node);
-      std::vector<Var> params {buf->data};
+      Buffer buf = Downcast<Buffer>(op->node);
+      std::vector<Var> params{buf->data};
       Map<Var, Buffer> buffer_map = {{buf->data, buf}};
       std::string symbol_name = "copy_" + var_name;
       GlobalVar symbol = global_var_supply_->FreshGlobal(symbol_name, false);
-      PrimFunc new_func = WithAttrs(PrimFunc(params, op->body, VoidType(), buffer_map), {{tvm::attr::kTarget, target},
-                {tvm::attr::kGlobalSymbol, String(symbol_name)},
-                {tir::attr::kNoAlias, Bool(true)},
-                {tir::attr::kIsGlobalFunc, Bool(true)}});
+      PrimFunc new_func = WithAttrs(PrimFunc(params, op->body, VoidType(), buffer_map),
+                                    {{tvm::attr::kTarget, target},
+                                     {tvm::attr::kGlobalSymbol, String(symbol_name)},
+                                     {tir::attr::kNoAlias, Bool(true)},
+                                     {tir::attr::kIsGlobalFunc, Bool(true)}});
       (*transfer_mod_)->Add(symbol, new_func);
       return Evaluate(0);
     }
     return StmtMutator::VisitStmt_(op);
   }
 
-private:
+ private:
   IRModule* transfer_mod_;
   GlobalVarSupply global_var_supply_;
   const Target& target;
@@ -87,7 +89,7 @@ Pass SplitPimTransfer() {
 
         auto target = func->GetAttr<Target>(tvm::attr::kTarget).value();
         if (func->GetAttr<tvm::Integer>(tvm::attr::kCallingConv, Integer(CallingConv::kDefault)) !=
-           CallingConv::kDeviceKernelLaunch) {
+            CallingConv::kDeviceKernelLaunch) {
           PimTransferSplitter splitter(&transfer_mod, global_var_supply, target);
           auto body = splitter(func->body);
           if (!body.same_as(func->body)) {

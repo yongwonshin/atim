@@ -65,7 +65,7 @@ class HostDeviceSplitter : public StmtMutator {
     Array<Var> params = [&]() {
       VarUseDefAnalyzer use_def(/*defined_vars=*/{}, /*visit_thread_extent=*/false);
       use_def(body);
- 
+
       // Sort first by variable typ, then by variable name
       std::vector<Var> params{use_def.undefined_.begin(), use_def.undefined_.end()};
       std::sort(params.begin(), params.end(), [](const Var& a, const Var& b) {
@@ -85,12 +85,12 @@ class HostDeviceSplitter : public StmtMutator {
     GlobalVar kernel_symbol_global = var_supply_();
 
     tvm::TargetFeatures attrs = {{tvm::attr::kTarget, device_target},
-      {tir::attr::kNoAlias, Bool(true)},
-      {tir::attr::kIsGlobalFunc, Bool(true)}};
+                                 {tir::attr::kNoAlias, Bool(true)},
+                                 {tir::attr::kIsGlobalFunc, Bool(true)}};
     if (device_target->GetTargetDeviceType() == kDLUPMEM && upmem_symbol_map.defined()) {
       attrs.Set("upmem_symbol_map", upmem_symbol_map.value());
     }
-    
+
     device_func = WithAttrs(std::move(device_func), attrs);
 
     (*device_mod_)->Add(kernel_symbol_global, device_func);

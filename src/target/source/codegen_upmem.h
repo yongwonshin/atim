@@ -26,9 +26,9 @@
 
 #include <tvm/target/codegen.h>
 
+#include <stack>
 #include <string>
 #include <unordered_map>
-#include <stack>
 
 #include "codegen_c.h"
 #include "codegen_source_base.h"
@@ -44,19 +44,19 @@ class CodeGenUpmem final : public CodeGenC {
   // override print thread tag.                      // NOLINT(*)
   void AddFunction(const PrimFunc& f);
   void PreFunctionBody(const PrimFunc& f) final;
-                            // NOLINT(*)
-  void BindThreadIndex(const IterVar& iv) final; // NOLINT(*)
+  // NOLINT(*)
+  void BindThreadIndex(const IterVar& iv) final;  // NOLINT(*)
   void PrintStorageScope(const std::string& scope, std::ostream& os) final;
-  void PrintStorageSync(const CallNode* op) final; // NOLINT(*)
+  void PrintStorageSync(const CallNode* op) final;  // NOLINT(*)
   // the address of load/store
 
   // overload visitor
-  void VisitStmt_(const AllocateNode* op) final;                     // NOLINT(*)
+  void VisitStmt_(const AllocateNode* op) final;  // NOLINT(*)
   void VisitStmt_(const ForNode* op) final;
 
   void VisitExpr_(const BufferLoadNode* op, std::ostream& os) final;
   void VisitStmt_(const BufferStoreNode* op) final;
-  
+
  private:
   // whether enable fp16 and fp64 extension
   bool enable_fp16_{false};

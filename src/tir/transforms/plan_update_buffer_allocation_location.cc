@@ -131,7 +131,8 @@ class BufferAllocationLocator : public StmtExprMutator {
         BlockRealize outermost_block_realize = Downcast<BlockRealize>(func->body);
         ICHECK(outermost_block_realize.defined());
         Stmt outermost_block = Downcast<Block>(outermost_block_realize->block);
-        const StmtNode* stmt = (scope == "global" || scope == "") ? outermost_block.get() : (*it).second.get();
+        const StmtNode* stmt =
+            (scope == "global" || scope == "") ? outermost_block.get() : (*it).second.get();
         if (arg_buffer_vars.count(buffer->data.get())) {
           continue;
         }

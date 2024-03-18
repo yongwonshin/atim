@@ -22,24 +22,24 @@
  */
 #include "codegen_upmem.h"
 
-#include <cmath>
-#include <string>
-#include <vector>
-#include <sstream>
-#include <cstdio>
-
 #include <tvm/tir/stmt_functor.h>
 
+#include <cmath>
+#include <cstdio>
+#include <sstream>
+#include <string>
+#include <vector>
+
 // #include "../../runtime/upmem/upmem_module.h"
-#include "../../runtime/upmem/upmem_module.h"
 #include "../../runtime/thread_storage_scope.h"
+#include "../../runtime/upmem/upmem_module.h"
 #include "../build_common.h"
 #include "../spirv/spirv_utils.h"
 
 namespace tvm {
 namespace codegen {
 
-class TaskletNumFinder: public StmtExprVisitor {
+class TaskletNumFinder : public StmtExprVisitor {
  public:
   int tasklet_num = 1;
   void VisitStmt_(const AttrStmtNode* op) final {
@@ -56,29 +56,30 @@ class TaskletNumFinder: public StmtExprVisitor {
 
 CodeGenUpmem::CodeGenUpmem() {
   decl_stream << "#include <stdint.h>\n"
-            << "#include <stdio.h>\n"
-            << "#include <defs.h>\n"
-            << "#include <mram.h>\n"
-            << "#include <alloc.h>\n"
-            << "#include <barrier.h>\n"
-            << "#include <seqread.h>\n"
-            << "\nBARRIER_INIT(barrier, NR_TASKLETS);\n";
+              << "#include <stdio.h>\n"
+              << "#include <defs.h>\n"
+              << "#include <mram.h>\n"
+              << "#include <alloc.h>\n"
+              << "#include <barrier.h>\n"
+              << "#include <seqread.h>\n"
+              << "\nBARRIER_INIT(barrier, NR_TASKLETS);\n";
 }
 
 void CodeGenUpmem::AddFunction(const PrimFunc& f) {
   // clear previous generated state.
   this->InitFuncState(f);
 
-  Map<String, Array<PrimExpr>> sym_map = f->GetAttr<Map<String, Array<PrimExpr>>>("upmem_symbol_map").value_or({});
+  Map<String, Array<PrimExpr>> sym_map =
+      f->GetAttr<Map<String, Array<PrimExpr>>>("upmem_symbol_map").value_or({});
 
-  for (Var arg: f->params) {
+  for (Var arg : f->params) {
     if (sym_map.count(arg->name_hint)) {
       auto arr = sym_map[arg->name_hint];
       std::string alias = Downcast<StringImm>(arr[0])->value;
       DataType dtype = DataType(String2DLDataType(Downcast<StringImm>(arr[1])->value));
       int size = Downcast<IntImm>(arr[2])->value;
 
-      this->stream << Downcast<StringImm>(arr[3])->value << " "; // __mram_noinit or __mram
+      this->stream << Downcast<StringImm>(arr[3])->value << " ";  // __mram_noinit or __mram
       PrintType(dtype, this->stream);
       this->stream << " " << alias << "[" << size << "];\n";
       var_idmap_[arg.get()] = alias;
@@ -95,7 +96,7 @@ void CodeGenUpmem::AddFunction(const PrimFunc& f) {
   // reserve keywords
   ReserveKeywordsAsUnique();
 
-  stream << "int main() {\n"; 
+  stream << "int main() {\n";
   this->PreFunctionBody(f);
   int func_scope = this->BeginScope();
   this->PrintStmt(f->body);
@@ -110,9 +111,7 @@ void CodeGenUpmem::PreFunctionBody(const PrimFunc& f) {
          << "  barrier_wait(&barrier);\n";
 }
 
-std::string CodeGenUpmem::Finish() {
-  return CodeGenC::Finish();
-}
+std::string CodeGenUpmem::Finish() { return CodeGenC::Finish(); }
 
 void CodeGenUpmem::BindThreadIndex(const IterVar& iv) {
   ICHECK(!var_idmap_.count(iv->var.get()));
@@ -121,7 +120,7 @@ void CodeGenUpmem::BindThreadIndex(const IterVar& iv) {
   if (ts.rank == 1) {
     var_idmap_[iv->var.get()] = "tasklet_id";
   } else {
-    var_idmap_[iv->var.get()] = "0"; // TODO
+    var_idmap_[iv->var.get()] = "0";  // TODO
   }
 }
 
@@ -156,7 +155,7 @@ void CodeGenUpmem::VisitStmt_(const AllocateNode* op) {
   this->PrintStmt(op->body);
 }
 
-const VarNode* GetIndexFlatVar(const PrimExpr &expr) {
+const VarNode* GetIndexFlatVar(const PrimExpr& expr) {
   if (const VarNode* v = expr.as<VarNode>())
     return v;
   else if (const AddNode* v = expr.as<AddNode>()) {
@@ -168,7 +167,7 @@ const VarNode* GetIndexFlatVar(const PrimExpr &expr) {
   return nullptr;
 }
 
-const PrimExpr GetIndexStrided(const PrimExpr &expr) {
+const PrimExpr GetIndexStrided(const PrimExpr& expr) {
   if (expr.as<VarNode>() || expr.as<IntImmNode>())
     return PrimExpr(0);
   else if (const AddNode* v = expr.as<AddNode>()) {
@@ -181,7 +180,7 @@ const PrimExpr GetIndexStrided(const PrimExpr &expr) {
   return expr;
 }
 
-const bool isFlatEqual(const PrimExpr &a, const PrimExpr &b, std::string lvar) {
+const bool isFlatEqual(const PrimExpr& a, const PrimExpr& b, std::string lvar) {
   if (const VarNode* va = GetIndexFlatVar(a)) {
     if (const VarNode* vb = GetIndexFlatVar(b)) {
       return va->name_hint == lvar && vb->name_hint == lvar;
@@ -225,12 +224,15 @@ void CodeGenUpmem::VisitStmt_(const BufferStoreNode* op) {
   if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
     std::string lscope = GetPtrStorageScope(load->buffer->data);
     std::string sscope = GetPtrStorageScope(op->buffer->data);
-    if ((sscope == "local" || sscope == "shared") && (lscope == "" || lscope == "global")) { // local <- global
-      ICHECK(op->global_indices.size() == 1) << "In local->global pattern, BufferStore global_indices should be size 1.";
+    if ((sscope == "local" || sscope == "shared") &&
+        (lscope == "" || lscope == "global")) {  // local <- global
+      ICHECK(op->global_indices.size() == 1)
+          << "In local->global pattern, BufferStore global_indices should be size 1.";
       alloc_global_index = op->global_indices[0];
     }
-    if (lscope == "local" && (sscope == "" || sscope == "global")) { // global <- local
-      ICHECK(load->global_indices.size() == 1) << "In global->local pattern, BufferLoad global_indices should be size 1.";
+    if (lscope == "local" && (sscope == "" || sscope == "global")) {  // global <- local
+      ICHECK(load->global_indices.size() == 1)
+          << "In global->local pattern, BufferLoad global_indices should be size 1.";
       index_expr = load->global_indices[0];
     }
   }
@@ -255,62 +257,66 @@ void CodeGenUpmem::PrintStorageSync(const CallNode* op) {
 }
 
 void CodeGenUpmem::VisitStmt_(const ForNode* op) {
-    PrintIndent();
-    std::string lvar = op->loop_var->name_hint;
-    ICHECK(is_zero(op->min));
+  PrintIndent();
+  std::string lvar = op->loop_var->name_hint;
+  ICHECK(is_zero(op->min));
 
-    if (const BufferStoreNode* store = op->body.as<BufferStoreNode>()) {
-      if (const BufferLoadNode* load = store->value.as<BufferLoadNode>()) {
-        if (isFlatEqual(store->indices[0], load->indices[0], lvar)) {
-          // mram_ pattern
-          std::string lscope = GetPtrStorageScope(load->buffer->data);
-          std::string sscope = GetPtrStorageScope(store->buffer->data);
-          std::string sid = GetVarID(store->buffer->data.get());
-          std::string lid = GetVarID(load->buffer->data.get());
+  if (const BufferStoreNode* store = op->body.as<BufferStoreNode>()) {
+    if (const BufferLoadNode* load = store->value.as<BufferLoadNode>()) {
+      if (isFlatEqual(store->indices[0], load->indices[0], lvar)) {
+        // mram_ pattern
+        std::string lscope = GetPtrStorageScope(load->buffer->data);
+        std::string sscope = GetPtrStorageScope(store->buffer->data);
+        std::string sid = GetVarID(store->buffer->data.get());
+        std::string lid = GetVarID(load->buffer->data.get());
 
-          std::stringstream size_stream;
-          size_stream << op->extent << " * " << "sizeof(";
-          PrintType(load->buffer->dtype, size_stream);
-          size_stream << ")";
-          std::string size = size_stream.str();
+        std::stringstream size_stream;
+        size_stream << op->extent << " * "
+                    << "sizeof(";
+        PrintType(load->buffer->dtype, size_stream);
+        size_stream << ")";
+        std::string size = size_stream.str();
 
-          if (sscope == "local" && (lscope  == ""|| lscope == "global")) {
-            ICHECK(store->global_indices.size() == 1) << "In local->global pattern, BufferStore global_indices should be size 1.";
-            std::string l_ptr = lid + " + " + PrintExpr(GetIndexStrided(store->global_indices[0]));
-            std::string s_ptr = sid + " + " + PrintExpr(GetIndexStrided(store->indices[0])); 
-            stream << "mram_read((__mram_ptr void*)(" << l_ptr << "), " << s_ptr << ", " << size << ");\n";
-            return;
-          }
-          else if ((sscope == "" || sscope == "global") && lscope == "local") {
-            std::string l_ptr = lid + " + " + PrintExpr(GetIndexStrided(load->indices[0]));
-            std::string s_ptr = sid + " + " + PrintExpr(GetIndexStrided(load->global_indices[0]));
-            ICHECK(load->global_indices.size() == 1) << "In global->local pattern, BufferLoad global_indices should be size 1.";
-            stream << "mram_write(" << l_ptr << ", (__mram_ptr void*)(" << s_ptr << "), " << size << ");\n";
-            return;
-          }
+        if (sscope == "local" && (lscope == "" || lscope == "global")) {
+          ICHECK(store->global_indices.size() == 1)
+              << "In local->global pattern, BufferStore global_indices should be size 1.";
+          std::string l_ptr = lid + " + " + PrintExpr(GetIndexStrided(store->global_indices[0]));
+          std::string s_ptr = sid + " + " + PrintExpr(GetIndexStrided(store->indices[0]));
+          stream << "mram_read((__mram_ptr void*)(" << l_ptr << "), " << s_ptr << ", " << size
+                 << ");\n";
+          return;
+        } else if ((sscope == "" || sscope == "global") && lscope == "local") {
+          std::string l_ptr = lid + " + " + PrintExpr(GetIndexStrided(load->indices[0]));
+          std::string s_ptr = sid + " + " + PrintExpr(GetIndexStrided(load->global_indices[0]));
+          ICHECK(load->global_indices.size() == 1)
+              << "In global->local pattern, BufferLoad global_indices should be size 1.";
+          stream << "mram_write(" << l_ptr << ", (__mram_ptr void*)(" << s_ptr << "), " << size
+                 << ");\n";
+          return;
         }
       }
     }
+  }
 
-    std::string extent = PrintExpr(op->extent);
-    std::string vid = AllocVarID(op->loop_var.get());
-    stream << "for (";
-    PrintType(op->loop_var.dtype(), stream);
-    stream << ' ' << vid << " = 0; " << vid << " < " << extent << "; ++" << vid << ") {\n";
-    int for_scope = BeginScope();
-    for_tags.push(vid);
-    PrintStmt(op->body);
-    // check if body is mram_read or mram_write
-    for_tags.pop();
-    this->EndScope(for_scope);
-    PrintIndent();
-    stream << "}\n";
+  std::string extent = PrintExpr(op->extent);
+  std::string vid = AllocVarID(op->loop_var.get());
+  stream << "for (";
+  PrintType(op->loop_var.dtype(), stream);
+  stream << ' ' << vid << " = 0; " << vid << " < " << extent << "; ++" << vid << ") {\n";
+  int for_scope = BeginScope();
+  for_tags.push(vid);
+  PrintStmt(op->body);
+  // check if body is mram_read or mram_write
+  for_tags.pop();
+  this->EndScope(for_scope);
+  PrintIndent();
+  stream << "}\n";
 }
 
-void CodeGenUpmem::PrintStorageScope(const std::string& scope, std::ostream& os) {
-}
+void CodeGenUpmem::PrintStorageScope(const std::string& scope, std::ostream& os) {}
 
-std::string DPUClangCompile(const std::string& code, int tasklet_num, bool use_dummy = false) { // hack
+std::string DPUClangCompile(const std::string& code, int tasklet_num,
+                            bool use_dummy = false) {  // hack
   std::string exec = "dpu-upmem-dpurte-clang";
   int valid = std::system(("command -v " + exec + " >/dev/null 2>&1").c_str());
   if (valid != 0) {
@@ -351,7 +357,6 @@ std::string DPUClangCompile(const std::string& code, int tasklet_num, bool use_d
 }
 
 runtime::Module BuildUpmem(IRModule mod, Target target) {
-
   using tvm::runtime::Registry;
   bool output_ssa = false;
 
@@ -368,7 +373,7 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
     code << "// Function: " << kv.first->name_hint << std::endl;
     CodeGenUpmem cg;
     cg.Init(output_ssa);
-    
+
     cg.AddFunction(f);
     std::string fsource = cg.Finish();
     code << fsource;

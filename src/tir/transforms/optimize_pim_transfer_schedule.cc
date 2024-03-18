@@ -20,31 +20,30 @@
 /*!
  * \file transfer_schedule.cc
  * \brief Extract Transfer Schedule for PIM API
-*/
+ */
 
-#include <tvm/runtime/registry.h>
-#include <tvm/tir/buffer.h>
-#include <tvm/tir/stmt_functor.h>
-#include <tvm/tir/stmt.h>
-#include <tvm/tir/expr.h>
-#include <tvm/tir/function.h>
-#include <tvm/tir/builtin.h>
 #include <tvm/arith/analyzer.h>
 #include <tvm/arith/bound.h>
+#include <tvm/runtime/registry.h>
+#include <tvm/tir/buffer.h>
+#include <tvm/tir/builtin.h>
+#include <tvm/tir/expr.h>
+#include <tvm/tir/function.h>
+#include <tvm/tir/stmt.h>
+#include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
-#include <tvm/arith/analyzer.h>
 
-#include "ir_utils.h"
 #include "../../arith/interval_set.h"
 #include "../../runtime/thread_storage_scope.h"
-#include "remove_no_op.h"
+#include "ir_utils.h"
 #include "pim_transfer_schedule.h"
+#include "remove_no_op.h"
 
 namespace tvm {
 namespace tir {
 
 class AllocateFreeOnce : public StmtExprMutator {
-public:
+ public:
   // bool to_parallelize = false;
   Stmt VisitStmt_(const ForNode* op) final {
     if (op->annotations.find("bank") != op->annotations.end()) {
@@ -52,10 +51,10 @@ public:
       if (const EvaluateNode* eval = stmt.as<EvaluateNode>()) {
         if (const CallNode* call = eval->value.as<CallNode>()) {
           if (call->op.same_as(builtin::pim_allocate_memory())) {
-            return Evaluate(Call(DataType::Int(32), builtin::pim_allocate_memory(), 
-              { call->args[0], call->args[1], call->args[2], call->args[3] }));
+            return Evaluate(Call(DataType::Int(32), builtin::pim_allocate_memory(),
+                                 {call->args[0], call->args[1], call->args[2], call->args[3]}));
           } else if (call->op.same_as(builtin::pim_free_memory())) {
-            return Evaluate(Call(DataType::Int(32), builtin::pim_free_memory(), { call->args[0] }));
+            return Evaluate(Call(DataType::Int(32), builtin::pim_free_memory(), {call->args[0]}));
           }
         }
       }
@@ -65,9 +64,9 @@ public:
 };
 
 class BulkPimCopy : public StmtExprMutator {
-  public:
-  class FindBulkConstant: public StmtExprVisitor {
-    public:
+ public:
+  class FindBulkConstant : public StmtExprVisitor {
+   public:
     Var target_var;
     IntImm factor;
     bool found = false, is_single_target = false;
@@ -122,7 +121,8 @@ class BulkPimCopy : public StmtExprMutator {
     Stmt stmt = this->VisitStmt(op->body);
     if (const EvaluateNode* eval = stmt.as<EvaluateNode>()) {
       if (const CallNode* call = eval->value.as<CallNode>()) {
-        if (call->op.same_as(builtin::pim_transfer_device_to_host()) || call->op.same_as(builtin::pim_transfer_host_to_device())) {
+        if (call->op.same_as(builtin::pim_transfer_device_to_host()) ||
+            call->op.same_as(builtin::pim_transfer_host_to_device())) {
           ICHECK(call->args.size() == 5);
           ICHECK(is_const_number(call->args[4]));
           IntImm size = Downcast<IntImm>(call->args[4]);
@@ -130,9 +130,10 @@ class BulkPimCopy : public StmtExprMutator {
           PrimExpr pim = GetBulkOffset(call->args[2], op->loop_var, size);
           if (host.defined() && pim.defined()) {
             PrimExpr new_extent = arith::Analyzer().Simplify(op->extent * size);
-            return Evaluate(Call(DataType::Int(32), call->op, { call->args[0], host, pim, call->args[3], new_extent }));
+            return Evaluate(Call(DataType::Int(32), call->op,
+                                 {call->args[0], host, pim, call->args[3], new_extent}));
           }
-        } 
+        }
       }
     }
     return StmtExprMutator::VisitStmt_(op);
@@ -140,7 +141,7 @@ class BulkPimCopy : public StmtExprMutator {
 };
 
 class UpmemParallelTransfer : public StmtExprMutator {
-public:
+ public:
   std::vector<const ForNode*> loop_stack;
   bool inside_upmem = false;
 
@@ -156,22 +157,27 @@ public:
 
   Stmt VisitStmt_(const EvaluateNode* op) final {
     if (const CallNode* call = op->value.as<CallNode>()) {
-      if (call->op.same_as(builtin::pim_transfer_device_to_host()) || call->op.same_as(builtin::pim_transfer_host_to_device())) {
+      if (call->op.same_as(builtin::pim_transfer_device_to_host()) ||
+          call->op.same_as(builtin::pim_transfer_host_to_device())) {
         // bank var should not be in the in-bank-address
-        PrimExpr direction = call->op.same_as(builtin::pim_transfer_device_to_host()) ? make_const(DataType::Int(32), 0) : make_const(DataType::Int(32), 1);
-        Stmt nested_func_call = Evaluate(Call(DataType::Int(32), builtin::dpu_prepare_parallel_transfer(), 
-          { call->args[0], call->args[1], call->args[3] }));
+        PrimExpr direction = call->op.same_as(builtin::pim_transfer_device_to_host())
+                                 ? make_const(DataType::Int(32), 0)
+                                 : make_const(DataType::Int(32), 1);
+        Stmt nested_func_call =
+            Evaluate(Call(DataType::Int(32), builtin::dpu_prepare_parallel_transfer(),
+                          {call->args[0], call->args[1], call->args[3]}));
         for (auto it = loop_stack.rbegin(); it != loop_stack.rend(); ++it) {
           const ForNode* loop = *it;
-          nested_func_call = For(loop->loop_var, 0, loop->extent, ForKind::kSerial, nested_func_call, NullOpt);
+          nested_func_call =
+              For(loop->loop_var, 0, loop->extent, ForKind::kSerial, nested_func_call, NullOpt);
         }
-        Stmt commit_transfer = Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer(), 
-          { call->args[0], call->args[2], call->args[4], direction }));
-        return SeqStmt({ nested_func_call, commit_transfer });
-      } 
+        Stmt commit_transfer =
+            Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer(),
+                          {call->args[0], call->args[2], call->args[4], direction}));
+        return SeqStmt({nested_func_call, commit_transfer});
+      }
     }
     return StmtExprMutator::VisitStmt_(op);
-  
   }
 };
 
@@ -179,10 +185,9 @@ Stmt OptimizePimTransferSchedule(Stmt stmt, Target target) {
   Stmt res = AllocateFreeOnce()(std::move(stmt));
   res = BulkPimCopy()(std::move(res));
 
-  if (target->HasKey("upmem"))
-     res = UpmemParallelTransfer()(std::move(res));
+  if (target->HasKey("upmem")) res = UpmemParallelTransfer()(std::move(res));
   return res;
 }
 
-}
-}
+}  // namespace tir
+}  // namespace tvm

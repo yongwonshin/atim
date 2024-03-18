@@ -30,36 +30,35 @@ extern "C" {
 
 #include <tvm/runtime/packed_func.h>
 
-#include <string>
 #include <chrono>
+#include <string>
 
 #include "../workspace_pool.h"
 
 namespace tvm {
 namespace runtime {
 
-#define UPMEM_DRIVER_CALL(x)                                   \
-  {                                                           \
-    dpu_error_t err = x;                                      \
-    if (x != DPU_OK) {                                        \
-      LOG(FATAL) << "UPMEM Error: " #x " failed with error: " \
-        << dpu_error_to_string(err);                          \
-    }                                                         \
+#define UPMEM_DRIVER_CALL(x)                                                               \
+  {                                                                                        \
+    dpu_error_t err = x;                                                                   \
+    if (x != DPU_OK) {                                                                     \
+      LOG(FATAL) << "UPMEM Error: " #x " failed with error: " << dpu_error_to_string(err); \
+    }                                                                                      \
   }
 
-#define UPMEM_CALL(x)                                   \
-  {                                                           \
-    dpu_error_t err = x;                                      \
+#define UPMEM_CALL(x)                                               \
+  {                                                                 \
+    dpu_error_t err = x;                                            \
     ICHECK(err == DPU_OK) << "UPMEM: " << dpu_error_to_string(err); \
   }
 
-class UPMEMDeviceAPI final: public DeviceAPI {
-public:
+class UPMEMDeviceAPI final : public DeviceAPI {
+ public:
   struct DpuVarInfo {
     int32_t bytes;
     std::string var_name;
   };
-  static UPMEMDeviceAPI* Global(); 
+  static UPMEMDeviceAPI* Global();
 
   void SetDevice(Device dev) final {}
 
@@ -71,7 +70,8 @@ public:
 
   void FreeWorkspace(Device dev, void* data) final;
 
-  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint, Optional<String> mem_scope = NullOpt) final;
+  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
+                       Optional<String> mem_scope = NullOpt) final;
 
   void FreeDataSpace(Device dev, void* ptr);
 
@@ -79,13 +79,16 @@ public:
 
   int ReleaseResources();
 
-  void SetPimMemoryEntry(void* handle, std::string var_name, DataType dtype, int size, int bank_index);
+  void SetPimMemoryEntry(void* handle, std::string var_name, DataType dtype, int size,
+                         int bank_index);
 
   void ErasePimMemoryEntry(void* handle);
 
-  int TransferHostToDevice(void* handle, uint64_t host_addr, uint64_t in_bank_addr, int bank_idx, int size);
+  int TransferHostToDevice(void* handle, uint64_t host_addr, uint64_t in_bank_addr, int bank_idx,
+                           int size);
 
-  int TransferDeviceToHost(void* handle, uint64_t host_addr, uint64_t in_bank_addr, int bank_idx, int size);
+  int TransferDeviceToHost(void* handle, uint64_t host_addr, uint64_t in_bank_addr, int bank_idx,
+                           int size);
 
   int Broadcast(void* handle, uint64_t host_addr, int size);
 
@@ -93,7 +96,7 @@ public:
 
   int PushXfer(void* handle, uint64_t in_bank_addr, int size, int direction);
 
-protected:
+ protected:
   void CopyDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset, size_t size,
                       Device dev_from, Device dev_to, DLDataType type_hint,
                       TVMStreamHandle stream) final;
@@ -103,10 +106,10 @@ protected:
   std::string GetSymbolName(void* handle) { return dpu_addr_ptr[handle].var_name; }
 
   void* HostOffset(void* handle, uint64_t offset) {
-    return (char *)handle + (size_t)offset * GetBytes(handle);
+    return (char*)handle + (size_t)offset * GetBytes(handle);
   }
 
-public:
+ public:
   dpu_set_t dpu_set;
 
   std::unordered_map<int, dpu_set_t> dpu_entry;
@@ -119,7 +122,7 @@ public:
   void* recent_host_address;
 };
 
-class UPMEMThreadEntry { // is it necessary?
+class UPMEMThreadEntry {  // is it necessary?
  public:
   /*! \brief The cuda stream */
   /*! \brief thread local pool*/

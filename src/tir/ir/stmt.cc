@@ -491,8 +491,8 @@ BufferStore::BufferStore(Buffer buffer, PrimExpr value, Array<PrimExpr> indices,
   data_ = std::move(node);
 }
 
-BufferStore::BufferStore(Buffer buffer, PrimExpr value, Array<PrimExpr> indices, 
-  Array<PrimExpr> global_indices, Span span) {
+BufferStore::BufferStore(Buffer buffer, PrimExpr value, Array<PrimExpr> indices,
+                         Array<PrimExpr> global_indices, Span span) {
   ICHECK_EQ(buffer->shape.size(), indices.size())
       << "Buffer " << buffer->name << " is " << buffer->shape.size()
       << "-dimensional, cannot be indexed with the " << indices.size()

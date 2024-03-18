@@ -24,11 +24,11 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/target/target.h>
+#include <tvm/tir/analysis.h>
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
-#include <tvm/tir/analysis.h>
 
 #include <unordered_set>
 
@@ -151,8 +151,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     if (auto opt = GetRemappedBuffer(load->buffer)) {
       auto new_load = load.CopyOnWrite();
       new_load->buffer = opt.value();
-      if (new_load->indices.size() == 0)
-        new_load->global_indices.push_back(0);
+      if (new_load->indices.size() == 0) new_load->global_indices.push_back(0);
     }
     return std::move(load);
   }
@@ -168,10 +167,9 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     }
 
     if (auto opt = GetRemappedBuffer(store->buffer)) {
-     auto new_store = store.CopyOnWrite();
-     new_store->buffer = opt.value();
-     if (new_store->indices.size() == 0)
-      new_store->global_indices.push_back(0);
+      auto new_store = store.CopyOnWrite();
+      new_store->buffer = opt.value();
+      if (new_store->indices.size() == 0) new_store->global_indices.push_back(0);
     }
     return std::move(store);
   }
@@ -439,7 +437,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         ICHECK(!load_remap_.count(buffers[i]->data.get()));
         PrimExpr pred = const_true(types[i].lanes());
         Buffer buf = shared_bufs[i];
-        BufferLoad val(buf, zero_indices, Array<PrimExpr>({ 0 }));
+        BufferLoad val(buf, zero_indices, Array<PrimExpr>({0}));
         ICHECK_EQ(val->dtype, types[i]);
         load_remap_[buffers[i]->data.get()] = val;
         Array<PrimExpr> extents{PrimExpr(1)};
@@ -471,17 +469,18 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         BufferLoad load = Downcast<BufferLoad>(values[idx]);
         PrimExpr global_index = 0;
         if (load.defined()) {
-          for (const auto& store: buffer_stores_) {
+          for (const auto& store : buffer_stores_) {
             ExprDeepEqual expr_equal;
-              if (store->buffer.same_as(load->buffer) && expr_equal(store->indices[0], load->indices[0])) {
+            if (store->buffer.same_as(load->buffer) &&
+                expr_equal(store->indices[0], load->indices[0])) {
               auto load_value = Downcast<BufferLoad>(store->value);
               global_index = load_value->global_indices[0];
             }
           }
         }
         seq.emplace_back(BufferStore(shared_bufs[idx], values[idx],
-                                     {BufIndex(reduce_index, group_index, reduce_extent)}, 
-                                     Array<PrimExpr>({ global_index })));
+                                     {BufIndex(reduce_index, group_index, reduce_extent)},
+                                     Array<PrimExpr>({global_index})));
       }
       seq.emplace_back(SyncThread(sync_scope));
       seq.emplace_back(MakeBufAllreduce(combiner, types, shared_bufs, reduce_index, group_index,
@@ -491,7 +490,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         PrimExpr pred = const_true(types[idx].lanes());
         BufferLoad load(shared_bufs[idx],
                         {BufIndex(make_zero(reduce_index.dtype()), group_index, reduce_extent)},
-                        Array<PrimExpr>({ 0 }));
+                        Array<PrimExpr>({0}));
         ICHECK_EQ(load->dtype, types[idx]);
         load_remap_[buffers[idx]->data.get()] = load;
         alloc_remap_[buffers[idx]->data.get()] =
@@ -533,7 +532,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       for (size_t i = 0; i < size; ++i) {
         BufferLoad b_load(shared_bufs[i],
                           {BufIndex(reduce_index + offset, group_index, reduce_extent)},
-                          Array<PrimExpr>({ 0 }));
+                          Array<PrimExpr>({0}));
         ICHECK_EQ(b_load->dtype, types[i]);
         b.push_back(b_load);
 
@@ -547,7 +546,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     auto fstore = [&](const Array<PrimExpr>& ret) {
       std::vector<Stmt> stores(size);
       for (size_t i = 0; i < size; ++i) {
-        stores[i] = BufferStore(shared_bufs[i], ret[i], {buf_index}, Array<PrimExpr>({ 0 }));
+        stores[i] = BufferStore(shared_bufs[i], ret[i], {buf_index}, Array<PrimExpr>({0}));
       }
       return SeqStmt::Flatten(stores);
     };
@@ -754,8 +753,8 @@ Pass LowerThreadAllreduce() {
     const TargetNode* target_node = target.as<TargetNode>();
     ThreadAllreduceBuilder thread_all_reduce(target_node);
     auto reduce_body = thread_all_reduce(n->body);
-    n->body =
-        UpdatePointerStorageScopeAllReduce(thread_all_reduce.new_storage_scopes_, target_node)(reduce_body);
+    n->body = UpdatePointerStorageScopeAllReduce(thread_all_reduce.new_storage_scopes_,
+                                                 target_node)(reduce_body);
     return f;
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.LowerThreadAllreduce", {});
