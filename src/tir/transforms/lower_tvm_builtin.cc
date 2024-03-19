@@ -453,7 +453,7 @@ class BuiltinLower : public StmtExprMutator {
   }
 
   PrimExpr MakePimTransferHostToDevice(const CallNode* op) {
-    ICHECK(op->args.size() == 5) << "pim_transfer_host_to_device expects 6 arguments";
+    ICHECK(op->args.size() == 6) << "pim_transfer_host_to_device expects 6 arguments";
     PrimExpr buffer_var = op->args[0];
     PrimExpr host_address = op->args[1];
     PrimExpr in_bank_address = op->args[2];
@@ -468,7 +468,7 @@ class BuiltinLower : public StmtExprMutator {
   }
 
   PrimExpr MakePimTransferDeviceToHost(const CallNode* op) {
-    ICHECK(op->args.size() == 5) << "pim_transfer_device_to_host expects 6 arguments";
+    ICHECK(op->args.size() == 6) << "pim_transfer_device_to_host expects 6 arguments";
     PrimExpr buffer_var = op->args[0];
     PrimExpr host_address = op->args[1];
     PrimExpr in_bank_address = op->args[2];
