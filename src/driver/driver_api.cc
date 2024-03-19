@@ -422,7 +422,6 @@ std::pair<IRModule, IRModule> SplitMixedModule(
 
   mod_mixed = ApplyPasses(mod_mixed, MixedModulePassManager(mod_mixed, target));
 
-  // std::cerr << mod_mixed << std::endl;
   if (data_copy_func.defined()) {
     auto mod = mod_mixed.CopyOnWrite();
     for (auto [var, func] : data_copy_func.value()) {
@@ -430,7 +429,7 @@ std::pair<IRModule, IRModule> SplitMixedModule(
     }
     mod_mixed = GetRef<IRModule>(mod);
   }
-  std::cerr << mod_mixed << std::endl;
+
   IRModule host_mod = ApplyPasses(mod_mixed, HostModulePassManager(mod_mixed, target_host));
 
   IRModule device_mod = ApplyPasses(mod_mixed, DeviceModulePassManager(mod_mixed, target));

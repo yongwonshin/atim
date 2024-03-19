@@ -210,8 +210,6 @@ int HBMPIMWorkspace::ExecuteGemmBiasAct(void* output, void* pim_data,
     input_data_ = internal_buffer_map_["A"].data();
   }
 
-  std::cerr << "preload_data_with_addr: " << pim_data_addr - pim_base_addr << std::endl;
-
   pim_sim_.preload_data_with_addr(pim_data_addr - pim_base_addr, input_data_,
                                   buffer_size_map_[input_data]);
   pim_sim_.execute_kernel((void*)fmtd32, fmtd32_size);
@@ -428,12 +426,6 @@ int HBMPIMWorkspace::TransferHostToDevice(void* handle, uint64_t host_addr, uint
   int bk = bank_index % pim_library::vega20_pbi.num_banks % pim_library::vega20_pbi.num_bank_groups;
   uint64_t pim_address = pim_library::addr_gen_s(chan, 0, bg, bk, 0, 0, offset);
   void* host_address = reinterpret_cast<void*>(HostOffset(handle, host_addr));
-
-  if (bg == 0 && bk == 0 && offset == 0) {
-    std::cerr << chan << ", " << bg << ", " << bk << ", " << offset << " | " << pim_address
-              << " <- " << ((int16_t*)host_address)[127] << std::endl;
-    n = pim_address;
-  }
 
   std::string var_name = GetSymbolName(handle);
   auto& v = internal_buffer_map_[var_name];
