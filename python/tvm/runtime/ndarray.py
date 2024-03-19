@@ -641,7 +641,7 @@ def array(arr, device=cpu(0), mem_scope=None, symbol=None):
 
     mem_scope : Optional[str]
         The memory scope of the array
-        
+
     symbol : Optional[Callable]
         The symbol to distribute the array to the device
 
@@ -655,7 +655,7 @@ def array(arr, device=cpu(0), mem_scope=None, symbol=None):
 
     if not isinstance(arr, (np.ndarray, NDArray)):
         arr = np.array(arr)
-        
+
     if device.device_type == Device.kDLUPMEM:
         host_arr = array(arr, cpu(0))
         if symbol is not None:
@@ -667,10 +667,29 @@ def array(arr, device=cpu(0), mem_scope=None, symbol=None):
                 with suppress(AttributeError):
                     _sym = device.func["copy_" + symbol]
                     if _sym is None:
-                        warnings.warn(f"function copy_{symbol} not included in module. Bypassing symbol={symbol}")
+                        warnings.warn(
+                            f"function copy_{symbol} not included in module. Bypassing symbol={symbol}"
+                        )
                     if _sym:
                         _sym(host_arr)
         return host_arr
+    elif device.device_type == Device.kDLHBMPIM:
+        host_arr = array(arr, cpu(0))
+        if symbol is not None:
+            if hasattr(symbol, "__call__"):
+                symbol(host_arr)
+            elif isinstance(symbol, str):
+                if device.func is None:
+                    raise AttributeError("The function should be loaded to the UPMEM device.")
+                with suppress(AttributeError):
+                    _sym = device.func["copy_" + symbol]
+                    if _sym is None:
+                        warnings.warn(
+                            f"function copy_{symbol} not included in module. Bypassing symbol={symbol}"
+                        )
+                    if _sym:
+                        _sym(host_arr)
+        return empty(host_arr.shape, host_arr.dtype, device, mem_scope).copyfrom(host_arr)
     return empty(arr.shape, arr.dtype, device, mem_scope).copyfrom(arr)
 
 

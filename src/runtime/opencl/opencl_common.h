@@ -214,10 +214,46 @@ inline cl_channel_type DTypeToOpenCLChannelType(DLDataType data_type) {
 class OpenCLThreadEntry;
 struct BufferDescriptor;
 
+class PIMWorkspaceCommon {
+ public:
+  struct VarInfo {
+    int32_t bytes;
+    std::string var_name;
+  };
+  virtual int AcquireResources(int32_t bank_num) { return 0; }
+  virtual int ReleaseResources() {
+    addr_ptr_.clear();
+    return 0;
+  }
+  virtual void SetPimMemoryEntry(void* handle, std::string var_name, DataType dtype, int size,
+                                 int bank_index) {
+    addr_ptr_[handle] = {dtype.bytes(), var_name};
+  };
+  virtual void ErasePimMemoryEntry(void* handle) { addr_ptr_.erase(handle); };
+  virtual int TransferHostToDevice(void* handle, uint64_t host_addr, uint64_t in_bank_addr,
+                                   int bank_index, int size) {
+    return 0;
+  }
+  virtual int TransferDeviceToHost(void* handle, uint64_t host_addr, uint64_t in_bank_addr, int bank_idx,
+                           int size) {
+    return 0;
+  }
+  virtual int GetBytes(void* handle) { return addr_ptr_[handle].bytes; }
+
+  virtual std::string GetSymbolName(void* handle) { return addr_ptr_[handle].var_name; }
+
+  virtual void* HostOffset(void* handle, uint64_t offset) {
+    return (char *)handle + (size_t)offset * GetBytes(handle);
+  }
+
+ protected:
+  std::unordered_map<void*, VarInfo> addr_ptr_;
+};
+
 /*!
  * \brief Process global OpenCL workspace.
  */
-class OpenCLWorkspace : public DeviceAPI {
+class OpenCLWorkspace : public DeviceAPI, public PIMWorkspaceCommon {
  public:
   // type key
   std::string type_key;

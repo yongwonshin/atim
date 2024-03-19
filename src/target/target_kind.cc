@@ -445,7 +445,7 @@ TVM_REGISTER_TARGET_KIND("hexagon", kDLHexagon)
 TVM_REGISTER_TARGET_KIND("upmem", kDLUPMEM)  // line break
     .set_default_keys({"upmem", "pim"});
 
-TVM_REGISTER_TARGET_KIND("hbmpim", kDLOpenCL)  // line break
+TVM_REGISTER_TARGET_KIND("hbmpim", kDLHBMPIM)  // line break
     .add_attr_option<Integer>("max_threads_per_block", Integer(256))
     .add_attr_option<Integer>("max_shared_memory_per_block", Integer(16384))
     .add_attr_option<Integer>("max_num_threads", Integer(256))

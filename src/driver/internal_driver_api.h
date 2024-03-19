@@ -41,7 +41,9 @@ namespace tvm {
  *        pass Target().
  * \return The built module that contains code for different processors.
  */
-runtime::Module TIRToRuntime(const Map<Target, IRModule>& input, const Target& target_host);
+runtime::Module TIRToRuntime(
+    const Map<Target, IRModule>& input, const Target& target_host,
+    const Optional<Map<GlobalVar, tvm::tir::PrimFunc>> data_copy_func = NullOpt);
 
 }  // namespace tvm
 

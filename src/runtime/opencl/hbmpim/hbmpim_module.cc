@@ -134,6 +134,8 @@ class HBMPIMWrappedFunc {
           output, weight, w->h_fmtd32_, w->h_fmtd32_size_[0], pim_library::PimOpType::OP_GEMV,
           w->fragment_allocator_[t->device.device_id]->get_g_pim_base_addr(t->device.device_id),
           pim_gemv_tmp_buffer, nullptr, pim_library::PimActFunc::NONE);
+      // std::cerr << "CYCLE: " << w->pim_sim_.get_cycle() << std::endl;
+      // w->pim_sim_.reset_cycle();
     }
     // #endif
   }

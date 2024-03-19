@@ -30,6 +30,7 @@
 #include <tvm/target/codegen.h>
 #include <tvm/te/operation.h>
 #include <tvm/tir/analysis.h>
+#include <tvm/tir/function.h>
 #include <tvm/tir/transform.h>
 
 #include <algorithm>
@@ -411,8 +412,9 @@ TVM_REGISTER_GLOBAL("driver.lower_schedule")
  * Then, it applies transformation on the original module before splitting into separate modules for
  * device and host. Then it also applies transformations on the new splitted modules.
  */
-std::pair<IRModule, IRModule> SplitMixedModule(IRModule mod_mixed, const Target& target_arg,
-                                               const Target& target_host_arg) {
+std::pair<IRModule, IRModule> SplitMixedModule(
+    IRModule mod_mixed, const Target& target_arg, const Target& target_host_arg,
+    const Optional<Map<GlobalVar, tvm::tir::PrimFunc>> data_copy_func = NullOpt) {
   Target target = target_arg, target_host = target_host_arg;
   CheckAndUpdateHostConsistency(&target, &target_host);
 
@@ -420,6 +422,15 @@ std::pair<IRModule, IRModule> SplitMixedModule(IRModule mod_mixed, const Target&
 
   mod_mixed = ApplyPasses(mod_mixed, MixedModulePassManager(mod_mixed, target));
 
+  // std::cerr << mod_mixed << std::endl;
+  if (data_copy_func.defined()) {
+    auto mod = mod_mixed.CopyOnWrite();
+    for (auto [var, func] : data_copy_func.value()) {
+      mod->Add(var, func);
+    }
+    mod_mixed = GetRef<IRModule>(mod);
+  }
+  std::cerr << mod_mixed << std::endl;
   IRModule host_mod = ApplyPasses(mod_mixed, HostModulePassManager(mod_mixed, target_host));
 
   IRModule device_mod = ApplyPasses(mod_mixed, DeviceModulePassManager(mod_mixed, target));
@@ -437,8 +448,9 @@ std::pair<IRModule, IRModule> SplitMixedModule(IRModule mod_mixed, const Target&
   return {host_mod, device_mod};
 }
 
-runtime::Module TIRToRuntime(const Map<Target, IRModule>& inputs_arg,
-                             const Target& target_host_arg) {
+runtime::Module TIRToRuntime(
+    const Map<Target, IRModule>& inputs_arg, const Target& target_host_arg,
+    const Optional<Map<GlobalVar, tvm::tir::PrimFunc>> data_copy_func = NullOpt) {
   std::vector<runtime::Module> device_modules;
   Map<Target, IRModule> inputs = inputs_arg;
   Target target_host = target_host_arg;
@@ -474,7 +486,7 @@ runtime::Module TIRToRuntime(const Map<Target, IRModule>& inputs_arg,
     if (it.second.defined()) {
       const Target& target = it.first;
       const IRModule& ir_module = it.second;
-      auto pair = SplitMixedModule(ir_module, target, target_host);
+      auto pair = SplitMixedModule(ir_module, target, target_host, data_copy_func);
       auto& host_mod = pair.first;
       auto& device_mod = pair.second;
 
@@ -512,9 +524,11 @@ runtime::Module TIRToRuntime(const Map<Target, IRModule>& inputs_arg,
 }
 
 TVM_REGISTER_GLOBAL("driver.tir_to_runtime")
-    .set_body_typed([](const Map<Target, IRModule>& inputs_arg, Target host_target) {
-      return TIRToRuntime(inputs_arg, host_target);
-    });
+    .set_body_typed(
+        [](const Map<Target, IRModule>& inputs_arg, Target host_target,
+           const Optional<Map<GlobalVar, tvm::tir::PrimFunc>> data_copy_func = NullOpt) {
+          return TIRToRuntime(inputs_arg, host_target, data_copy_func);
+        });
 
 // Build for heterogeneous execution when targets are specified as
 // objects.  This wrapper around the internal API is maintained for

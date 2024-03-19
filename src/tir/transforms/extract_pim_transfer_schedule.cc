@@ -33,6 +33,8 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
+#include <set>
+
 #include "../../arith/interval_set.h"
 #include "../../runtime/thread_storage_scope.h"
 #include "../../support/utils.h"
@@ -43,6 +45,11 @@
 
 namespace tvm {
 namespace tir {
+
+bool IsUPMEMDevice(Target& target) {
+  int dev_type = target->GetTargetDeviceType();
+  return kDLUPMEM == dev_type;
+}
 
 class PimKernelFinder : public StmtExprVisitor {
  public:
@@ -55,6 +62,7 @@ class PimKernelFinder : public StmtExprVisitor {
   bool before_kernel = true, inside_kernel = false, after_kernel = false;
   bool is_single_kernel = false;
   Stmt kernel_body;
+  Array<Stmt> kernel_bodies;
   int32_t bank_count = 1;
   std::vector<PrimExpr> bank_array;
   std::vector<const ForNode*> loops;
@@ -160,6 +168,7 @@ class PimKernelFinder : public StmtExprVisitor {
                         kv.second, symbol});
       }
       kernel_body = AttrStmt(symbol_map, "upmem_symbol_map", 0, kernel_body);
+      kernel_bodies.push_back(kernel_body);
     }
 
     else if (op->attr_key == tvm::tir::attr::thread_extent) {
@@ -270,12 +279,17 @@ class ScheduleExtractor : public StmtExprVisitor {
   std::vector<PrimExpr> conds;
   Map<Var, PrimExpr> vmap;
   Map<Var, Range> rmap;
+  PrimExpr bank_index_;
+  const std::set<std::string>& bank_vars_;
 
-  ScheduleExtractor(const Buffer& buffer) : target_buffer_(buffer) {}
+  ScheduleExtractor(const Buffer& buffer, PrimExpr bank_index,
+                    const std::set<std::string>& bank_vars)
+      : target_buffer_(buffer), bank_index_(bank_index), bank_vars_(bank_vars) {}
 
-  static Stmt extract(const Buffer& buffer, Stmt stmt) {
+  static Stmt extract(const Buffer& buffer, Stmt stmt, PrimExpr bank_index,
+                      const std::set<std::string>& bank_vars) {
     arith::Analyzer ana;
-    ScheduleExtractor v(buffer);
+    ScheduleExtractor v(buffer, bank_index, bank_vars);
     v(stmt);
     return tir::RemoveNoOp(v.res_stmt, &ana);
   }
@@ -294,6 +308,7 @@ class ScheduleExtractor : public StmtExprVisitor {
 
   void VisitStmt_(const ForNode* op) {
     auto new_loop_var = op->loop_var.copy_with_suffix("_");
+    // bank_index_ = Substitute(bank_index_, {{op->loop_var, new_loop_var}});
     vmap.Set(op->loop_var, new_loop_var);
     rmap.Set(op->loop_var, Range::FromMinExtent(op->min, op->extent));
     loops.push_back(op->loop_var);
@@ -321,6 +336,7 @@ class ScheduleExtractor : public StmtExprVisitor {
       ICHECK(iv);
       Var var = iv->var;
       Var new_var = iv->var.copy_with_suffix("_");
+      // bank_index_ = Substitute(bank_index_, {{var, new_var}});
       runtime::ThreadScope scope = runtime::ThreadScope::Create(iv->thread_tag);
       PrimExpr prev_bank_index;
       if (scope.rank == 0) {
@@ -360,8 +376,10 @@ class ScheduleExtractor : public StmtExprVisitor {
           host_index = Substitute(load->indices[0], vmap);
           in_bank_index = Substitute(op->global_indices[0], vmap);
           buffer = load->buffer;
-          res_stmt = Evaluate(Call(DataType::Int(32), builtin::pim_transfer_host_to_device(),
-                                   {buffer->data, host_index, in_bank_index, bank_index, 1, 1}));
+          auto replaced_bank_index = Substitute(bank_index_, vmap);
+          res_stmt =
+              Evaluate(Call(DataType::Int(32), builtin::pim_transfer_host_to_device(),
+                            {buffer->data, host_index, in_bank_index, replaced_bank_index, 1, 1}));
         }
       }
       if ((lscope == "local" || lscope == "shared") &&
@@ -373,8 +391,10 @@ class ScheduleExtractor : public StmtExprVisitor {
           host_index = Substitute(op->indices[0], vmap);
           in_bank_index = Substitute(load->global_indices[0], vmap);
           buffer = op->buffer;
-          res_stmt = Evaluate(Call(DataType::Int(32), builtin::pim_transfer_device_to_host(),
-                                   {buffer->data, host_index, in_bank_index, bank_index, 1, 1}));
+          auto replaced_bank_index = Substitute(bank_index_, vmap);
+          res_stmt =
+              Evaluate(Call(DataType::Int(32), builtin::pim_transfer_device_to_host(),
+                            {buffer->data, host_index, in_bank_index, replaced_bank_index, 1, 1}));
         }
       }
       if (found) {
@@ -384,8 +404,8 @@ class ScheduleExtractor : public StmtExprVisitor {
         for (auto it = loops.rbegin(); it != loops.rend(); it++) {
           auto v = *it;
           Var new_var = Downcast<Var>(vmap[v]);
-          bool is_bank = support::StartsWith(new_var->name_hint, "blockIdx");
-          // todo-stonerdk: a little bit hack
+          bool is_bank = support::StartsWith(new_var->name_hint,
+                                             "blockIdx");  // todo-stonerdk: a little bit hack
           IsVarUsed visitor(new_var);
           visitor(host_index);
           if (visitor.found || is_bank) {
@@ -401,39 +421,70 @@ class ScheduleExtractor : public StmtExprVisitor {
   }
 };
 
+class BankIndex : public StmtVisitor {
+ public:
+  void VisitStmt_(const ForNode* op) {
+    if (op->annotations.find("bank") != op->annotations.end()) {
+      bank_index_ = bank_index_ * op->extent + op->loop_var;
+    }
+    StmtVisitor::VisitStmt_(op);
+  }
+  void VisitStmt_(const AttrStmtNode* op) {
+    if (op->attr_key == tvm::tir::attr::thread_extent && n_target < 2) {
+      const IterVarNode* iv = op->node.as<IterVarNode>();
+      ICHECK(iv);
+      Var var = iv->var;
+      runtime::ThreadScope scope = runtime::ThreadScope::Create(iv->thread_tag);
+      if (bank_vars_.count(iv->var->name_hint) == 0 && (scope.rank == 0 || scope.rank == 2)) {
+        bank_index_ = bank_index_ * op->value + var;
+        bank_vars_.insert(iv->var->name_hint);
+      }
+    }
+    StmtVisitor::VisitStmt_(op);
+  }
+  PrimExpr bank_index_ = Integer(0);
+  std::set<std::string> bank_vars_;
+  int n_target = 0;
+};
+
 class KernelReplacer : public StmtExprMutator {
  public:
-  Stmt& replace_target;
+  Array<Stmt>& replace_target;
   Stmt& prologue;
+  Stmt& epilogue;
   Stmt kernel_body;
   bool inside_kernel = false;
-  KernelReplacer(Stmt replace, Stmt prologue) : replace_target(replace), prologue(prologue) {}
+  size_t n_visit = 0;
+  KernelReplacer(Array<Stmt> replace, Stmt prologue, Stmt epilogue)
+      : replace_target(replace), prologue(prologue), epilogue(epilogue) {}
 
-  Stmt operator()(Stmt stmt) { return SeqStmt({prologue, this->VisitStmt(stmt)}); }
+  Stmt operator()(Stmt stmt) { return SeqStmt({prologue, this->VisitStmt(stmt), epilogue}); }
 
   Stmt VisitStmt_(const AttrStmtNode* op) {
     if (op->attr_key == tvm::attr::kTarget) {
       if (inside_kernel == false) {
         ICHECK(!kernel_body.defined()) << "Only one kernel is supported";
-        return replace_target;
+        return replace_target[n_visit++];
       }
     }
     return StmtExprMutator::VisitStmt_(op);
   }
 };
 
-Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map) {
+Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map,
+                           PrimExpr bank_index, const std::set<std::string>& bank_vars) {
   PimKernelFinder finder;
   finder(stmt);
   finder.postFilter();
   Stmt kernel_body = finder.kernel_body;
+  Array<Stmt> kernel_bodies = finder.kernel_bodies;
 
-  Array<Stmt> seq;
   Array<Stmt> prologue;
+  Array<Stmt> epilogue;
   for (auto bf : finder.h2d_explicit) {
     StringImm var_name = Downcast<StringImm>(finder.symbol_map[bf->data->name_hint][0]);
     Stmt new_stmt = SeqStmt({finder.GetAcquireStmt(), finder.GetAllocateStmt(bf->data),
-                             ScheduleExtractor::extract(bf, stmt)});
+                             ScheduleExtractor::extract(bf, stmt, bank_index, bank_vars)});
     Buffer unflattened_buffer;
     for (auto& kv : buffer_map) {
       Buffer buf = kv.second;
@@ -447,29 +498,31 @@ Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map
     new_stmt = AttrStmt(unflattened_buffer, "pim_explicit_transfer", var_name, new_stmt);
     prologue.push_back(new_stmt);
   }
-  seq.push_back(finder.GetAcquireStmt());
+  prologue.push_back(finder.GetAcquireStmt());
   for (auto h2d_bf : finder.h2d_implicit) {
-    seq.push_back(finder.GetAllocateStmt(h2d_bf->data));
-    seq.push_back(ScheduleExtractor::extract(h2d_bf, stmt));
+    prologue.push_back(finder.GetAllocateStmt(h2d_bf->data));
+    prologue.push_back(ScheduleExtractor::extract(h2d_bf, stmt, bank_index, bank_vars));
   }
   for (auto d2h_bf : finder.d2h) {
-    seq.push_back(finder.GetAllocateStmt(d2h_bf->data));
+    prologue.push_back(finder.GetAllocateStmt(d2h_bf->data));
   }
-  seq.push_back(kernel_body);
   for (auto d2h_bf : finder.d2h) {
-    seq.push_back(ScheduleExtractor::extract(d2h_bf, stmt));
-    seq.push_back(finder.GetFreeStmt(d2h_bf->data));
+    epilogue.push_back(ScheduleExtractor::extract(d2h_bf, stmt, bank_index, bank_vars));
+    epilogue.push_back(finder.GetFreeStmt(d2h_bf->data));
   }
   for (auto h2d_bf : finder.h2d_implicit) {
-    seq.push_back(finder.GetFreeStmt(h2d_bf->data));
+    epilogue.push_back(finder.GetFreeStmt(h2d_bf->data));
   }
   for (auto bf : finder.h2d_explicit) {
-    seq.push_back(finder.GetFreeStmt(bf->data));
+    epilogue.push_back(finder.GetFreeStmt(bf->data));
   }
-  Stmt res = SeqStmt(seq);
+  Stmt res =
+      KernelReplacer(kernel_bodies, SeqStmt::Flatten(prologue), SeqStmt::Flatten(epilogue))(stmt);
 
-  res = KernelReplacer(res, SeqStmt::Flatten(prologue))(stmt);
-  res = OptimizePimTransferSchedule(res, target);
+  // TODO[ywshin]: maybe trans_size = 32 for HBMPIM
+  if (IsUPMEMDevice(target)) {
+    res = OptimizePimTransferSchedule(res, target);
+  }
 
   Array<Stmt> wrapped = {res,
                          Evaluate(Call(DataType::Int(32), builtin::pim_release_resources(), {}))};
@@ -486,6 +539,8 @@ namespace transform {
 
 Pass ExtractPimTransferSchedule() {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
+    BankIndex b;
+    b(f->body);
     auto* n = f.CopyOnWrite();
     Target target = [&]() {
       auto opt = f->GetAttr<Target>(tvm::attr::kTarget);
@@ -494,7 +549,7 @@ Pass ExtractPimTransferSchedule() {
       return opt.value();
     }();
     if (IsPIMDevice(target)) {
-      n->body = ConstructTransferStmt(n->body, target, n->buffer_map);
+      n->body = ConstructTransferStmt(n->body, target, n->buffer_map, b.bank_index_, b.bank_vars_);
     }
     return f;
   };

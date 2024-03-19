@@ -35,6 +35,7 @@
 #include <unordered_map>
 
 #include "../../runtime/thread_storage_scope.h"
+#include "../../support/utils.h"
 #include "../analysis/var_use_def_analysis.h"
 #include "ir_utils.h"
 
@@ -52,12 +53,20 @@ class PimTransferSplitter : public StmtMutator {
       std::string var_name = Downcast<StringImm>(op->value)->value;
       VarUseDefAnalyzer use_def({}, false);
       use_def(op->body);
+      Map<Var, PrimExpr> vmap;
+      // TODO[ywshin]: temporary fix
+      for (auto undefined_var : use_def.undefined_) {
+        if (support::StartsWith(undefined_var->name_hint, "puIdx")) {
+          vmap.Set(undefined_var, Integer(0));
+        }
+      }
+      auto new_body = Substitute(op->body, vmap);
       Buffer buf = Downcast<Buffer>(op->node);
       std::vector<Var> params{buf->data};
       Map<Var, Buffer> buffer_map = {{buf->data, buf}};
       std::string symbol_name = "copy_" + var_name;
       GlobalVar symbol = global_var_supply_->FreshGlobal(symbol_name, false);
-      PrimFunc new_func = WithAttrs(PrimFunc(params, op->body, VoidType(), buffer_map),
+      PrimFunc new_func = WithAttrs(PrimFunc(params, new_body, VoidType(), buffer_map),
                                     {{tvm::attr::kTarget, target},
                                      {tvm::attr::kGlobalSymbol, String(symbol_name)},
                                      {tir::attr::kNoAlias, Bool(true)},

@@ -34,6 +34,7 @@ from tvm.te import tensor
 from tvm.target import Target
 from tvm.tir.buffer import Buffer
 from tvm.tir.expr import Var
+from tvm.ir.expr import GlobalVar
 from tvm.driver import _ffi_api as _driver_ffi
 
 from . import _ffi_api as ffi
@@ -147,6 +148,7 @@ def build(
     ] = None,  # Type is annotated this way to avoid cyclic dependency
     name: Optional[str] = "default_function",
     binds: Optional[Mapping[tensor.Tensor, Buffer]] = None,
+    data_copy_func_map: Optional[Mapping[GlobalVar, PrimFunc]] = None,
 ):
     """Build a function with arguments as signature. Code will be generated
     for devices coupled with target information.
@@ -278,7 +280,7 @@ def build(
 
     annotated_mods, target_host = Target.canon_target_map_and_host(annotated_mods, target_host)
 
-    rt_mod_host = _driver_ffi.tir_to_runtime(annotated_mods, target_host)
+    rt_mod_host = _driver_ffi.tir_to_runtime(annotated_mods, target_host, data_copy_func_map)
 
     annotated_mods, target_host = Target.canon_target_map_and_host(annotated_mods, target_host)
 

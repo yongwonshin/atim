@@ -100,6 +100,19 @@ inline uint64_t addr_gen_safe(uint32_t chan, uint32_t rank, uint32_t bg, uint32_
   return addr_gen(chan, rank, bg, bank, row, col);
 }
 
+inline uint64_t addr_gen_s(uint chan, uint rank, uint bg, uint bank, uint row, uint col,
+                           uint offset) {
+  uint offset_size = 1 << vega20_pbi.num_offset_bit;
+  uint col_size = vega20_pbi.num_col / vega20_pbi.bl;
+
+  uint offset_s = offset % offset_size;
+  uint new_col = col + offset / offset_size;
+  uint col_s = new_col % col_size;
+  uint row_s = row + new_col / col_size;
+
+  return addr_gen(chan, rank, bg, bank, row_s, col_s) + offset_s;
+}
+
 void transpose_pimbo(PimBo* dst, PimBo* src);
 void set_pimbo_t(PimBo* bo0, PimBo* bo1, PimBo* bo2, PimBo* bo3);
 void set_pimbo_t(PimBo* inout);

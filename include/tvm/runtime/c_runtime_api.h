@@ -122,8 +122,8 @@ typedef enum {
   kDLSDAccel,
   kOpenGL,
   kDLMicroDev,
-  kDLUPMEM=64,
-  kDLHBMPIM=65,
+  kDLUPMEM = 64,
+  kDLHBMPIM = 65,
   TVMDeviceExtType_End,  // sentinel value
 } TVMDeviceExtType;
 

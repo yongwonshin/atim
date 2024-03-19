@@ -25,6 +25,7 @@
 #define TVM_RUNTIME_OPENCL_HBMPIM_HBMPIM_COMMON_H_
 
 #include <memory>
+#include <set>
 
 #include "../opencl_common.h"
 #include "pim_library/block_allocator.h"
@@ -62,7 +63,6 @@ class HBMPIMWorkspace final : public OpenCLWorkspace {
   // override OpenCL device API
   void Init() final;
   bool IsOpenCLDevice(Device dev) final;
-  bool IsHBMPIMDevice(Device dev);
   OpenCLThreadEntry* GetThreadEntry() final;
   // get the global workspace
   static OpenCLWorkspace* Global();
@@ -87,6 +87,10 @@ class HBMPIMWorkspace final : public OpenCLWorkspace {
                                   pim_library::PimMemTraceData* fmtd16, int fmtd16_size,
                                   pim_library::PimOpType op_type);
   void* CreateHostPtrIfEnabled(cl::BufferDescriptor* desc, Device dev, size_t size) final;
+  int TransferHostToDevice(void* handle, uint64_t host_addr, uint64_t in_bank_addr, int bank_index,
+                           int size) final;
+  int TransferDeviceToHost(void* handle, uint64_t host_addr, uint64_t in_bank_addr, int bank_idx,
+                           int size) final;
 
   // #ifdef EMULATOR
   pim_library::PimMemTraceData* h_fmtd16_;
@@ -104,6 +108,8 @@ class HBMPIMWorkspace final : public OpenCLWorkspace {
   PimSimulator2 pim_sim_;
   std::unordered_map<const void*, size_t> buffer_size_map_;
   // #endif
+  std::unordered_map<std::string, std::vector<int16_t>> internal_buffer_map_;
+  void* sim_output_ = nullptr;
 };
 
 /*! \brief Thread local workspace for HBMPIM*/
