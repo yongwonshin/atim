@@ -51,9 +51,9 @@ dev = tvm.device(target.kind.name, 0)
 
 
 def convert_to_int16(arr: np.ndarray) -> np.ndarray:
-    return np.frombuffer(
-        arr.flatten().tobytes(), dtype=np.int16, count=len(arr.flatten())
-    ).reshape(arr.shape)
+    return np.frombuffer(arr.flatten().tobytes(), dtype=np.int16, count=len(arr.flatten())).reshape(
+        arr.shape
+    )
 
 
 def convert_to_fp16(arr: np.ndarray) -> np.ndarray:
@@ -77,9 +77,7 @@ def transform_array(original_array: np.ndarray) -> np.ndarray:
             transformed_block = transform_block_(block)
             transformed_blocks.append(transformed_block)
     result_array = (
-        np.concatenate(
-            [block.reshape(1, 8, 128) for block in transformed_blocks], axis=0
-        )
+        np.concatenate([block.reshape(1, 8, 128) for block in transformed_blocks], axis=0)
         .reshape(original_array.shape[0] // 8, original_array.shape[1] // 128, 8, 128)
         .transpose(0, 2, 1, 3)
     )
@@ -97,9 +95,7 @@ np.random.shuffle(data_B)
 # data_B = np.full((K), 1, dtype="float16")
 data_B = convert_to_int16(data_B)
 
-answer = np.matmul(
-    convert_to_fp16(data_A), convert_to_fp16(data_B).reshape(K, 1)
-).flatten()
+answer = np.matmul(convert_to_fp16(data_A), convert_to_fp16(data_B).reshape(K, 1)).flatten()
 # print(answer)
 
 # Random generated tensor for testing
@@ -286,9 +282,7 @@ data_copy_func_map = data_copy_func(m)
 
 # print("[TIR with tensorized module and copy code]\n", tensorized_mod)
 
-func = tvm.build(
-    sch.mod, target=target, name="kernel", data_copy_func_map=data_copy_func_map
-)
+func = tvm.build(sch.mod, target=target, name="kernel", data_copy_func_map=data_copy_func_map)
 
 if (
     target.kind.name == "cuda"
@@ -309,4 +303,3 @@ evaluate_operation(func, log=log)
 
 # very relaxed check
 tvm.testing.assert_allclose(answer, convert_to_fp16(c.numpy()), rtol=1e-1, atol=1e-1)
-

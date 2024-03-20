@@ -204,10 +204,12 @@ int HBMPIMWorkspace::ExecuteGemmBiasAct(void* output, void* pim_data,
   //   std::cerr << std::endl;
   // }
 
-  void* input_data_ = nullptr;
+  void* input_data_ = input_data;
   {
     // TODO[ywshin]: it must NOT fixed!!!!
-    input_data_ = internal_buffer_map_["A"].data();
+    if (!internal_buffer_map_["A"].empty()) {
+      input_data_ = internal_buffer_map_["A"].data();
+    }
   }
 
   pim_sim_.preload_data_with_addr(pim_data_addr - pim_base_addr, input_data_,
