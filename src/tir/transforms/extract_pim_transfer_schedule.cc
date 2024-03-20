@@ -450,21 +450,25 @@ class BankIndex : public StmtVisitor {
 class KernelReplacer : public StmtExprMutator {
  public:
   Array<Stmt>& replace_target;
+  Stmt& early_prologue;
   Stmt& prologue;
   Stmt& epilogue;
   Stmt kernel_body;
   bool inside_kernel = false;
   size_t n_visit = 0;
-  KernelReplacer(Array<Stmt> replace, Stmt prologue, Stmt epilogue)
-      : replace_target(replace), prologue(prologue), epilogue(epilogue) {}
+  KernelReplacer(Array<Stmt> replace, Stmt early_prologue, Stmt prologue, Stmt epilogue)
+      : replace_target(replace),
+        early_prologue(early_prologue),
+        prologue(prologue),
+        epilogue(epilogue) {}
 
-  Stmt operator()(Stmt stmt) { return SeqStmt({prologue, this->VisitStmt(stmt), epilogue}); }
+  Stmt operator()(Stmt stmt) { return SeqStmt({early_prologue, this->VisitStmt(stmt)}); }
 
   Stmt VisitStmt_(const AttrStmtNode* op) {
     if (op->attr_key == tvm::attr::kTarget) {
       if (inside_kernel == false) {
         ICHECK(!kernel_body.defined()) << "Only one kernel is supported";
-        return replace_target[n_visit++];
+        return SeqStmt::Flatten(Array<Stmt>{prologue, replace_target[n_visit++], epilogue});
       }
     }
     return StmtExprMutator::VisitStmt_(op);
@@ -479,6 +483,7 @@ Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map
   Stmt kernel_body = finder.kernel_body;
   Array<Stmt> kernel_bodies = finder.kernel_bodies;
 
+  Array<Stmt> early_prologue;
   Array<Stmt> prologue;
   Array<Stmt> epilogue;
   for (auto bf : finder.h2d_explicit) {
@@ -496,7 +501,7 @@ Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map
     }
     ICHECK(unflattened_buffer.defined()) << "Cannot find unflattened buffer for " << bf->data;
     new_stmt = AttrStmt(unflattened_buffer, "pim_explicit_transfer", var_name, new_stmt);
-    prologue.push_back(new_stmt);
+    early_prologue.push_back(new_stmt);
   }
   prologue.push_back(finder.GetAcquireStmt());
   for (auto h2d_bf : finder.h2d_implicit) {
@@ -516,8 +521,8 @@ Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map
   for (auto bf : finder.h2d_explicit) {
     epilogue.push_back(finder.GetFreeStmt(bf->data));
   }
-  Stmt res =
-      KernelReplacer(kernel_bodies, SeqStmt::Flatten(prologue), SeqStmt::Flatten(epilogue))(stmt);
+  Stmt res = KernelReplacer(kernel_bodies, SeqStmt::Flatten(early_prologue),
+                            SeqStmt::Flatten(prologue), SeqStmt::Flatten(epilogue))(stmt);
 
   // TODO[ywshin]: maybe trans_size = 32 for HBMPIM
   if (IsUPMEMDevice(target)) {

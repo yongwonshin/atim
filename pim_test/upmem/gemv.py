@@ -43,7 +43,7 @@ def gemvRCTile(M, K, n_xb, n_yb, n_yt = 16, n_cache = 64, n_rt = 128, dtype = "i
     sch.bind(yo, "threadIdx.x")
     sch.annotate(xb, "bank", True)
     sch.annotate(yb, "bank", True)
-    sch.decompoose_reduction(block_crf, xo)
+    sch.decompose_reduction(block_crf, xo)
     i, _ = sch.get_loops(block_c)
     it, ii = sch.split(i, factors=[n_rt, None])
     sch.parallel(it)
@@ -125,16 +125,18 @@ class GEMV(UPMEMWorkload):
     def __init__(self):
         required = dict(M=8192, K=8192, dtype="int32", n_xb=1, n_yb=1, n_cache=64, n_yt=16, n_rt=64)
         super().__init__(profile="gemv", required=required, symbols=["A", "B", "C"], output_symbol="C")
-        
+
     def fetch_data(self):
         self.host.A = host_array((self.M, self.K), self.dtype)
         self.host.B = host_array((self.K,), self.dtype)
-    
+
     def host_version(self):
         self.host.C = np.dot(self.host.A, self.host.B)
-        
+
 if __name__ == "__main__":
     cleanup()
     gemv = GEMV()
     gemv.test(gemvRTile, n_yb=32, n_cache=256)
     gemv.test(gemvRTile, n_yb=64, n_cache=256)
+    gemv.test(gemvRCTile, n_yb=32, n_cache=256)
+    gemv.test(gemvRCTile, n_yb=64, n_cache=256)
