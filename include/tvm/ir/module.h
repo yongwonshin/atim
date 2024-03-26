@@ -84,6 +84,8 @@ class IRModuleNode : public Object {
    */
   std::unordered_set<String> import_set_;
 
+  std::string uuid;
+
   /*!
    * \brief Get a module attribute.
    *
@@ -145,6 +147,7 @@ class IRModuleNode : public Object {
     v->Visit("global_type_var_map_", &global_type_var_map_);
     v->Visit("source_map", &source_map);
     v->Visit("attrs", &attrs);
+    v->Visit("uuid", &uuid);
   }
 
   TVM_DLL bool SEqualReduce(const IRModuleNode* other, SEqualReducer equal) const;

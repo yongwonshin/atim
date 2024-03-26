@@ -846,6 +846,20 @@ def gpu_verify_pass(**kwargs):
     return tvm.tir.transform.prim_func_pass(verify_pass, opt_level=0)
 
 
+def upmem_verify_pass(**kwargs):
+    """Verify the validity of a upmem kernel.
+    This pass will check memory usage and number of threads per block.
+    """
+
+    def verify_pass(f, *_):
+        valid = tvm.tir.analysis.verify_upmem_code(f, kwargs)
+        if not valid:
+            raise InstantiationError("Skipped because of invalid upmem kernel")
+        return f
+
+    return tvm.tir.transform.prim_func_pass(verify_pass, opt_level=0)
+
+
 def vtcm_verify_pass(**kwargs):
     """Verify the validity of a hexagon kernel.
     This pass will check vtcm memory usage.

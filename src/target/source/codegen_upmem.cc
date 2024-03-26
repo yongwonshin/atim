@@ -31,6 +31,7 @@
 #include <vector>
 
 // #include "../../runtime/upmem/upmem_module.h"
+
 #include "../../runtime/thread_storage_scope.h"
 #include "../../runtime/upmem/upmem_module.h"
 #include "../build_common.h"
@@ -54,7 +55,7 @@ class TaskletNumFinder : public StmtExprVisitor {
   }
 };
 
-CodeGenUpmem::CodeGenUpmem() {
+CodeGenUpmem::CodeGenUpmem(std::string uuid) : uuid(uuid) {
   decl_stream << "#include <stdint.h>\n"
               << "#include <stdio.h>\n"
               << "#include <defs.h>\n"
@@ -228,14 +229,14 @@ void CodeGenUpmem::VisitExpr_(const CallNode* op, std::ostream& os) {
 
 void CodeGenUpmem::PrintStorageScope(const std::string& scope, std::ostream& os) {}
 
-std::string DPUClangCompile(const std::string& code, int tasklet_num,
+std::string DPUClangCompile(const std::string& code, int tasklet_num, std::string uuid,
                             bool use_dummy = false) {  // hack
   std::string exec = "dpu-upmem-dpurte-clang";
   int valid = std::system(("command -v " + exec + " >/dev/null 2>&1").c_str());
   if (valid != 0) {
     LOG(FATAL) << "dpu-upmem-dpurte-clang not found in PATH.";
   }
-  std::string output_binary = "temp";
+  std::string output_binary = "temp-" + uuid;
   std::string flags = "-DNR_TASKLETS=" + std::to_string(tasklet_num) + " -O2 -x c";
   std::string command = exec + " " + flags + " -o " + output_binary;
   if (use_dummy) {
@@ -285,7 +286,7 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
     tasklet_num = tnf.tasklet_num;
 
     code << "// Function: " << kv.first->name_hint << std::endl;
-    CodeGenUpmem cg;
+    CodeGenUpmem cg(mod->uuid);
     cg.Init(output_ssa);
 
     cg.AddFunction(f);
@@ -296,9 +297,10 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
 
   // return runtime::Module();
 
-  DPUClangCompile(code.str(), tasklet_num);
+  ICHECK(!mod->uuid.empty());
+  DPUClangCompile(code.str(), tasklet_num, mod->uuid);
 
-  return UPMEMModuleCreate("kernel", "upmem", ExtractFuncInfo(mod), code.str());
+  return UPMEMModuleCreate(code.str(), "upmem", ExtractFuncInfo(mod), code.str());
 }
 
 TVM_REGISTER_GLOBAL("target.build.upmem").set_body_typed(BuildUpmem);

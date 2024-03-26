@@ -123,7 +123,8 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
 
     for (ScheduleRule sch_rule : sch_rules.value()) {
       for (const tir::Schedule& sch : result) {
-        if (ScheduleRule::IsMultiLevelTilingHBMPIM(sch_rule)) {
+        if (ScheduleRule::IsMultiLevelTilingHBMPIM(sch_rule) ||
+            ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule)) {
           all_blocks = BlockCollector::Collect(sch, f_block_filter_);
         } else {
           all_blocks = org_all_blocks;
@@ -157,8 +158,9 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
             sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_producer_block);
         Optional<Integer> rfactor_consumer = tir::GetAnn<Integer>(
             sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_consumer_block);
-        if (ScheduleRule::IsMultiLevelTilingHBMPIM(sch_rule) && !rfactor_producer.defined() &&
-            !rfactor_consumer.defined()) {
+        if ((ScheduleRule::IsMultiLevelTilingHBMPIM(sch_rule) ||
+             ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule)) &&
+            !rfactor_producer.defined() && !rfactor_consumer.defined()) {
           stack.emplace_back(sch, blocks);
           continue;
         }

@@ -103,14 +103,16 @@ UPMEMDeviceAPI* UPMEMDeviceAPI::Global() {
   return inst;
 }
 
-int UPMEMDeviceAPI::AcquireResources(TVMArgs banks) {
+int UPMEMDeviceAPI::AcquireResources(TVMArgs args) {
   int32_t bank_num = 1;
   std::vector<int32_t> bank_vec;
-  for (int32_t i = 0; i < banks.num_args; i++) {
-    int32_t n = banks[i];
+  int32_t n_bank_args = args.num_args - 1;
+  for (int32_t i = 0; i < n_bank_args; i++) {
+    int32_t n = args[i];
     bank_vec.push_back(n);
     bank_num *= n;
   }
+  std::string uuid = std::to_string(static_cast<int>(args[n_bank_args]));  // last argument
 
   std::vector<std::string> symbols({"blockIdx_x", "blockIdx_y", "blockIdx_z"});
   VLOG(3) << "dpu_alloc(" << bank_num << ", NULL, &dpu_set)";
@@ -124,17 +126,18 @@ int UPMEMDeviceAPI::AcquireResources(TVMArgs banks) {
     return 1;
   }
 
-  UPMEM_CALL(dpu_load(dpu_set, "./temp", NULL));  // todo-stonerdk: hack
+  UPMEM_CALL(
+      dpu_load(dpu_set, ("./temp-" + uuid).c_str(), NULL));  // TODO[ywshin]: who cleans the binary?
   dpu_set_t dpu;
   int32_t i;
   int* dpu_indices = new int[nr_dpus];
 
   DPU_FOREACH(dpu_set, dpu, i) { dpu_entry[i] = dpu; }
-  for (int32_t j = 0; j < banks.num_args; j++) {
+  for (int32_t j = 0; j < n_bank_args; j++) {
     DPU_FOREACH(dpu_set, dpu, i) {
       int k = i;
-      for (int u = 0; u < j; u++) k /= bank_vec[banks.num_args - u - 2];
-      if (j < banks.num_args - 1) k %= bank_vec[banks.num_args - j - 2];
+      for (int u = 0; u < j; u++) k /= bank_vec[n_bank_args - u - 2];
+      if (j < args.num_args - 2) k %= bank_vec[n_bank_args - j - 2];
       dpu_indices[i] = k;
       dpu_prepare_xfer(dpu, &dpu_indices[i]);
     }

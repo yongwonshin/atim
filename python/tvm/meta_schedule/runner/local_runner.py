@@ -267,7 +267,9 @@ class LocalRunner(PyRunner):
         """
         super().__init__()
         self.timeout_sec = timeout_sec
-        self.evaluator_config = EvaluatorConfig._normalized(evaluator_config, min_repeat_ms=min_repeat_ms)
+        self.evaluator_config = EvaluatorConfig._normalized(
+            evaluator_config, min_repeat_ms=min_repeat_ms
+        )
         self.cooldown_sec = cooldown_sec
         self.alloc_repeat = alloc_repeat
         self.f_alloc_argument = f_alloc_argument

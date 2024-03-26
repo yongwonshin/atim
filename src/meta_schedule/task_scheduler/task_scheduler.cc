@@ -108,8 +108,14 @@ void TaskCleanUp(TaskRecordNode* self, int task_id, const Array<RunnerResult>& r
     int trials = self->latency_ms.size() + 1;
     double run_ms = 1e9;
     if ((error_msg = builder_result->error_msg)) {
+      const tir::Schedule& sch = candidate->sch;
+      // std::cout << "BUILD ERROR: " << runner_result->error_msg.value() << std::endl;
+      // std::cout << sch->mod() << std::endl;
       ++self->build_error_count;
     } else if ((error_msg = runner_result->error_msg)) {
+      const tir::Schedule& sch = candidate->sch;
+      // std::cout << "RUN ERROR: " << runner_result->error_msg.value() << std::endl;
+      // std::cout << sch->mod() << std::endl;
       ++self->run_error_count;
     } else {
       run_ms = GetRunMsMedian(runner_result);

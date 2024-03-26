@@ -92,8 +92,9 @@ class ConcreteScheduleNode : public ScheduleNode {
   Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                   int min_innermost_factor = 0,
                                   Optional<Array<Integer>> decision = NullOpt) override;
-  // Array<ExprRV> SamplePerfectTile2(const LoopRV& loop_rv, int n, int min_innermost_factor,
-  //                                  Optional<Array<Integer>> decision = NullOpt) override;
+  Array<ExprRV> SamplePerfectTile2(const LoopRV& loop_rv, int n, int min_n_splits = 1,
+                                   int max_n_splits = 32,
+                                   Optional<Array<Integer>> decision = NullOpt) override;
   Array<ExprRV> SamplePartitionedTile(const LoopRV& loop_rv, int n, int partition_pos,
                                       int innerpart_factor,
                                       Optional<Array<Integer>> decision = NullOpt) override;

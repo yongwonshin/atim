@@ -149,6 +149,7 @@ class Postproc : public runtime::ObjectRef {
    * \return The postprocessor created
    */
   TVM_DLL static Postproc VerifyGPUCode();
+  TVM_DLL static Postproc VerifyUPMEMCode();
   /*!
    * \brief Verifies that the VTCM usage of a given schedule is within the provided limit.
    * \return The postprocessor created
@@ -165,6 +166,7 @@ class Postproc : public runtime::ObjectRef {
   /*! \brief Create default postprocessors for x86 (AVX512 and VNNI) */
   TVM_DLL static Array<Postproc, void> DefaultCPUTensorization();
   TVM_DLL static Array<Postproc, void> DefaultHBMPIM();
+  TVM_DLL static Array<Postproc, void> DefaultUPMEM();
   /*! \brief Create default postprocessors for CUDA */
   TVM_DLL static Array<Postproc, void> DefaultCUDA();
   /*! \brief Create default postprocessors for CUDA with TensorCore */

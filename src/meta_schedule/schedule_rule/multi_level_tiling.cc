@@ -21,6 +21,7 @@
 #include <tvm/meta_schedule/schedule_rule.h>
 
 #include <algorithm>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -214,7 +215,8 @@ std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> MultiLevelTilingNode::SplitLoo
     Array<tir::ExprRV> factors = sch->SamplePerfectTile(
         /*loop=*/loop,
         /*n=*/n_tiles,
-        /*max_innermost_factor=*/max_innermost_factor);
+        /*max_innermost_factor=*/max_innermost_factor,
+        /*min_innermost_factor=*/min_innermost_factor);
     Array<tir::LoopRV> splits = sch->Split(/*loop=*/loop,
                                            /*factors=*/{factors.begin(), factors.end()});
     return {factors, splits};
@@ -222,7 +224,8 @@ std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> MultiLevelTilingNode::SplitLoo
     Array<tir::ExprRV> factors = sch->SamplePerfectTile(
         /*loop=*/loop,
         /*n=*/n_tiles,
-        /*max_innermost_factor=*/max_innermost_factor);
+        /*max_innermost_factor=*/max_innermost_factor,
+        /*min_innermost_factor=*/min_innermost_factor);
     Array<tir::LoopRV> splits = sch->Split(/*loop=*/loop, split_factors);
     return {factors, splits};  // TODO[ywshin]: we should modify "factors" later
   }
@@ -242,8 +245,14 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   std::vector<Array<tir::ExprRV>> tile_factors;
   tile_factors.resize(tiles.size());
   int s = 0, r = 0;
+  Array<LoopRV> hoisted_loops;
   for (int i = 0, n = loops.size(); i < n; ++i) {
     LoopRV loop = loops[i];
+    if (this->s_split_factors.empty() && this->r_split_factors.empty() &&
+        this->hoisted_loops.count(i) > 0) {
+      hoisted_loops.push_back(loop);
+      continue;
+    }
     const std::vector<int>* idx = nullptr;
 
     Array<Optional<PrimExpr>> split_factors;
@@ -259,12 +268,22 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
       if (!this->s_split_factors.empty()) {
         split_factors = this->s_split_factors[s];
         s++;
+        if (split_factors.empty()) {
+          // Skip splitting
+          hoisted_loops.push_back(loop);
+          continue;
+        }
       }
     } else if (iter_types[i] == IterVarType::kCommReduce) {
       idx = &r_indices_;
       if (!this->r_split_factors.empty()) {
         split_factors = this->r_split_factors[r];
         r++;
+        if (split_factors.empty()) {
+          // Skip splitting
+          hoisted_loops.push_back(loop);
+          continue;
+        }
       }
     } else {
       continue;
@@ -284,6 +303,13 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
       }
     }
   }
+  if (!hoisted_loops.empty()) {
+    ICHECK_EQ(hoisted_loops.size(), 1);
+    LoopRV loop = hoisted_loops[0];
+    tiles.insert(tiles.begin(), {loop});
+    tile_factors.insert(tile_factors.begin(),
+                        {Integer(*tir::GetLoopIntExtent(sch->Get(loop).get()))});
+  }
   state->tile_factors = std::move(tile_factors);
   // Step 3. Reorder to organize the tiles
   sch->Reorder(support::ConcatArrayList<LoopRV>(tiles.begin(), tiles.end()));
@@ -291,7 +317,10 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   int n_binds = std::min(tile_binds.size(), tiles.size());
   for (int i = 0; i < n_binds; ++i) {
     if (!tile_binds[i].empty()) {
-      LoopRV fused = sch->Fuse(tiles[i]);
+      LoopRV fused = tiles[i][0];
+      if (tiles[i].size() > 1) {
+        fused = sch->Fuse(tiles[i]);
+      }
       sch->Bind(fused, tile_binds[i]);
       tiles[i] = {fused};
     }

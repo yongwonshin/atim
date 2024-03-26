@@ -54,6 +54,9 @@ String GetRuleKindFromTarget(const Target& target) {
   if (target->kind->name == "hbmpim") {
     return "hbmpim";
   }
+  if (target->kind->name == "upmem") {
+    return "upmem";
+  }
   if (target->kind->name == "hexagon") {
     return "hexagon";
   }
@@ -136,6 +139,10 @@ void SpaceGeneratorNode::InitializeWithTuneContext(const TuneContext& context) {
       default_sch_rules = ScheduleRule::DefaultHBMPIM();
       default_postprocs = Postproc::DefaultHBMPIM();
       default_mutator_probs = Mutator::DefaultHBMPIM();
+    } else if (kind == "upmem") {
+      default_sch_rules = ScheduleRule::DefaultUPMEM();
+      default_postprocs = Postproc::DefaultUPMEM();
+      default_mutator_probs = Mutator::DefaultUPMEM();
     } else {
       LOG(FATAL) << "Unsupported kind: " << kind;
       throw;

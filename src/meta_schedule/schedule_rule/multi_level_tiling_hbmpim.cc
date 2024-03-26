@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "../utils.h"
-#include "./multi_level_tiling.h"
+#include "multi_level_tiling.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -372,15 +372,16 @@ ScheduleRule ScheduleRule::MultiLevelTilingHBMPIM(
     Array<Map<String, String>> intrin_groups, String structure, Optional<Array<String>> tile_binds,
     Optional<Integer> max_innermost_factor, Optional<Array<Integer>> vector_load_lens,
     Optional<Map<String, ObjectRef>> reuse_read, Optional<Map<String, ObjectRef>> reuse_write,
-    Optional<Array<Integer>> reordering, Optional<Array<Array<Integer>>> s_split_factors,
-    Optional<Array<Array<Integer>>> r_split_factors,
+    Optional<Integer> min_innermost_factor, Optional<Array<Integer>> reordering,
+    Optional<Array<Array<Integer>>> s_split_factors,
+    Optional<Array<Array<Integer>>> r_split_factors, Optional<Array<Integer>> hoisted_loops,
     Optional<Array<Map<String, ObjectRef>>> annotations,
     Optional<Array<String>> reduction_tile_binds,
     Optional<Array<Map<String, ObjectRef>>> reduction_annotations) {
   auto node = MultiLevelTilingInitCommon<MultiLevelTilingHBMPIMNode>(
       structure, tile_binds, max_innermost_factor, vector_load_lens, reuse_read, reuse_write,
-      reordering, s_split_factors, r_split_factors, annotations, reduction_tile_binds,
-      reduction_annotations);
+      min_innermost_factor, reordering, s_split_factors, r_split_factors, hoisted_loops,
+      annotations, reduction_tile_binds, reduction_annotations);
   node->intrin_groups.reserve(intrin_groups.size());
   for (const auto& intrin_group_config : intrin_groups) {
     HBMPIMIntrinGroup group = HBMPIMIntrinGroup::FromConfig(intrin_group_config);

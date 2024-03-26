@@ -33,7 +33,9 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
+#include <chrono>
 #include <set>
+#include <string>
 
 #include "../../arith/interval_set.h"
 #include "../../runtime/thread_storage_scope.h"
@@ -67,8 +69,9 @@ class PimKernelFinder : public StmtExprVisitor {
   std::vector<PrimExpr> bank_array;
   std::vector<const ForNode*> loops;
   std::vector<const IfThenElseNode*> ifs;
+  std::string uuid;
 
-  explicit PimKernelFinder() {}
+  explicit PimKernelFinder(std::string uuid) : uuid(uuid) {}
 
   void VisitStmt_(const ForNode* op) {
     loops.push_back(op);
@@ -96,8 +99,9 @@ class PimKernelFinder : public StmtExprVisitor {
     if (bank_array.empty()) {
       bank_array.push_back(1);
     }
-    return Evaluate(
-        Call(DataType::Int(32), builtin::pim_acquire_resources(), Array<PrimExpr>(bank_array)));
+    Array<PrimExpr> args = Array<PrimExpr>(bank_array.begin(), bank_array.end());
+    args.push_back(std::stoi(uuid));
+    return Evaluate(Call(DataType::Int(32), builtin::pim_acquire_resources(), args));
   }
 
   Stmt GetFreeStmt(Var var) {
@@ -476,8 +480,9 @@ class KernelReplacer : public StmtExprMutator {
 };
 
 Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map,
-                           PrimExpr bank_index, const std::set<std::string>& bank_vars) {
-  PimKernelFinder finder;
+                           PrimExpr bank_index, const std::set<std::string>& bank_vars,
+                           std::string uuid) {
+  PimKernelFinder finder(uuid);
   finder(stmt);
   finder.postFilter();
   Stmt kernel_body = finder.kernel_body;
@@ -542,6 +547,20 @@ bool IsPIMDevice(Target& target) {
 }
 namespace transform {
 
+std::string UUID() {
+  // uuid_t uuid;
+  // char uuid_str[37];
+  // uuid_generate_random(uuid);
+  // uuid_unparse_lower(uuid, uuid_str);
+  // return std::string(uuid_str);
+
+  auto now = std::chrono::system_clock::now();
+  auto microseconds =
+      std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+  microseconds %= INT32_MAX;
+  return std::to_string(microseconds);
+}
+
 Pass ExtractPimTransferSchedule() {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
     BankIndex b;
@@ -554,7 +573,10 @@ Pass ExtractPimTransferSchedule() {
       return opt.value();
     }();
     if (IsPIMDevice(target)) {
-      n->body = ConstructTransferStmt(n->body, target, n->buffer_map, b.bank_index_, b.bank_vars_);
+      ICHECK(m->uuid.empty());
+      m->uuid = UUID();
+      n->body = ConstructTransferStmt(n->body, target, n->buffer_map, b.bank_index_, b.bank_vars_,
+                                      m->uuid);
     }
     return f;
   };

@@ -77,6 +77,15 @@ Array<Postproc> Postproc::DefaultHBMPIM() {
   };
 }
 
+Array<Postproc> Postproc::DefaultUPMEM() {
+  return Array<Postproc>{
+      Postproc::DisallowDynamicLoop(),
+      Postproc::RewriteParallelVectorizeUnroll(),
+      Postproc::RewriteReductionBlock(),
+      Postproc::VerifyUPMEMCode(),
+  };
+}
+
 Array<Postproc> Postproc::DefaultCUDA() {
   return Array<Postproc>{
       Postproc::DisallowDynamicLoop(),

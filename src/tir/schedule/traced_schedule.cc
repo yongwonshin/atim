@@ -86,20 +86,21 @@ Array<ExprRV> TracedScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n
   return results;
 }
 
-// Array<ExprRV> TracedScheduleNode::SamplePerfectTile2(const LoopRV& loop_rv, int n,
-//                                                      int min_innermost_factor,
-//                                                      Optional<Array<Integer>> decision) {
-//   Array<ExprRV> results = CreateRV(tir::SamplePerfectTile2(
-//       &this->rand_state_, this->GetSRef(loop_rv), n, min_innermost_factor, &decision));
+Array<ExprRV> TracedScheduleNode::SamplePerfectTile2(const LoopRV& loop_rv, int n, int min_n_splits,
+                                                     int max_n_splits,
+                                                     Optional<Array<Integer>> decision) {
+  Array<ExprRV> results = CreateRV(tir::SamplePerfectTile2(
+      &this->rand_state_, this->GetSRef(loop_rv), n, min_n_splits, max_n_splits, &decision));
 
-//   static const InstructionKind& kind = InstructionKind::Get("SamplePerfectTile2");
-//   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,  //
-//                                       /*inputs=*/{loop_rv},
-//                                       /*attrs=*/{Integer(n), Integer(min_innermost_factor)},
-//                                       /*outputs=*/{results.begin(), results.end()}),
-//                  /*decision=*/decision);
-//   return results;
-// }
+  static const InstructionKind& kind = InstructionKind::Get("SamplePerfectTile2");
+  trace_->Append(
+      /*inst=*/Instruction(/*kind=*/kind,  //
+                           /*inputs=*/{loop_rv},
+                           /*attrs=*/{Integer(n), Integer(min_n_splits), Integer(max_n_splits)},
+                           /*outputs=*/{results.begin(), results.end()}),
+      /*decision=*/decision);
+  return results;
+}
 
 Array<ExprRV> TracedScheduleNode::SamplePartitionedTile(const LoopRV& loop_rv, int n,
                                                         int partition_pos, int innerpart_factor,

@@ -21,16 +21,15 @@
  * \file upmem_module.cc
  */
 #include "upmem_module.h"
-#include "upmem_common.h"
 
 #include <tvm/runtime/registry.h>
 
 #include <array>
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <chrono>
 
 #include "../file_utils.h"
 #include "../meta_data.h"
@@ -48,14 +47,13 @@ namespace runtime {
 class UPMEMModuleNode : public runtime::ModuleNode {
  public:
   explicit UPMEMModuleNode(std::string binary_file, std::string fmt,
-                          std::unordered_map<std::string, FunctionInfo> fmap,
-                          std::string upmem_source)
+                           std::unordered_map<std::string, FunctionInfo> fmap,
+                           std::string upmem_source)
       : binary_file_(binary_file), fmt_(fmt), fmap_(fmap), upmem_source_(upmem_source) {
     // std::fill(module_.begin(), module_.end(), nullptr);
   }
   // destructor
-  ~UPMEMModuleNode() {
-  }
+  ~UPMEMModuleNode() {}
 
   const char* type_key() const final { return "upmem"; }
 
@@ -80,7 +78,7 @@ class UPMEMModuleNode : public runtime::ModuleNode {
         // stderr = freopen("/dev/null", "w", stderr);
         // DPU_FOREACH(api->dpu_set, dpu) {
         //   FILE* tempFile = tmpfile();
-        //   dpu_error_t error = dpu_log_read(dpu, tempFile); 
+        //   dpu_error_t error = dpu_log_read(dpu, tempFile);
         //   if (error == DPU_OK) {
         //     rewind(tempFile);
         //     char* buffer = NULL;
@@ -102,12 +100,12 @@ class UPMEMModuleNode : public runtime::ModuleNode {
   }
 
   void SaveToBinary(dmlc::Stream* stream) final {
-    LOG(FATAL) << "UpmemModuleNode::SaveToBinary is not implemented";
+    stream->Write(fmt_);
+    stream->Write(fmap_);
+    stream->Write(upmem_source_);
   }
 
-  String GetSource(const String& format) final {
-    return upmem_source_;
-  }
+  String GetSource(const String& format) final { return upmem_source_; }
 
  private:
   // the binary data
@@ -154,8 +152,8 @@ class UPMEMWrappedFunc {
 };
 
 Module UPMEMModuleCreate(std::string binary_file, std::string fmt,
-                        std::unordered_map<std::string, FunctionInfo> fmap,
-                        std::string upmem_source) {
+                         std::unordered_map<std::string, FunctionInfo> fmap,
+                         std::string upmem_source) {
   // TODO: build upmem module with dpurte-upmem-clang
   auto n = make_object<UPMEMModuleNode>(binary_file, fmt, fmap, upmem_source);
   return Module(n);
@@ -168,12 +166,18 @@ Module UPMEMModuleLoadFile(const std::string& file_name, const String& format) {
 }
 
 Module UPMEMModuleLoadBinary(void* strm) {
-  LOG(FATAL) << "UpmemModuleLoadBinary is not implemented";
-  return Module();
+  dmlc::Stream* stream = static_cast<dmlc::Stream*>(strm);
+  std::string data;
+  std::unordered_map<std::string, FunctionInfo> fmap;
+  std::string fmt;
+  stream->Read(&fmt);
+  stream->Read(&fmap);
+  stream->Read(&data);
+  return UPMEMModuleCreate(data, fmt, fmap, data);
 }
 
-TVM_REGISTER_GLOBAL("runtime.module.loadfile_dpukernel").set_body_typed(UPMEMModuleLoadFile);
+// TVM_REGISTER_GLOBAL("runtime.module.loadfile_upmem").set_body_typed(UPMEMModuleLoadFile);
 
-TVM_REGISTER_GLOBAL("runtime.module.loadbinary_dpukernel").set_body_typed(UPMEMModuleLoadBinary);
+TVM_REGISTER_GLOBAL("runtime.module.loadbinary_upmem").set_body_typed(UPMEMModuleLoadBinary);
 }  // namespace runtime
 }  // namespace tvm

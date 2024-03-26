@@ -14,17 +14,18 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""A postprocessor that verifies if the UPMEM code is correct"""
 
-if(USE_UPMEM)
-  message(STATUS "Build with UPMEM support")
-  find_path(UPMEM_INCLUDE_DIR dpu.h PATH_SUFFIXES dpu)
-  find_library(UPMEM_LIB dpu)
-  # find_library(UUID_LIB uuid)
-  tvm_file_glob(GLOB RUNTIME_UPMEM_SRCS src/runtime/upmem/*.cc)
-  include_directories(SYSTEM ${UPMEM_INCLUDE_DIR})
-  list(APPEND TVM_RUNTIME_LINKER_LIBS ${UPMEM_LIB})
-  # list(APPEND TVM_RUNTIME_LINKER_LIBS ${UPMEM_LIB} ${UUID_LIB})
-  list(APPEND RUNTIME_SRCS ${RUNTIME_UPMEM_SRCS})
-else(USE_UPMEM)
-  list(APPEND COMPILER_SRCS src/target/opt/build_upmem_off.cc)
-endif(USE_UPMEM)
+from tvm._ffi.registry import register_object
+from .. import _ffi_api
+from .postproc import Postproc
+
+
+@register_object("meta_schedule.VerifyUPMEMCode")
+class VerifyUPMEMCode(Postproc):
+    """A postprocessor that verifies if the UPMEM code is correct"""
+
+    def __init__(self) -> None:
+        self.__init_handle_by_constructor__(
+            _ffi_api.PostprocVerifyUPMEMCode,  # type: ignore # pylint: disable=no-member
+        )

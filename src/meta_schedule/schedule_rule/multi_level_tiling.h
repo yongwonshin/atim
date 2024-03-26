@@ -214,6 +214,7 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
   Array<String> tile_binds;
   /*! \brief The maximum size of the innermost factor */
   int max_innermost_factor;
+  int min_innermost_factor;
   /*! \brief The length of vector lane in vectorized cooperative fetching */
   std::vector<int> vector_load_lens;
   /*! \brief Data reuse configuration for reading */
@@ -231,6 +232,7 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
   std::vector<int> s_indices_;
   /*! \brief The indices of reduction tiles in `structure` */
   std::vector<int> r_indices_;
+  std::set<int> hoisted_loops;
   /*! \brief The size of the thread warp */
   int thread_warp_size_;
   /*! \brief The maximum number of threads to be used size of a thread warp */
@@ -247,6 +249,7 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
     v->Visit("tile_binds", &tile_binds);
     v->Visit("annotations", &annotations);
     v->Visit("max_innermost_factor", &max_innermost_factor);
+    v->Visit("min_innermost_factor", &min_innermost_factor);
     // `vector_load_lens` is not visited
     // `reuse_read_` is not visited
     // `reuse_write_` is not visited
@@ -264,9 +267,11 @@ template <typename NodeType>
 ObjectPtr<NodeType> MultiLevelTilingInitCommon(
     String structure, Optional<Array<String>> tile_binds, Optional<Integer> max_innermost_factor,
     Optional<Array<Integer>> vector_load_lens, Optional<Map<String, ObjectRef>> reuse_read,
-    Optional<Map<String, ObjectRef>> reuse_write, Optional<Array<Integer>> reordering = NullOpt,
+    Optional<Map<String, ObjectRef>> reuse_write, Optional<Integer> min_innermost_factor = NullOpt,
+    Optional<Array<Integer>> reordering = NullOpt,
     Optional<Array<Array<Integer>>> s_split_factors = NullOpt,
     Optional<Array<Array<Integer>>> r_split_factors = NullOpt,
+    Optional<Array<Integer>> hoisted_loops = NullOpt,
     Optional<Array<Map<String, ObjectRef>>> annotations = NullOpt,
     Optional<Array<String>> reduction_tile_binds = NullOpt,
     Optional<Array<Map<String, ObjectRef>>> reduction_annotations = NullOpt) {
@@ -277,6 +282,7 @@ ObjectPtr<NodeType> MultiLevelTilingInitCommon(
   n->reduction_tile_binds = reduction_tile_binds.value_or({});
   n->reduction_annotations = reduction_annotations.value_or({});
   n->max_innermost_factor = max_innermost_factor.value_or(Integer(-1))->value;
+  n->min_innermost_factor = min_innermost_factor.value_or(Integer(-1))->value;
   n->vector_load_lens = vector_load_lens.defined()
                             ? support::AsVector<Integer, int>(vector_load_lens.value())
                             : std::vector<int>();
@@ -314,6 +320,11 @@ ObjectPtr<NodeType> MultiLevelTilingInitCommon(
         }
       }
       n->r_split_factors.push_back(split_factors);
+    }
+  }
+  if (hoisted_loops.defined()) {
+    for (auto index : hoisted_loops.value()) {
+      n->hoisted_loops.insert(index.IntValue());
     }
   }
   for (int i = 0, len = structure.size(); i < len; ++i) {

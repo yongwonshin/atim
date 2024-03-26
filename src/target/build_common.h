@@ -55,6 +55,7 @@ inline std::unordered_map<std::string, runtime::FunctionInfo> ExtractFuncInfo(co
         info.launch_param_tags.push_back(tag);
       }
     }
+    info.uuid = mod->uuid;
     auto global_symbol = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
     fmap[static_cast<std::string>(global_symbol.value())] = info;
   }

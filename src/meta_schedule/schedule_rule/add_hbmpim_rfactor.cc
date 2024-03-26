@@ -21,7 +21,7 @@
 namespace tvm {
 namespace meta_schedule {
 
-class AddPIMRFactorNode : public ScheduleRuleNode {
+class AddHBMPIMRFactorNode : public ScheduleRuleNode {
  public:
   // Inherited from ScheduleRuleNode
   void InitializeWithTuneContext(const TuneContext& context) final {}
@@ -31,7 +31,7 @@ class AddPIMRFactorNode : public ScheduleRuleNode {
 
   // Inherited from ScheduleRuleNode
   ScheduleRule Clone() const final {
-    ObjectPtr<AddPIMRFactorNode> n = make_object<AddPIMRFactorNode>(*this);
+    ObjectPtr<AddHBMPIMRFactorNode> n = make_object<AddHBMPIMRFactorNode>(*this);
     return ScheduleRule(n);
   }
 
@@ -44,19 +44,19 @@ class AddPIMRFactorNode : public ScheduleRuleNode {
     v->Visit("mem_scope", &mem_scope);
   }
 
-  static constexpr const char* _type_key = "meta_schedule.AddPIMRFactor";
-  TVM_DECLARE_FINAL_OBJECT_INFO(AddPIMRFactorNode, ScheduleRuleNode);
+  static constexpr const char* _type_key = "meta_schedule.AddHBMPIMRFactor";
+  TVM_DECLARE_FINAL_OBJECT_INFO(AddHBMPIMRFactorNode, ScheduleRuleNode);
 };
 
-ScheduleRule ScheduleRule::AddPIMRFactor(int vector_len, const String& mem_scope) {
-  ObjectPtr<AddPIMRFactorNode> n = make_object<AddPIMRFactorNode>();
+ScheduleRule ScheduleRule::AddHBMPIMRFactor(int vector_len, const String& mem_scope) {
+  ObjectPtr<AddHBMPIMRFactorNode> n = make_object<AddHBMPIMRFactorNode>();
   n->vector_len = vector_len;
   n->mem_scope = mem_scope;
   return ScheduleRule(n);
 }
 
-Array<tir::Schedule> AddPIMRFactorNode::Apply(const tir::Schedule& sch,
-                                              const tir::BlockRV& block_rv) {
+Array<tir::Schedule> AddHBMPIMRFactorNode::Apply(const tir::Schedule& sch,
+                                                 const tir::BlockRV& block_rv) {
   tir::StmtSRef block_sref = sch->GetSRef(block_rv);
   Array<tir::LoopRV> loops = sch->GetLoops(block_rv);
   if (loops.empty()) {
@@ -108,13 +108,13 @@ Array<tir::Schedule> AddPIMRFactorNode::Apply(const tir::Schedule& sch,
   return res;
 }
 
-bool ScheduleRule::IsAddPIMRFactor(const ScheduleRule& rule) {
-  return rule->IsInstance<AddPIMRFactorNode>();
+bool ScheduleRule::IsAddHBMPIMRFactor(const ScheduleRule& rule) {
+  return rule->IsInstance<AddHBMPIMRFactorNode>();
 }
 
-TVM_REGISTER_NODE_TYPE(AddPIMRFactorNode);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleRuleAddPIMRFactor")
-    .set_body_typed(ScheduleRule::AddPIMRFactor);
+TVM_REGISTER_NODE_TYPE(AddHBMPIMRFactorNode);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleRuleAddHBMPIMRFactor")
+    .set_body_typed(ScheduleRule::AddHBMPIMRFactor);
 
 }  // namespace meta_schedule
 }  // namespace tvm

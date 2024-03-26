@@ -69,6 +69,14 @@ Map<Mutator, FloatImm> Mutator::DefaultHBMPIM() {
   };
 }
 
+Map<Mutator, FloatImm> Mutator::DefaultUPMEM() {
+  return Map<Mutator, FloatImm>{
+      {Mutator::MutateTileSize(), FloatImm(DataType::Float(64), 0.9)},
+      {Mutator::MutateComputeLocation(), FloatImm(DataType::Float(64), 0.05)},
+      {Mutator::MutateUnroll(), FloatImm(DataType::Float(64), 0.03)},
+      {Mutator::MutateParallel(/*max_jobs_per_core=*/256), FloatImm(DataType::Float(64), 0.02)}};
+}
+
 Map<Mutator, FloatImm> Mutator::DefaultCUDA() {
   return Map<Mutator, FloatImm>{
       {Mutator::MutateTileSize(), FloatImm(DataType::Float(64), 0.9)},
@@ -120,6 +128,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.MutatorDefaultCUDATensorCore")
     .set_body_typed(Mutator::DefaultCUDATensorCore);
 TVM_REGISTER_GLOBAL("meta_schedule.MutatorDefaultHexagon").set_body_typed(Mutator::DefaultHexagon);
 TVM_REGISTER_GLOBAL("meta_schedule.MutatorDefaultMicro").set_body_typed(Mutator::DefaultMicro);
+TVM_REGISTER_GLOBAL("meta_schedule.MutatorDefaultUPMEM").set_body_typed(Mutator::DefaultUPMEM);
 
 }  // namespace meta_schedule
 }  // namespace tvm

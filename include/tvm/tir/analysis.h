@@ -183,6 +183,7 @@ TVM_DLL bool VerifyMemory(const PrimFunc& func);
  *
  */
 TVM_DLL bool VerifyGPUCode(const PrimFunc& func, Map<String, PrimExpr> constraints);
+TVM_DLL bool VerifyUPMEMCode(const PrimFunc& func, Map<String, PrimExpr> constraints);
 
 /**
  * @brief Utility function to get the list of lowering passes to be applied to calculate the
@@ -371,6 +372,7 @@ TVM_DLL Pass VerifyMemory();
  * \sa tvm::tir::VerifyGPUCode
  */
 TVM_DLL Pass VerifyGPUCode(Map<String, PrimExpr> constraints);
+TVM_DLL Pass VerifyUPMEMCode(Map<String, PrimExpr> constraints);
 
 /*!
  * \brief Pass to checks if the size of the allocated vtcm memory satisfies the limit

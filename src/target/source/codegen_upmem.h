@@ -38,7 +38,7 @@ namespace codegen {
 
 class CodeGenUpmem final : public CodeGenC {
  public:
-  CodeGenUpmem();
+  CodeGenUpmem(std::string uuid);
   std::string Finish();
 
   // override print thread tag.                      // NOLINT(*)
@@ -74,6 +74,7 @@ class CodeGenUpmem final : public CodeGenC {
   // Mapping from buffer to allocation size.
   // Useful to track when a scalar store of a vectorized texture load is required.
   std::unordered_map<const Object*, size_t> allocation_size_;
+  std::string uuid;
 };
 
 }  // namespace codegen

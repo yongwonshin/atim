@@ -117,6 +117,25 @@ def verify_gpu_code(func: PrimFunc, constraints: Dict[str, int]) -> None:
     return _ffi_api.verify_gpu_code(func, constraints)  # type: ignore
 
 
+def verify_upmem_code(func: PrimFunc, constraints: Dict[str, int]) -> None:
+    """Verify if module contains illegal host side direct memory access.
+
+    Parameters
+    ----------
+    func: tvm.tir.PrimFunc
+        The module to be verified.
+
+    constraints : Dict[str, int]
+        The attribute constraints.
+
+    Returns
+    -------
+    result : bool
+        The result of verification.
+    """
+    return _ffi_api.verify_upmem_code(func, constraints)  # type: ignore
+
+
 def get_block_access_region(
     block: Block, buffer_var_map: Dict[Var, Buffer]
 ) -> List[List[BufferRegion]]:

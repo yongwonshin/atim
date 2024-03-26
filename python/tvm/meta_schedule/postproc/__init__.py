@@ -25,4 +25,5 @@ from .rewrite_reduction_block import RewriteReductionBlock
 from .rewrite_tensorize import RewriteTensorize
 from .rewrite_unbound_block import RewriteUnboundBlock
 from .verify_gpu_code import VerifyGPUCode
+from .verify_upmem_code import VerifyUPMEMCode
 from .verify_vtcm_limit import VerifyVTCMLimit

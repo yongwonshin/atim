@@ -408,7 +408,8 @@ class Schedule(Object):
         self,
         loop: LoopRV,
         n: int,
-        min_innermost_factor: int = 16,
+        min_n_splits: int = 1,
+        max_n_splits: int = 32,
         decision: Optional[List[int]] = None,
     ) -> List[ExprRV]:
         """Sample the factors to perfect tile a specific loop
@@ -431,7 +432,7 @@ class Schedule(Object):
         """
         return list(
             _ffi_api.ScheduleSamplePerfectTile2(  # type: ignore  # pylint: disable=no-member
-                self, loop, n, min_innermost_factor, decision
+                self, loop, n, min_n_splits, max_n_splits, decision
             )
         )
 

@@ -100,6 +100,7 @@ class Mutator(Object):
             "cuda": _ffi_api.MutatorDefaultCUDA,  # type: ignore
             "cuda-tensorcore": _ffi_api.MutatorDefaultCUDATensorCore,  # type: ignore
             "hexagon": _ffi_api.MutatorDefaultHexagon,  # type: ignore
+            "upmem": _ffi_api.MutatorDefaultUPMEM,
             # pylint: enable=no-member
         }
         for k, v in funcs.items():

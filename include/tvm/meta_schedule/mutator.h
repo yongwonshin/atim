@@ -132,6 +132,7 @@ class Mutator : public runtime::ObjectRef {
   /*! \brief Create default mutators for LLVM */
   TVM_DLL static Map<Mutator, FloatImm, void> DefaultLLVM();
   TVM_DLL static Map<Mutator, FloatImm, void> DefaultHBMPIM();
+  TVM_DLL static Map<Mutator, FloatImm, void> DefaultUPMEM();
   /*! \brief Create default mutators for CUDA */
   TVM_DLL static Map<Mutator, FloatImm, void> DefaultCUDA();
   /*! \brief Create default mutators for CUDA with TensorCore */

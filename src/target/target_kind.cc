@@ -443,6 +443,15 @@ TVM_REGISTER_TARGET_KIND("hexagon", kDLHexagon)
     .set_default_keys({"hexagon", "cpu"});
 
 TVM_REGISTER_TARGET_KIND("upmem", kDLUPMEM)  // line break
+    .add_attr_option<Integer>("num-cores", Integer(96))
+    .add_attr_option<Integer>("max_num_blocks", Integer(2560))
+    .add_attr_option<Integer>("min_num_blocks", Integer(8))  // 8 banks per chip
+    .add_attr_option<Integer>("max_threads_per_block", Integer(24))
+    .add_attr_option<Integer>("max_local_memory_per_block", Integer(24576))   // 24KB
+    .add_attr_option<Integer>("max_shared_memory_per_block", Integer(24576))  // 24KB
+    .add_attr_option<Integer>("max_thread_x", Integer(24))
+    .add_attr_option<Integer>("max_thread_y", Integer(0))
+    .add_attr_option<Integer>("max_thread_z", Integer(0))
     .set_default_keys({"upmem", "pim"});
 
 TVM_REGISTER_TARGET_KIND("hbmpim", kDLHBMPIM)  // line break

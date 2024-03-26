@@ -237,8 +237,9 @@ class ScheduleNode : public runtime::Object {
   virtual Array<ExprRV> SamplePerfectTile(const LoopRV& loop_rv, int n, int max_innermost_factor,
                                           int min_innermost_factor = 0,
                                           Optional<Array<Integer>> decision = NullOpt) = 0;
-  // virtual Array<ExprRV> SamplePerfectTile2(const LoopRV& loop_rv, int n, int
-  // min_innermost_factor,
+  virtual Array<ExprRV> SamplePerfectTile2(const LoopRV& loop_rv, int n, int min_n_splits = 1,
+                                           int max_n_splits = 32,
+                                           Optional<Array<Integer>> decision = NullOpt) = 0;
   //                                          Optional<Array<Integer>> decision = NullOpt) = 0;
   /*!
    * \brief Sample the factors to a partitioned tile for a specific loop

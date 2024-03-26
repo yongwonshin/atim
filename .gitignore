@@ -288,5 +288,6 @@ pim_test/upmem/baseline
 pim_test/upmem/temp
 
 temp
+temp-*
 
 !3rdparty/hbmpim/external_libs/include/dramsim2/lib

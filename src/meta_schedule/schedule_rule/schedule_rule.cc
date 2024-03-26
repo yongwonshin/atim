@@ -16,10 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include "../../runtime/opencl/hbmpim/pim_library/pim_info.h"
 #include "../utils.h"
 
 namespace tvm {
 namespace meta_schedule {
+
+enum BankOrdering : int { DENSE = 1, EVEN = 2, ODD = 3 };
 
 void PyScheduleRuleNode::InitializeWithTuneContext(const TuneContext& context) {
   ICHECK(f_initialize_with_tune_context != nullptr)
@@ -133,14 +136,14 @@ Array<ScheduleRule> ScheduleRule::DefaultX86(const String& type) {
 }
 
 Array<ScheduleRule> ScheduleRule::DefaultHBMPIM() {
-  int N_CHAN = 64;
-  int N_BANK = 16;
-  int N_PU = 8;
-  int N_GRF_A = 8;
-  int N_GRF_B = 8;
-  int N_ELEM_IN_GRF = 16;
+  using namespace tvm::runtime;
+  int N_CHAN = pim_library::vega20_pbi.num_pim_chan;
+  int N_BANK = pim_library::vega20_pbi.num_banks;
+  int N_PU = pim_library::vega20_pbi.num_pim_blocks;
+  int N_GRF_A = pim_library::vega20_pbi.num_grf_A;
+  int N_GRF_B = pim_library::vega20_pbi.num_grf_B;
+  int N_ELEM_IN_GRF = pim_library::vega20_pbi.num_elem_per_grf;
 
-  enum BankOrdering : int { DENSE = 1, EVEN = 2, ODD = 3 };
   Array<Map<String, String>> intrin_groups = {
       {
           {"load_a", "hbmpim_weight_intrin"},
@@ -158,7 +161,7 @@ Array<ScheduleRule> ScheduleRule::DefaultHBMPIM() {
               /*require_injective=*/true,
               /*require_ordered=*/true,
               /*disallow_op=*/Array<String>{"tir.exp"}),
-          ScheduleRule::AddPIMRFactor(
+          ScheduleRule::AddHBMPIMRFactor(
               /*vector_len=*/16,
               /*mem_scope=*/"internal"),
           ScheduleRule::MultiLevelTilingHBMPIM(
@@ -182,11 +185,13 @@ Array<ScheduleRule> ScheduleRule::DefaultHBMPIM() {
                   {"scope", String("local")},
                   {"sep", Bool(true)},
                   {"intrin", Array<Array<ObjectRef>>{{String("partial_reduction"), Integer(-2)}}}},
+              /*min_innermost_factor=*/NullOpt,
               /*reordering=*/Array<Integer>{1, 0, 2, 4, 3, 5},
               /*s_split_factors=*/
               Array<Array<Integer>>{{0, N_CHAN, N_PU, N_GRF_B}, {}},
               /*r_split_factors=*/
               Array<Array<Integer>>{{0, N_BANK / N_PU}},
+              /*hoisted_loops=*/NullOpt,
               /*annotations=*/
               Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
                                             {{"pim", Bool(true)}, {"change_pim_mode", Bool(true)}},
@@ -199,6 +204,48 @@ Array<ScheduleRule> ScheduleRule::DefaultHBMPIM() {
               Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
                                             {},
                                             {{"bank", Integer(BankOrdering::ODD)}}})};
+}
+
+Array<ScheduleRule> ScheduleRule::DefaultUPMEM() {
+  return {ScheduleRule::ApplyCustomRule(), ScheduleRule::InlineConstantScalars(),
+          ScheduleRule::AutoInline(
+              /*into_producer=*/false,
+              /*into_consumer=*/true,
+              /*inline_const_tensor=*/true,
+              /*disallow_if_then_else=*/true,
+              /*require_injective=*/true,
+              /*require_ordered=*/true,
+              /*disallow_op=*/Array<String>{"tir.exp"}),
+          ScheduleRule::AddUPMEMRFactor(
+              /*min_n_splits=*/1,
+              /*max_n_splits=*/64,
+              /*mem_scope=*/"global"),
+          ScheduleRule::MultiLevelTilingUPMEM(
+              /*intrin_groups=*/NullOpt,
+              /*structure=*/"SSSSRR",
+              /*tile_binds=*/Array<String>{"blockIdx.x", "blockIdx.y", "threadIdx.x"},
+              /*max_innermost_factor=*/Integer(256),
+              /*vector_load_lens=*/Array<Integer>{1},
+              /*reuse_read=*/
+              Map<String, ObjectRef>{{"req", String("must")},
+                                     {"levels", Array<Integer>{6, 6}},  //
+                                     {"scope", String("local")},
+                                     {"sep", Bool(true)}},
+              /*reuse_write=*/
+              Map<String, ObjectRef>{{"req", String("must")},
+                                     {"levels", Array<Integer>{4}},  //
+                                     {"scope", String("local")},
+                                     {"sep", Bool(true)}},
+              /*min_innermost_factor=*/Integer(2),
+              /*reordering=*/Array<Integer>{0, 1, 2, 3, 4, 5},
+              /*s_split_factors=*/NullOpt,
+              /*r_split_factors=*/NullOpt,
+              /*hoisted_loops=*/Array<Integer>{1},
+              /*annotations=*/
+              Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
+                                            {{"bank", Integer(BankOrdering::DENSE)}}},
+              /*reduction_tile_binds=*/Array<String>{"parallel"},
+              /*reduction_annotations=*/NullOpt)};
 }
 
 Array<ScheduleRule> ScheduleRule::DefaultCUDA() {
