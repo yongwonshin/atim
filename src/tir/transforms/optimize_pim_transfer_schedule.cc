@@ -64,7 +64,7 @@ class AllocateFreeOnce : public StmtExprMutator {
   }
 };
 
-class EliminateBranch : public StmtExprMutator {
+class EliminateTransferBranch : public StmtExprMutator {
  public:
   Map<Var, Range> dom_map;
   Array<Var> loop_vars;
@@ -259,7 +259,7 @@ class UpmemParallelTransfer : public StmtExprMutator {
 
 Stmt OptimizePimTransferSchedule(Stmt stmt, Target target) {
   Stmt res = AllocateFreeOnce()(std::move(stmt));
-  res = EliminateBranch()(std::move(res));
+  res = EliminateTransferBranch()(std::move(res));
   res = BulkPimCopy()(std::move(res));
 
   if (target->HasKey("upmem")) res = UpmemParallelTransfer()(std::move(res));

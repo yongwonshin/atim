@@ -534,10 +534,11 @@ Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map
     res = OptimizePimTransferSchedule(res, target);
   }
 
-  Array<Stmt> wrapped = {res,
-                         Evaluate(Call(DataType::Int(32), builtin::pim_release_resources(), {}))};
+  // Array<Stmt> wrapped = {res,
+  //                        Evaluate(Call(DataType::Int(32), builtin::pim_release_resources(),
+  //                        {}))};
 
-  res = SeqStmt::Flatten(wrapped);
+  // res = SeqStmt::Flatten(wrapped);
   return res;
 }
 

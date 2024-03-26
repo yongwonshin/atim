@@ -60,6 +60,8 @@ class UPMEMDeviceAPI final : public DeviceAPI {
   };
   static UPMEMDeviceAPI* Global();
 
+  ~UPMEMDeviceAPI();
+
   void SetDevice(Device dev) final {}
 
   void GetAttr(Device dev, DeviceAttrKind kind, TVMRetValue* rv) final;
@@ -134,6 +136,11 @@ class UPMEMDeviceAPI final : public DeviceAPI {
   std::chrono::high_resolution_clock::time_point kernel_start;
   std::chrono::high_resolution_clock::time_point kernel_end;
   std::chrono::high_resolution_clock::time_point release_end;
+
+  double kernel_time;
+  double after_kernel_time;
+  double d2h_time;
+
   void* recent_host_address;
 };
 

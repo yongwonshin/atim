@@ -63,10 +63,11 @@ CodeGenUpmem::CodeGenUpmem(std::string uuid) : uuid(uuid) {
               << "#include <alloc.h>\n"
               << "#include <barrier.h>\n"
               << "#include <seqread.h>\n"
+              << "\ntypedef struct { int32_t x, y, z; } BlockInfo;"
               << "\nBARRIER_INIT(barrier, NR_TASKLETS);\n\n"
-              << "__host int32_t blockIdx_x;\n"
-              << "__host int32_t blockIdx_y;\n"
-              << "__host int32_t blockIdx_z;\n\n";
+              << "__host BlockInfo blockIdx;\n\n"
+              << "inline int min(int x, int y) { return x < y ? x : y; }\n"
+              << "inline int max(int x, int y) { return x > y ? x : y; }\n";
 }
 
 void CodeGenUpmem::AddFunction(const PrimFunc& f) {
@@ -110,9 +111,14 @@ void CodeGenUpmem::AddFunction(const PrimFunc& f) {
 }
 
 void CodeGenUpmem::PreFunctionBody(const PrimFunc& f) {
-  stream << "  unsigned int tasklet_id = me();\n"
+  int scope = this->BeginScope();
+  stream << "  const int blockIdx_x = blockIdx.x;\n"
+         << "  const int blockIdx_y = blockIdx.y;\n"
+         << "  const int blockIdx_z = blockIdx.z;\n\n"
+         << "  unsigned int tasklet_id = me();\n"
          << "  if (tasklet_id == 0) mem_reset();\n"
          << "  barrier_wait(&barrier);\n";
+  this->EndScope(scope);
 }
 
 std::string CodeGenUpmem::Finish() { return CodeGenC::Finish(); }
@@ -124,7 +130,7 @@ void CodeGenUpmem::BindThreadIndex(const IterVar& iv) {
   if (ts.rank == 1) {
     var_idmap_[iv->var.get()] = "tasklet_id";
   } else if (ts.rank == 0) {
-    if (ts.dim_index == 0) var_idmap_[iv->var.get()] = "blockIdx_x";
+    if (ts.dim_index == 0) var_idmap_[iv->var.get()] = "blockIdx.x";
     if (ts.dim_index == 1) var_idmap_[iv->var.get()] = "blockIdx_y";
     if (ts.dim_index == 2) var_idmap_[iv->var.get()] = "blockIdx_z";
   }
@@ -240,7 +246,6 @@ std::string DPUClangCompile(const std::string& code, int tasklet_num, std::strin
   std::string flags = "-DNR_TASKLETS=" + std::to_string(tasklet_num) + " -O2 -x c";
   std::string command = exec + " " + flags + " -o " + output_binary;
   if (use_dummy) {
-    return "temp";
     command += " dummy_kernel.c";
     int result = std::system(command.c_str());
     if (result == 0) {

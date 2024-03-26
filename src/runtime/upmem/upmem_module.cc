@@ -69,9 +69,13 @@ class UPMEMModuleNode : public runtime::ModuleNode {
     } else {
       return PackedFunc([](TVMArgs args, TVMRetValue* rv) {
         UPMEMDeviceAPI* api = UPMEMDeviceAPI::Global();
-        api->kernel_start = std::chrono::high_resolution_clock::now();
+
+        auto start = std::chrono::high_resolution_clock::now();
         dpu_launch(api->dpu_set, DPU_SYNCHRONOUS);
         api->kernel_end = std::chrono::high_resolution_clock::now();
+        auto duration = api->kernel_end - start;
+        api->kernel_time = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+
         // struct dpu_set_t dpu;
 
         // FILE* original_stderr = stderr;

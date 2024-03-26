@@ -114,7 +114,10 @@ int UPMEMDeviceAPI::AcquireResources(TVMArgs args) {
   }
   std::string uuid = std::to_string(static_cast<int>(args[n_bank_args]));  // last argument
 
-  std::vector<std::string> symbols({"blockIdx_x", "blockIdx_y", "blockIdx_z"});
+  if (!dpu_entry.empty()) {
+    return 0;
+  }
+
   VLOG(3) << "dpu_alloc(" << bank_num << ", NULL, &dpu_set)";
   UPMEM_CALL(dpu_alloc(bank_num, NULL, &(dpu_set)));
 
@@ -123,6 +126,7 @@ int UPMEMDeviceAPI::AcquireResources(TVMArgs args) {
   if (nr_dpus != static_cast<uint32_t>(bank_num)) {
     LOG(FATAL) << "DPU resource allocation failed. Requested " << bank_num << " but got "
                << nr_dpus;
+    dpu_free(dpu_set);
     return 1;
   }
 
@@ -130,22 +134,29 @@ int UPMEMDeviceAPI::AcquireResources(TVMArgs args) {
       dpu_load(dpu_set, ("./temp-" + uuid).c_str(), NULL));  // TODO[ywshin]: who cleans the binary?
   dpu_set_t dpu;
   int32_t i;
-  int* dpu_indices = new int[nr_dpus];
 
   DPU_FOREACH(dpu_set, dpu, i) { dpu_entry[i] = dpu; }
-  for (int32_t j = 0; j < n_bank_args; j++) {
-    DPU_FOREACH(dpu_set, dpu, i) {
-      int k = i;
-      for (int u = 0; u < j; u++) k /= bank_vec[n_bank_args - u - 2];
-      if (j < args.num_args - 2) k %= bank_vec[n_bank_args - j - 2];
-      dpu_indices[i] = k;
-      dpu_prepare_xfer(dpu, &dpu_indices[i]);
+  int** dpu_indices = new int*[nr_dpus];
+  for (int j = 0; j < nr_dpus; j++) {
+    dpu_indices[j] = new int[n_bank_args];
+    for (int k = 0; k < n_bank_args; k++) {
+      int idx = j;
+      for (int u = 0; u < k; u++) idx /= bank_vec[n_bank_args - u - 2];
+      if (k < n_bank_args - 1) idx %= bank_vec[n_bank_args - k - 2];
+      dpu_indices[j][k] = idx;
     }
-    UPMEM_CALL(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, symbols[j].c_str(), 0, 4, DPU_XFER_DEFAULT));
   }
+
+  for (int j = 0; j < nr_dpus; j++) {
+    UPMEM_CALL(dpu_prepare_xfer(dpu_entry[j], &dpu_indices[j][0]));
+  }
+  UPMEM_CALL(
+      dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "blockIdx", 0, 4 * n_bank_args, DPU_XFER_DEFAULT));
 
   return 0;
 }
+
+UPMEMDeviceAPI::~UPMEMDeviceAPI() { ReleaseResources(); }
 
 int UPMEMDeviceAPI::ReleaseResources() {
   if (dpu_entry.empty()) {
@@ -169,6 +180,9 @@ void UPMEMDeviceAPI::ErasePimMemoryEntry(void* handle) {
   if (dpu_addr_ptr.find(handle) != dpu_addr_ptr.end()) {
     dpu_addr_ptr.erase(handle);
   }
+  after_kernel_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::high_resolution_clock::now() - kernel_end)
+                          .count();
 }
 
 int UPMEMDeviceAPI::TransferHostToDevice(void* handle, uint64_t host_addr, uint64_t in_bank_addr,
@@ -224,11 +238,24 @@ int UPMEMDeviceAPI::BindXfer(int bank_index, uint64_t host_addr, uint64_t size) 
 }
 
 int UPMEMDeviceAPI::PushXfer() {
-  UPMEM_CALL(dpu_push_xfer(dpu_set, xfer_direction, GetSymbolName(xfer_handle).c_str(),
-                           static_cast<uint32_t>(xfer_offset) * GetBytes(xfer_handle),
-                           xfer_bulk_size * GetBytes(xfer_handle), DPU_XFER_DEFAULT));
+  if (xfer_direction == DPU_XFER_FROM_DPU) {
+    auto now = std::chrono::high_resolution_clock::now();
+    UPMEM_CALL(dpu_push_xfer(dpu_set, xfer_direction, GetSymbolName(xfer_handle).c_str(),
+                             static_cast<uint32_t>(xfer_offset) * GetBytes(xfer_handle),
+                             xfer_bulk_size * GetBytes(xfer_handle), DPU_XFER_DEFAULT));
+    auto after = std::chrono::high_resolution_clock::now();
+    auto t = after - now;
+    UPMEMDeviceAPI::Global()->d2h_time =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(t).count();
+  } else {
+    UPMEM_CALL(dpu_push_xfer(dpu_set, xfer_direction, GetSymbolName(xfer_handle).c_str(),
+                             static_cast<uint32_t>(xfer_offset) * GetBytes(xfer_handle),
+                             xfer_bulk_size * GetBytes(xfer_handle), DPU_XFER_DEFAULT));
+  }
+
   VLOG(3) << "dpu_push_xfer(" << xfer_direction << ", " << GetSymbolName(xfer_handle) << ", "
           << xfer_offset << ", " << xfer_bulk_size << " * " << GetBytes(xfer_handle) << ")";
+
   if (xfer_direction == DPU_XFER_FROM_DPU) {
     for (auto& kv : d2h_temp) {
       if (kv.second.size > 0)
@@ -254,19 +281,18 @@ TVM_REGISTER_GLOBAL("device_api.upmem").set_body([](TVMArgs args, TVMRetValue* r
 
 TVM_REGISTER_GLOBAL("device_api.upmem.kernel_time").set_body([](TVMArgs args, TVMRetValue* rv) {
   auto api = UPMEMDeviceAPI::Global();
-  auto kernel = api->kernel_end - api->kernel_start;
-  double elapsed_time = std::chrono::duration_cast<std::chrono::nanoseconds>(kernel).count();
-  *rv = static_cast<double>(elapsed_time);
+  *rv = static_cast<double>(api->kernel_time);
 });
 
 TVM_REGISTER_GLOBAL("device_api.upmem.after_kernel_time")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
       auto api = UPMEMDeviceAPI::Global();
-      auto after_kernel = api->release_end - api->kernel_end;
-      double elapsed_time =
-          std::chrono::duration_cast<std::chrono::nanoseconds>(after_kernel).count();
-      *rv = static_cast<double>(elapsed_time);
+      *rv = static_cast<double>(api->after_kernel_time);
     });
+
+TVM_REGISTER_GLOBAL("device_api.upmem.d2h_time").set_body([](TVMArgs args, TVMRetValue* rv) {
+  *rv = static_cast<double>(UPMEMDeviceAPI::Global()->d2h_time);
+});
 
 TVM_REGISTER_GLOBAL("device_api.upmem.acquire_resources")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
@@ -279,7 +305,6 @@ TVM_REGISTER_GLOBAL("device_api.upmem.acquire_resources")
 
 TVM_REGISTER_GLOBAL("device_api.upmem.release_resources")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
-      UPMEMDeviceAPI::Global()->release_end = std::chrono::high_resolution_clock::now();
       *rv = static_cast<int>(UPMEMDeviceAPI::Global()->ReleaseResources());
     });
 

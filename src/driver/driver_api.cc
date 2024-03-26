@@ -675,10 +675,6 @@ transform::Sequential DeviceModulePassManager(IRModule mixed_mod, Target target)
 
   device_pass_list.push_back(tir::transform::LowerWarpMemory());
   device_pass_list.push_back(tir::transform::LowerUpmemDeviceMemoryTransfer());
-  // device_pass_list.push_back(tir::transform::Simplify());
-  device_pass_list.push_back(tir::transform::HoistExpression());
-  // device_pass_list.push_back(tir::transform::HoistIfThenElse());
-  // device_pass_list.push_back(tir::transform::CommonSubexprElimTIR(true, true));
   device_pass_list.push_back(tir::transform::LowerCustomDatatypes());
   device_pass_list.push_back(tir::transform::LowerDeviceStorageAccessInfo());
   device_pass_list.push_back(tir::transform::LowerIntrin());

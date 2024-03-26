@@ -20,13 +20,15 @@ def upmem_gemv_factory(M, K, dtype):
                     with T.init():
                         C[v_i] = 0
                     C[v_i] = C[v_i] + A[v_i, v_k] * B[v_k]
+
     return UPMEMModule
 
-def gemvRCTile(M, K, n_xb, n_yb, n_yt = 16, n_cache = 64, n_rt = 128, dtype = "int32", **kwargs):
+
+def gemvRCTile(M, K, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=128, dtype="int32", **kwargs):
     sch = tvm.tir.Schedule(upmem_gemv_factory(M, K, dtype))
     block_c = sch.get_block("C")
     _, k = sch.get_loops(block_c)
-    xb, xo = sch.split(k, factors = [n_xb, None])
+    xb, xo = sch.split(k, factors=[n_xb, None])
     block_crf = sch.rfactor(xb, factor_axis=0)
     ca = sch.cache_read(block_crf, 0, "local")
     cb = sch.cache_read(block_crf, 1, "local")
@@ -49,7 +51,8 @@ def gemvRCTile(M, K, n_xb, n_yb, n_yt = 16, n_cache = 64, n_rt = 128, dtype = "i
     sch.parallel(it)
     return sch
 
-def gemvRTile(M, K, n_yb, n_cache = 64, n_yt = 16, dtype = "int32", **kwargs):
+
+def gemvRTile(M, K, n_yb, n_cache=64, n_yt=16, dtype="int32", **kwargs):
     sch = tvm.tir.Schedule(upmem_gemv_factory(M, K, dtype))
     block_c = sch.get_block("C")
     _, xo = sch.get_loops(block_c)
@@ -69,11 +72,12 @@ def gemvRTile(M, K, n_yb, n_cache = 64, n_yt = 16, dtype = "int32", **kwargs):
     sch.decompose_reduction(block_c, xo)
     return sch
 
-def StridedBankTile(M, K, n_xb, n_yb, n_yt = 16, n_cache = 64, n_rt = 64, dtype = "int32", **kwargs):
+
+def StridedBankTile(M, K, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=64, dtype="int32", **kwargs):
     sch = tvm.tir.Schedule(upmem_gemv_factory(M, K, dtype))
     block_c = sch.get_block("C")
     _, k = sch.get_loops(block_c)
-    xb, x2, xo = sch.split(k, factors = [n_xb, 2, None])
+    xb, x2, xo = sch.split(k, factors=[n_xb, 2, None])
     block_crf = sch.rfactor(x2, factor_axis=0)
     ca = sch.cache_read(block_crf, 0, "local")
     cb = sch.cache_read(block_crf, 1, "local")
@@ -124,7 +128,9 @@ def HBMStyleTile(dtype="int32", **kwargs):
 class GEMV(UPMEMWorkload):
     def __init__(self):
         required = dict(M=8192, K=8192, dtype="int32", n_xb=1, n_yb=1, n_cache=64, n_yt=16, n_rt=64)
-        super().__init__(profile="gemv", required=required, symbols=["A", "B", "C"], output_symbol="C")
+        super().__init__(
+            profile="gemv", required=required, symbols=["A", "B", "C"], output_symbol="C"
+        )
 
     def fetch_data(self):
         self.host.A = host_array((self.M, self.K), self.dtype)
@@ -132,6 +138,7 @@ class GEMV(UPMEMWorkload):
 
     def host_version(self):
         self.host.C = np.dot(self.host.A, self.host.B)
+
 
 if __name__ == "__main__":
     cleanup()

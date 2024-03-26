@@ -30,10 +30,53 @@
 
 #include <unordered_set>
 
+#include "../analysis/var_use_def_analysis.h"
 #include "ir_utils.h"
 
 namespace tvm {
 namespace tir {
+
+class EliminateBranch : public StmtExprMutator {
+ public:
+  Map<Var, Range> dom_map;
+  Array<Var> loop_vars;
+
+  Stmt VisitStmt_(const ForNode* op) final {
+    dom_map.Set(op->loop_var, Range::FromMinExtent(0, op->extent));
+    loop_vars.push_back(op->loop_var);
+
+    Stmt stmt = StmtExprMutator::VisitStmt_(op);
+    dom_map.erase(op->loop_var);
+
+    if (const IfThenElseNode* branch = op->body.as<IfThenElseNode>()) {
+      VarUseDefAnalyzer use_def({}, false);
+      use_def(branch->condition);
+
+      auto constraint = arith::SolveLinearInequalities(
+          arith::IntConstraints({op->loop_var}, dom_map, {branch->condition}));
+      auto bounds = constraint.first.at(op->loop_var);
+
+      auto extent = op->extent;
+      if (bounds->upper.size() >= 1) {
+        auto boundary_value = bounds->upper[0] + 1;
+        for (size_t i = 1; i < bounds->upper.size(); i++) {
+          boundary_value = Min(extent, bounds->upper[i] + 1);
+        }
+
+        extent = Max(0, Min(extent, boundary_value));
+        arith::Analyzer ana;
+        extent = ana.Simplify(extent);
+
+        Var hoisted_var = Var(op->loop_var->name_hint + "_ext");
+
+        stmt = For(op->loop_var, op->min, hoisted_var, op->kind, branch->then_case);
+        stmt = LetStmt(hoisted_var, extent, stmt);
+      }
+    }
+    loop_vars.pop_back();
+    return stmt;
+  }
+};
 
 class MoveGlobalIndices : public StmtExprMutator {
   PrimExpr alloc_global_index = PrimExpr();
@@ -150,22 +193,8 @@ class LowerMemoryTransfer : public StmtExprMutator {
           } else {
             return ret;
           }
-          if (branch) {
-            ret = IfThenElse(new_cond, ret);
-          }
         }
       }
-    }
-    return ret;
-  }
-};
-
-class LoopInvariantCodeMotion : public StmtExprMutator {
-  Stmt VisitStmt_(const IfThenElseNode* op) {
-    auto ret = StmtExprMutator::VisitStmt_(op);
-    if (const LTNode* le = op->condition.as<LTNode>()) {
-      Var hoist("lvar", DataType::Int(32));
-      return LetStmt(hoist, le->a, IfThenElse(hoist < le->b, op->then_case, op->else_case));
     }
     return ret;
   }
@@ -179,12 +208,13 @@ Pass LowerUpmemDeviceMemoryTransfer() {
     auto target = f->GetAttr<Target>(tvm::attr::kTarget);
     VLOG(1) << "LowerUpmemDeviceMemoryTransfer: \n" << f;
     if (target.value()->kind->name == "upmem") {
+      auto m = f->body;
       MoveGlobalIndices moveGlobalIndices;
-      auto m = moveGlobalIndices(f->body);
+      m = moveGlobalIndices(m);
       LowerMemoryTransfer lowerMemoryTransfer;
-      n->body = lowerMemoryTransfer(m);
-      // LoopInvariantCodeMotion licm;
-      // n->body = licm(m);
+      m = lowerMemoryTransfer(m);
+      EliminateBranch eliminateBranch;
+      n->body = eliminateBranch(m);
     }
     VLOG(1) << "LowerUpmemDeviceMemoryTransfer: \n" << f;
     return f;
