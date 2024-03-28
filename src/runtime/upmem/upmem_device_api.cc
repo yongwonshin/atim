@@ -180,9 +180,6 @@ void UPMEMDeviceAPI::ErasePimMemoryEntry(void* handle) {
   if (dpu_addr_ptr.find(handle) != dpu_addr_ptr.end()) {
     dpu_addr_ptr.erase(handle);
   }
-  after_kernel_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                          std::chrono::high_resolution_clock::now() - kernel_end)
-                          .count();
 }
 
 int UPMEMDeviceAPI::TransferHostToDevice(void* handle, uint64_t host_addr, uint64_t in_bank_addr,
@@ -279,16 +276,40 @@ TVM_REGISTER_GLOBAL("device_api.upmem").set_body([](TVMArgs args, TVMRetValue* r
   *rv = static_cast<void*>(api);
 });
 
-TVM_REGISTER_GLOBAL("device_api.upmem.kernel_time").set_body([](TVMArgs args, TVMRetValue* rv) {
+TVM_REGISTER_GLOBAL("device_api.upmem.timestamp").set_body([](TVMArgs args, TVMRetValue* rv) {
   auto api = UPMEMDeviceAPI::Global();
-  *rv = static_cast<double>(api->kernel_time);
+  std::string type = args[0];
+  if (type == "start") {
+    api->entire_start = std::chrono::high_resolution_clock::now();
+  } else if (type == "end") {
+    api->entire_end = std::chrono::high_resolution_clock::now();
+  }
 });
 
-TVM_REGISTER_GLOBAL("device_api.upmem.after_kernel_time")
-    .set_body([](TVMArgs args, TVMRetValue* rv) {
-      auto api = UPMEMDeviceAPI::Global();
-      *rv = static_cast<double>(api->after_kernel_time);
-    });
+TVM_REGISTER_GLOBAL("device_api.upmem.elapsed_time").set_body([](TVMArgs args, TVMRetValue* rv) {
+  auto api = UPMEMDeviceAPI::Global();
+  std::string type = args[0];
+  std::chrono::high_resolution_clock::time_point start, end;
+  if (type == "entire") {
+    end = api->entire_end;
+    start = api->entire_start;
+  } else if (type == "kernel") {
+    end = api->kernel_end;
+    start = api->kernel_start;
+  } else if (type == "after_kernel") {
+    end = api->entire_end;
+    start = api->kernel_end;
+  } else if (type == "before_kernel") {
+    end = api->kernel_start;
+    start = api->entire_start;
+  } else if (type == "d2h") {
+    *rv = static_cast<double>(api->d2h_time);
+    return;
+  } else {
+    LOG(FATAL) << "Invalid type: " << type;
+  }
+  *rv = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+});
 
 TVM_REGISTER_GLOBAL("device_api.upmem.d2h_time").set_body([](TVMArgs args, TVMRetValue* rv) {
   *rv = static_cast<double>(UPMEMDeviceAPI::Global()->d2h_time);
@@ -297,7 +318,7 @@ TVM_REGISTER_GLOBAL("device_api.upmem.d2h_time").set_body([](TVMArgs args, TVMRe
 TVM_REGISTER_GLOBAL("device_api.upmem.acquire_resources")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
       auto api = UPMEMDeviceAPI::Global();
-      api->acquire_start = std::chrono::high_resolution_clock::now();
+      api->entire_start = std::chrono::high_resolution_clock::now();
       if (api->dpu_entry.empty()) {
         UPMEMDeviceAPI::Global()->AcquireResources(args);
       }

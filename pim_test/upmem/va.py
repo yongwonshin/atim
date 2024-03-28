@@ -1,9 +1,13 @@
+import math
+import argparse
+import numpy as np
 import tvm
+import time
 from tvm.script import tir as T
+from tvm.tir.transform import *
+
 from base import UPMEMWorkload, cleanup
 from tensor import host_array
-from tvm.target import Target
-from tvm.tir.transform import *
 
 
 def va_prim_schedule(L, dtype):
@@ -30,7 +34,6 @@ def vaTile(L, n_b, n_t, n_c, dtype):
     cb = sch.cache_read(block_c, "B", "local")
     cc = sch.cache_write(block_c, "C", "local")
     ib, it, ii, ic = sch.split(i, factors=[n_b, n_t, None, n_c])
-    # n_b = 16, n_t = 16, n_c = 256
     sch.compute_at(ca, ii)
     sch.compute_at(cb, ii)
     sch.reverse_compute_at(cc, ii)
@@ -41,12 +44,13 @@ def vaTile(L, n_b, n_t, n_c, dtype):
 
 
 class VA(UPMEMWorkload):
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__(
             profile="va",
-            required=dict(L=65536, dtype="int32", n_b=4, n_t=16, n_c=256),
+            required=dict(L=2500000, dtype="int32", n_b=4, n_t=16, n_c=256),
             symbols=["A", "B", "C"],
             output_symbol="C",
+            **kwargs,
         )
 
     def fetch_data(self):
@@ -56,30 +60,72 @@ class VA(UPMEMWorkload):
     def host_version(self):
         self.host.C = self.host.A + self.host.B
 
+    def benchmark_command(self, config):
+        bl = int(math.log2(config["n_c"] * np.dtype(config["dtype"]).itemsize))
+        pbtype = config["dtype"].upper()
+        return f"make clean && NR_DPUS={config['n_b']} NR_TASKLETS={config['n_t']} \
+            TYPE={pbtype} BL={bl} make && \
+            ./bin/host_code -i {config['L']} -w {self.warmup} -e {self.repeat}"
+
 
 if __name__ == "__main__":
-    cleanup()
-    va = VA()
-    # va.test(vaTile, n_b=64, n_c=256, n_t=4)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--L", default=2500000, type=int)
+    parser.add_argument("-b", "--n_b", default=4, type=int)
+    parser.add_argument("-t", "--n_t", default=16, type=int)
+    parser.add_argument("-c", "--n_c", default=64, type=int)
+    parser.add_argument("-dtype", "--dtype", default="int32", type=str)
 
-    for n_b, n_t, n_c in [
-        (1, 16, 256),
-        (2, 16, 256),
-        (4, 16, 256),
-        (8, 16, 256),
-        (16, 16, 256),
-        (32, 8, 256),
-        (64, 4, 256),
-        (128, 2, 256),
-        (256, 1, 256),
-        (512, 1, 128),
-        (1024, 1, 64),
-        (2048, 1, 16),
-        (64, 16, 64),
-        (64, 8, 128),
-        (64, 4, 256),
-        (128, 8, 64),
-        (128, 4, 128),
-        (128, 2, 256),
-    ]:
-        va.test(vaTile, n_b=n_b, n_c=n_c, n_t=n_t)
+    parser.add_argument("-w", "--warmup", default=1, type=int)
+    parser.add_argument("-e", "--repeat", default=3, type=int)
+    parser.add_argument("-v", "--verbose", default=0, type=int)
+    parser.add_argument("-bench", "--bench", default=False, action="store_true")
+    parser.add_argument("-custom", "--custom", default=False, action="store_true")
+
+    args = parser.parse_args()
+
+    cleanup()
+    va = VA(repeat=args.repeat, warmup=args.warmup, bench=args.bench, verbose=args.verbose)
+
+    if not args.custom:
+        config = va.extract_config(args)
+        va.benchmark(**config)
+        va.test(vaTile, **config)
+    else:  # custom test config
+
+        def newVaTile(L, n_b, n_t, n_c, dtype):
+            sch = tvm.tir.Schedule(va_prim_schedule(L, dtype))
+            block_c = sch.get_block("C")
+            (i,) = sch.get_loops(block_c)
+            ca = sch.cache_read(block_c, "A", "local")
+            cb = sch.cache_read(block_c, "B", "local")
+            cc = sch.cache_write(block_c, "C", "local")
+            ib, it = sch.split(i, factors=[n_b, None])
+            it, ii, ic = sch.split(it, factors=[n_t, None, n_c])
+            sch.compute_at(ca, ii)
+            sch.compute_at(cb, ii)
+            sch.reverse_compute_at(cc, ii)
+            sch.bind(ib, "blockIdx.x")
+            sch.bind(it, "threadIdx.x")
+            sch.parallel(ic)
+            return sch
+
+        configs = [
+            (2500000, 1, 16, 256, "int32"),
+            (2500000, 2, 16, 256, "int32"),
+            (2500000, 4, 16, 256, "int32"),
+            (2500000, 8, 16, 256, "int32"),
+            (2500000, 16, 16, 256, "int32"),
+            (2500000, 32, 16, 256, "int32"),
+            (2500000, 64, 16, 256, "int32"),
+            (2500000, 128, 16, 256, "int32"),
+            (2500000, 256, 16, 256, "int32"),
+            (2500000, 512, 16, 256, "int32"),
+            (2500000, 1024, 16, 256, "int32"),
+            (2500000, 2048, 16, 256, "int32"),
+        ]
+        for L, n_b, n_t, n_c, dtype in configs:
+            va.benchmark(L=L, n_b=n_b, n_t=n_t, n_c=n_c, dtype=dtype)
+        for L, n_b, n_t, n_c, dtype in configs:
+            va.test(newVaTile, L=L, n_b=n_b, n_c=n_c, n_t=n_t, dtype=dtype)
+            time.sleep(0.1)

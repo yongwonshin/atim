@@ -3,6 +3,8 @@ from tvm.script import tir as T
 from base import UPMEMWorkload, cleanup
 from tensor import host_array
 import numpy as np
+import math
+import argparse
 
 
 def upmem_gemv_factory(M, K, dtype):
@@ -126,10 +128,10 @@ def HBMStyleTile(dtype="int32", **kwargs):
 
 
 class GEMV(UPMEMWorkload):
-    def __init__(self):
+    def __init__(self, **kwargs):
         required = dict(M=8192, K=8192, dtype="int32", n_xb=1, n_yb=1, n_cache=64, n_yt=16, n_rt=64)
         super().__init__(
-            profile="gemv", required=required, symbols=["A", "B", "C"], output_symbol="C"
+            profile="gemv", required=required, symbols=["A", "B", "C"], output_symbol="C", **kwargs
         )
 
     def fetch_data(self):
@@ -139,11 +141,67 @@ class GEMV(UPMEMWorkload):
     def host_version(self):
         self.host.C = np.dot(self.host.A, self.host.B)
 
+    def benchmark_command(self, config):
+        bl = int(math.log2(config["n_cache"] * np.dtype(config["dtype"]).itemsize))
+        pbtype = config["dtype"].upper()
+        return f"make clean && NR_DPUS={config['n_xb'] * config['n_yb']} \
+            NR_TASKLETS={config['n_yt']} TYPE={pbtype} BL={bl} make && \
+            ./bin/gemv_host -m {config['M']} -n {config['K']} -w {self.warmup} -e {self.repeat}"
+
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-s", "--schedule", default="gemvRTile", type=str)
+    parser.add_argument("-m", "--M", default=8192, type=int)
+    parser.add_argument("-k", "--K", default=8192, type=int)
+    parser.add_argument("-dtype", "--dtype", default="int32", type=str)
+    parser.add_argument("-xb", "--n_xb", default=16, type=int)
+    parser.add_argument("-yb", "--n_yb", default=16, type=int)
+    parser.add_argument("-c", "--n_cache", default=64, type=int)
+    parser.add_argument("-yt", "--n_yt", default=16, type=int)
+    parser.add_argument("-rt", "--n_rt", default=64, type=int)
+
+    parser.add_argument("-w", "--warmup", default=1, type=int)
+    parser.add_argument("-e", "--repeat", default=3, type=int)
+    parser.add_argument("-v", "--verbose", default=0, type=int)
+    parser.add_argument("-bench", "--bench", default=False, action="store_true")
+    parser.add_argument("-custom", "--custom", default=False, action="store_true")
+
+    args = parser.parse_args()
+
     cleanup()
-    gemv = GEMV()
-    gemv.test(gemvRTile, n_yb=32, n_cache=256)
-    gemv.test(gemvRTile, n_yb=64, n_cache=256)
-    gemv.test(gemvRCTile, n_yb=32, n_cache=256)
-    gemv.test(gemvRCTile, n_yb=64, n_cache=256)
+    gemv = GEMV(repeat=args.repeat, warmup=args.warmup, bench=args.bench, verbose=args.verbose)
+
+    schedules = {
+        "gemvRTile": gemvRTile,
+        "gemvRCTile": gemvRCTile,
+        "StridedBankTile": StridedBankTile,
+        "HBMStyleTile": HBMStyleTile,
+    }
+    schedule = schedules.get(args.schedule)
+    if schedule is None:
+        raise ValueError(f"Schedule {args.schedule} not found")
+
+    if not args.custom:
+        config = gemv.extract_config(args)
+        gemv.benchmark(**config)
+        gemv.test(schedule, **config)
+    else:  # custom test
+        configs = [
+            (1, 2048, 2, 256),
+            (2, 1024, 4, 256),
+            (4, 512, 8, 256),
+            (8, 256, 16, 256),
+            (16, 128, 16, 256),
+            (32, 64, 16, 256),
+            (64, 32, 16, 128),
+            (128, 16, 16, 64),
+            (256, 16, 16, 32),
+            (512, 8, 16, 16),
+            (1024, 8, 16, 8),
+            (2048, 1, 16, 4),
+        ]
+        for xb, yb, yt, cache in configs:
+            gemv.benchmark(n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
+        for xb, yb, yt, cache in configs:
+            gemv.test(gemvRCTile, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)

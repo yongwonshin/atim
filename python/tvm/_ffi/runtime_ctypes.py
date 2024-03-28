@@ -549,7 +549,7 @@ class Device(ctypes.Structure):
             Jobs in this stream should be finished.
         """
         check_call(_LIB.TVMSynchronize(self.device_type, self.device_id, stream))
-        
+
     def load_function(self, func):
         """Load a function to the device.
 
@@ -579,6 +579,7 @@ class Device(ctypes.Structure):
             dev_type = self.device_type % RPC_SESS_MASK
             return "remote[%d]:%s(%d)" % (tbl_id, Device.MASK2STR[dev_type], self.device_id)
         return "%s(%d)" % (Device.MASK2STR[self.device_type], self.device_id)
+
 
 class TVMArray(ctypes.Structure):
     """TVMValue in C API"""

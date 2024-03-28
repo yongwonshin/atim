@@ -132,13 +132,12 @@ class UPMEMDeviceAPI final : public DeviceAPI {
 
   std::unordered_map<int, TemporaryMapInfo> d2h_temp;
 
-  std::chrono::high_resolution_clock::time_point acquire_start;
+  std::chrono::high_resolution_clock::time_point entire_start;
   std::chrono::high_resolution_clock::time_point kernel_start;
   std::chrono::high_resolution_clock::time_point kernel_end;
-  std::chrono::high_resolution_clock::time_point release_end;
+  std::chrono::high_resolution_clock::time_point entire_end;
 
   double kernel_time;
-  double after_kernel_time;
   double d2h_time;
 
   void* recent_host_address;
