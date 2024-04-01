@@ -48,8 +48,13 @@ class UPMEMModuleNode : public runtime::ModuleNode {
  public:
   explicit UPMEMModuleNode(std::string binary_file, std::string fmt,
                            std::unordered_map<std::string, FunctionInfo> fmap,
-                           std::string upmem_source)
-      : binary_file_(binary_file), fmt_(fmt), fmap_(fmap), upmem_source_(upmem_source) {
+                           std::string upmem_source,
+                           std::unordered_map<std::string, size_t> padded_buffer_size)
+      : binary_file_(binary_file),
+        fmt_(fmt),
+        fmap_(fmap),
+        upmem_source_(upmem_source),
+        padded_buffer_size(padded_buffer_size) {
     // std::fill(module_.begin(), module_.end(), nullptr);
   }
   // destructor
@@ -109,6 +114,13 @@ class UPMEMModuleNode : public runtime::ModuleNode {
 
   String GetSource(const String& format) final { return upmem_source_; }
 
+  int32_t GetPaddedSize(std::string name_hint) {
+    if (padded_buffer_size.find(name_hint) == padded_buffer_size.end()) {
+      return 0;
+    }
+    return padded_buffer_size[name_hint];
+  }
+
  private:
   // the binary data
   std::string binary_file_;
@@ -118,10 +130,24 @@ class UPMEMModuleNode : public runtime::ModuleNode {
   std::unordered_map<std::string, FunctionInfo> fmap_;
   // The upmem source.
   std::string upmem_source_;
+
+  std::unordered_map<std::string, size_t> padded_buffer_size;
   // the internal modules per GPU, to be lazily initialized.
   // std::array<CUmodule, kMaxNumGPUs> module_;
   // internal mutex when updating the module
   std::mutex mutex_;
+};
+
+class UPMEMModule : public Module {
+ public:
+  UPMEMModule() {}
+  explicit UPMEMModule(ObjectPtr<Object> n) : Module(n) {}
+  inline UPMEMModuleNode* operator->();
+  inline const UPMEMModuleNode* operator->() const;
+};
+
+inline UPMEMModuleNode* UPMEMModule::operator->() {
+  return static_cast<UPMEMModuleNode*>(get_mutable());
 };
 
 // a wrapped function class to get packed func.
@@ -155,9 +181,10 @@ class UPMEMWrappedFunc {
 
 Module UPMEMModuleCreate(std::string binary_file, std::string fmt,
                          std::unordered_map<std::string, FunctionInfo> fmap,
-                         std::string upmem_source) {
+                         std::string upmem_source,
+                         std::unordered_map<std::string, size_t> padded_buffer_size) {
   // TODO: build upmem module with dpurte-upmem-clang
-  auto n = make_object<UPMEMModuleNode>(binary_file, fmt, fmap, upmem_source);
+  auto n = make_object<UPMEMModuleNode>(binary_file, fmt, fmap, upmem_source, padded_buffer_size);
   return Module(n);
 }
 
@@ -175,11 +202,17 @@ Module UPMEMModuleLoadBinary(void* strm) {
   stream->Read(&fmt);
   stream->Read(&fmap);
   stream->Read(&data);
-  return UPMEMModuleCreate(data, fmt, fmap, data);
+  return UPMEMModuleCreate(data, fmt, fmap, data, {});
 }
 
 // TVM_REGISTER_GLOBAL("runtime.module.loadfile_upmem").set_body_typed(UPMEMModuleLoadFile);
 
 TVM_REGISTER_GLOBAL("runtime.module.loadbinary_upmem").set_body_typed(UPMEMModuleLoadBinary);
+
+TVM_REGISTER_GLOBAL("runtime.module.upmem.padded_size")
+    .set_body_typed([](UPMEMModule mod, std::string name_hint) {
+      return mod->GetPaddedSize(name_hint);
+    });
+
 }  // namespace runtime
 }  // namespace tvm

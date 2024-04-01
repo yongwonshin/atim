@@ -74,6 +74,7 @@ class UPMEMWorkload:
         repeat=3,
         warmup=1,
         bench=False,
+        compile_only=False,
         verbose=0,
         symbols=[],
         output_symbol="",
@@ -82,6 +83,7 @@ class UPMEMWorkload:
         self.repeat = repeat
         self.warmup = warmup
         self.required = required
+        self.compile_only=compile_only
         self.bench = bench
         self.verbose = verbose
         self.symbols = symbols
@@ -157,6 +159,8 @@ class UPMEMWorkload:
         )
 
         different_indices = np.where(host_flatten != dev_flatten)[0]
+        if different_indices.size > 100:
+            different_indices = np.concatenate([different_indices[:50], different_indices[-50:]])
         for idx in different_indices:
             print(
                 f"Index: {idx}, Host: {host_flatten[idx]}, Device: {dev_flatten[idx]}",
@@ -230,7 +234,7 @@ class UPMEMWorkload:
                     tvm.nd.array(
                         self.host.__getattr__(symbol),
                         self.target_device,
-                        symbol=self.func[f"copy_{symbol}"],
+                        symbol=symbol,
                     ),
                 )
         if self.output_symbol:
@@ -258,7 +262,10 @@ class UPMEMWorkload:
             with open("./results/" + self.fname + ".txt", "w") as f:
                 self.func = tvm.build(self.sch.mod, target=self.target, name="kernel")
                 self.pre_kernel(f, self.sch)
+                if self.compile_only:
+                    return
 
+                self.target_device.load_function(self.func)
                 times = []
 
                 if self.verbose >= 1:
@@ -292,14 +299,18 @@ class UPMEMWorkload:
                     print("------------------------------")
                 time_tuple = np.mean(times, axis=0)
                 flag = self.is_passed()
+                print(
+                    "\t".join([f"{x:.3f}" for x in time_tuple])
+                    + f"\t{flag}\t{self.config.__repr__()}"
+                )
                 # print(
-                #     "\t".join([f"{x:.3f}" for x in time_tuple])
-                #     + f"\t{flag}\t{self.config.__repr__()}"
+                #     f"{self.config['n_b']}\t{time_tuple[1]}\t{time_tuple[2]}\t{time_tuple[3]}\t{flag}"
                 # )
-                print(f"{self.config['n_b']}\t{time_tuple[1]}\t{time_tuple[2]}\t{flag}")
                 self.post_kernel(f)
-                tvm._ffi.get_global_func("device_api.upmem.release_resources")()
+
 
         except Exception as e:
             with open("./errors/" + self.fname + ".txt", "w") as f:
                 print(traceback.format_exc(), file=f)
+        finally:
+            tvm._ffi.get_global_func("device_api.upmem.release_resources")()

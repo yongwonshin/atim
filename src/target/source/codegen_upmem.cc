@@ -83,8 +83,9 @@ void CodeGenUpmem::AddFunction(const PrimFunc& f) {
       std::string alias = Downcast<StringImm>(arr[0])->value;
       DataType dtype = DataType(String2DLDataType(Downcast<StringImm>(arr[1])->value));
       int size = Downcast<IntImm>(arr[2])->value;
+      padded_size_[arg->name_hint] = Downcast<IntImm>(arr[3])->value;
 
-      this->stream << Downcast<StringImm>(arr[3])->value << " ";  // __mram_noinit or __mram
+      this->stream << Downcast<StringImm>(arr[4])->value << " ";  // __mram_noinit or __mram
       PrintType(dtype, this->stream);
       this->stream << " " << alias << "[" << size << "];\n";
       var_idmap_[arg.get()] = alias;
@@ -281,7 +282,11 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
   bool output_ssa = false;
 
   std::stringstream code;
-  // const auto* fpostproc = Registry::Get("tvm_callback_upmem_postproc");
+
+  std::unordered_map<std::string, size_t> padded_buffer_size;
+
+  auto fmap = ExtractFuncInfo(mod);
+
   ICHECK(mod->functions.size() == 1) << "Only one function supported for now.";
   int tasklet_num = 1;
   for (auto kv : mod->functions) {
@@ -297,6 +302,9 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
     cg.AddFunction(f);
     std::string fsource = cg.Finish();
     code << fsource;
+
+    auto global_symbol = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
+    padded_buffer_size = cg.padded_size();
   }
   VLOG(2) << code.str();
 
@@ -305,7 +313,8 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
   ICHECK(!mod->uuid.empty());
   DPUClangCompile(code.str(), tasklet_num, mod->uuid);
 
-  return UPMEMModuleCreate(code.str(), "upmem", ExtractFuncInfo(mod), code.str());
+  return UPMEMModuleCreate(code.str(), "upmem", ExtractFuncInfo(mod), code.str(),
+                           padded_buffer_size);
 }
 
 TVM_REGISTER_GLOBAL("target.build.upmem").set_body_typed(BuildUpmem);

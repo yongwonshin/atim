@@ -59,6 +59,7 @@ class PimKernelFinder : public StmtExprVisitor {
   std::vector<const VarNode*> consumed_before_buffer, allocated_before_buffer,
       consumed_after_buffer;
   Map<Buffer, PrimExpr> alloca_size_map;
+  Map<Buffer, PrimExpr> padded_size_map;
   Map<String, Array<PrimExpr>> symbol_map;
   Map<Var, PrimExpr> vmap;
   bool before_kernel = true, inside_kernel = false, after_kernel = false;
@@ -148,6 +149,7 @@ class PimKernelFinder : public StmtExprVisitor {
         for (auto& v : use_def.undefined_) {
           if (buf->data.get() == v.get()) {
             alloca_size_map.Set(buf, 1);
+            padded_size_map.Set(buf, buf->shape[0]);
           }
         }
       }
@@ -169,7 +171,7 @@ class PimKernelFinder : public StmtExprVisitor {
         }
         symbol_map.Set(kv.first->data->name_hint,
                        {StringImm(var_name), StringImm(DLDataType2String(kv.first->dtype)),
-                        kv.second, symbol});
+                        kv.second, padded_size_map[kv.first], symbol});
       }
       kernel_body = AttrStmt(symbol_map, "upmem_symbol_map", 0, kernel_body);
       kernel_bodies.push_back(kernel_body);
@@ -207,7 +209,7 @@ class PimKernelFinder : public StmtExprVisitor {
       if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
         std::string lscope = GetPtrStorageScope(load->buffer->data);
         std::string sscope = GetPtrStorageScope(op->buffer->data);
-        PrimExpr target_expr;
+        PrimExpr global_index, host_index;
         Buffer target_buffer;
         if ((sscope == "local" || sscope == "shared") &&
             (lscope == "" || lscope == "global")) {  // local <- global: h->d pattern
@@ -219,7 +221,8 @@ class PimKernelFinder : public StmtExprVisitor {
           else
             h2d_implicit.push_back(load->buffer);
           if (alloca_size_map.find(load->buffer) != alloca_size_map.end()) {
-            target_expr = op->global_indices[0];
+            global_index = op->global_indices[0];
+            host_index = load->indices[0];
             target_buffer = load->buffer;
           }
         }
@@ -229,17 +232,21 @@ class PimKernelFinder : public StmtExprVisitor {
               << "In local->global pattern, BufferLoad global_indices should be size 1.";
           d2h.push_back(op->buffer);
           if (alloca_size_map.find(op->buffer) != alloca_size_map.end()) {
-            target_expr = load->global_indices[0];
+            global_index = load->global_indices[0];
+            host_index = op->indices[0];
             target_buffer = op->buffer;
           }
         }
 
         if (target_buffer.defined()) {
-          target_expr = Substitute(target_expr + 1, vmap);
+          global_index = Substitute(global_index + 1, vmap);
+          host_index = Substitute(host_index + 1, vmap);
           arith::Analyzer ana;
-          target_expr = ana.Simplify(target_expr);
-          if (is_const_number(target_expr)) {
-            alloca_size_map.Set(target_buffer, target_expr);
+          global_index = ana.Simplify(global_index);
+          host_index = ana.Simplify(host_index);
+          if (is_const_number(global_index) && is_const_number(host_index)) {
+            alloca_size_map.Set(target_buffer, global_index);
+            padded_size_map.Set(target_buffer, host_index);
           }
         }
       }

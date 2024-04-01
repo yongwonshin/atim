@@ -45,8 +45,8 @@ namespace runtime {
  * \param cuda_source Optional, cuda source file
  */
 Module UPMEMModuleCreate(std::string data, std::string fmt,
-                        std::unordered_map<std::string, FunctionInfo> fmap,
-                        std::string source);
+                         std::unordered_map<std::string, FunctionInfo> fmap, std::string source,
+                         std::unordered_map<std::string, size_t> padded_buffer_size);
 }  // namespace runtime
 }  // namespace tvm
 #endif  // TVM_RUNTIME_CUDA_CUDA_MODULE_H_

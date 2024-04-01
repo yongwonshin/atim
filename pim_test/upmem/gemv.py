@@ -166,11 +166,18 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", default=0, type=int)
     parser.add_argument("-bench", "--bench", default=False, action="store_true")
     parser.add_argument("-custom", "--custom", default=False, action="store_true")
+    parser.add_argument("-compile_only", "--compile_only", default=False, action="store_true")
 
     args = parser.parse_args()
 
     cleanup()
-    gemv = GEMV(repeat=args.repeat, warmup=args.warmup, bench=args.bench, verbose=args.verbose)
+    gemv = GEMV(
+        repeat=args.repeat,
+        warmup=args.warmup,
+        bench=args.bench,
+        verbose=args.verbose,
+        compile_only=args.compile_only,
+    )
 
     schedules = {
         "gemvRTile": gemvRTile,
@@ -196,11 +203,12 @@ if __name__ == "__main__":
             (32, 64, 16, 256),
             (64, 32, 16, 128),
             (128, 16, 16, 64),
-            (256, 16, 16, 32),
-            (512, 8, 16, 16),
-            (1024, 8, 16, 8),
+            (256, 8, 16, 32),
+            (512, 4, 16, 16),
+            (1024, 2, 16, 8),
             (2048, 1, 16, 4),
         ]
+
         for xb, yb, yt, cache in configs:
             gemv.benchmark(n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
         for xb, yb, yt, cache in configs:

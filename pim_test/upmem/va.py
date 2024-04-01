@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 import tvm
 import time
+import math
 from tvm.script import tir as T
 from tvm.tir.transform import *
 
@@ -81,11 +82,18 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", default=0, type=int)
     parser.add_argument("-bench", "--bench", default=False, action="store_true")
     parser.add_argument("-custom", "--custom", default=False, action="store_true")
+    parser.add_argument("-compile_only", "--compile_only", default=False, action="store_true")
 
     args = parser.parse_args()
 
     cleanup()
-    va = VA(repeat=args.repeat, warmup=args.warmup, bench=args.bench, verbose=args.verbose)
+    va = VA(
+        repeat=args.repeat,
+        warmup=args.warmup,
+        bench=args.bench,
+        verbose=args.verbose,
+        compile_only=args.compile_only,
+    )
 
     if not args.custom:
         config = va.extract_config(args)
@@ -100,8 +108,10 @@ if __name__ == "__main__":
             ca = sch.cache_read(block_c, "A", "local")
             cb = sch.cache_read(block_c, "B", "local")
             cc = sch.cache_write(block_c, "C", "local")
-            ib, it = sch.split(i, factors=[n_b, None])
+
+            ib, it = sch.split(i, factors=[None, math.ceil(L / n_b / 2) * 2])
             it, ii, ic = sch.split(it, factors=[n_t, None, n_c])
+
             sch.compute_at(ca, ii)
             sch.compute_at(cb, ii)
             sch.reverse_compute_at(cc, ii)
@@ -121,8 +131,8 @@ if __name__ == "__main__":
             (2500000, 128, 16, 256, "int32"),
             (2500000, 256, 16, 256, "int32"),
             (2500000, 512, 16, 256, "int32"),
-            (2500000, 1024, 16, 256, "int32"),
-            (2500000, 2048, 16, 256, "int32"),
+            (2500000, 1024, 8, 256, "int32"),
+            (2500000, 2048, 4, 256, "int32"),
         ]
         for L, n_b, n_t, n_c, dtype in configs:
             va.benchmark(L=L, n_b=n_b, n_t=n_t, n_c=n_c, dtype=dtype)

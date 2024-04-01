@@ -657,22 +657,31 @@ def array(arr, device=cpu(0), mem_scope=None, symbol=None):
         arr = np.array(arr)
 
     if device.device_type == Device.kDLUPMEM:
-        host_arr = array(arr, cpu(0))
-        if symbol is not None:
-            if hasattr(symbol, "__call__"):
-                symbol(host_arr)
-            elif isinstance(symbol, str):
-                if device.func is None:
-                    raise AttributeError("The function should be loaded to the UPMEM device.")
-                with suppress(AttributeError):
-                    _sym = device.func["copy_" + symbol]
-                    if _sym is None:
-                        warnings.warn(
-                            f"function copy_{symbol} not included in module. Bypassing symbol={symbol}"
-                        )
-                    if _sym:
-                        _sym(host_arr)
+        if symbol is None:
+            host_arr = empty(arr.shape, arr.dtype, cpu(0)).copyfrom(arr)
+        else:
+            padded_size = tvm._ffi.get_global_func("runtime.module.upmem.padded_size")(
+                device.func.imported_modules[0], symbol
+            )
+            # check host_arr.shape <= padded_size
+            empty_arr = tvm._ffi.get_global_func("runtime.TVMCPUAllocArrayPadded")(
+                tvm.runtime.ShapeTuple([int(dim) for dim in arr.shape]),
+                DataType(arr.dtype),
+                padded_size,
+            )
+            host_arr = empty_arr.copyfrom(arr)
+            if device.func is None:
+                raise AttributeError("The function should be loaded to the UPMEM device.")
+            with suppress(AttributeError):
+                inject_func = device.func["copy_" + symbol]
+                if inject_func is None:
+                    warnings.warn(
+                        f"function copy_{symbol} not included in module. Bypassing symbol={symbol}"
+                    )
+                else:
+                    inject_func(host_arr)
         return host_arr
+
     elif device.device_type == Device.kDLHBMPIM:
         host_arr = array(arr, cpu(0))
         if symbol is not None:

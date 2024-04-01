@@ -55,6 +55,8 @@ class CodeGenUpmem final : public CodeGenC {
 
   void VisitExpr_(const CallNode* op, std::ostream& os) final;
 
+  std::unordered_map<std::string, size_t> padded_size() { return padded_size_; }
+
   // void VisitExpr_(const BufferLoadNode* op, std::ostream& os) final;
   // void VisitStmt_(const BufferStoreNode* op) final;
 
@@ -74,6 +76,9 @@ class CodeGenUpmem final : public CodeGenC {
   // Mapping from buffer to allocation size.
   // Useful to track when a scalar store of a vectorized texture load is required.
   std::unordered_map<const Object*, size_t> allocation_size_;
+
+  std::unordered_map<std::string, size_t> padded_size_;
+
   std::string uuid;
 };
 

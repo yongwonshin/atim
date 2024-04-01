@@ -28,6 +28,7 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
+#include <queue>
 #include <unordered_set>
 
 #include "../analysis/var_use_def_analysis.h"
@@ -49,11 +50,25 @@ class EliminateBranch : public StmtExprMutator {
     dom_map.erase(op->loop_var);
 
     if (const IfThenElseNode* branch = op->body.as<IfThenElseNode>()) {
-      VarUseDefAnalyzer use_def({}, false);
-      use_def(branch->condition);
+      Array<PrimExpr> conditions;
+
+      std::queue<PrimExpr> que;
+      que.push(branch->condition);
+      while (!que.empty()) {
+        PrimExpr cond = que.front();
+        que.pop();
+        if (const AndNode* an = cond.as<AndNode>()) {
+          que.push(an->a);
+          que.push(an->b);
+        } else if (const LetNode* l = cond.as<LetNode>()) {
+          que.push(Substitute(l->body, {{l->var, l->value}}));
+        } else {
+          conditions.push_back(cond);
+        }
+      }
 
       auto constraint = arith::SolveLinearInequalities(
-          arith::IntConstraints({op->loop_var}, dom_map, {branch->condition}));
+          arith::IntConstraints({op->loop_var}, dom_map, conditions));
       auto bounds = constraint.first.at(op->loop_var);
 
       auto extent = op->extent;

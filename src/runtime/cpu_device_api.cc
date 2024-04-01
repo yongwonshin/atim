@@ -61,6 +61,21 @@ class CPUDeviceAPI final : public DeviceAPI {
     return ptr;
   }
 
+  void* AllocDataSpacePadded(Device dev, int ndim, int64_t* shape, DLDataType dtype,
+                             size_t padded_bytes) {
+    DLTensor temp;
+    temp.data = nullptr;
+    temp.device = dev;
+    temp.ndim = ndim;
+    temp.dtype = dtype;
+    temp.shape = const_cast<int64_t*>(shape);
+    temp.strides = nullptr;
+    temp.byte_offset = 0;
+    size_t alignment = dtype.bits / 8 * dtype.lanes;
+    alignment = alignment < 64 ? 64 : alignment;
+    return AllocDataSpace(dev, padded_bytes, alignment, dtype);
+  }
+
   void FreeDataSpace(Device dev, void* ptr) final {
 #if _MSC_VER
     _aligned_free(ptr);
@@ -105,5 +120,13 @@ TVM_REGISTER_GLOBAL("device_api.cpu").set_body([](TVMArgs args, TVMRetValue* rv)
   DeviceAPI* ptr = CPUDeviceAPI::Global();
   *rv = static_cast<void*>(ptr);
 });
+
+TVM_REGISTER_GLOBAL("device_api.cpu.alloc_space_padded")
+    .set_body_typed([](Device dev, int dim, void* shape_ptr, DLDataType dtype, size_t padded_size) {
+      int64_t* shape = static_cast<int64_t*>(shape_ptr);
+      size_t padded_bytes = padded_size * (dtype.bits * dtype.lanes + 7) / 8;
+      return CPUDeviceAPI::Global()->AllocDataSpacePadded(dev, dim, shape, dtype, padded_bytes);
+    });
+
 }  // namespace runtime
 }  // namespace tvm

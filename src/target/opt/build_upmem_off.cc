@@ -25,8 +25,9 @@
 namespace tvm {
 namespace runtime {
 Module UPMEMModuleCreate(std::string binary_file, std::string fmt,
-                        std::unordered_map<std::string, FunctionInfo> fmap,
-                        std::string upmem_source) {
+                         std::unordered_map<std::string, FunctionInfo> fmap,
+                         std::string upmem_source,
+                         std::unordered_map<std::string, size_t> padded_buffer_size) {
   LOG(WARNING) << "Upmem runtime not enabled, return a source module...";
   return codegen::DeviceSourceModuleCreate(upmem_source, fmt, fmap, "upmem");
 }

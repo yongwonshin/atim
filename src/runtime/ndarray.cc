@@ -228,6 +228,14 @@ NDArray NDArray::Empty(ShapeTuple shape, DLDataType dtype, Device dev, Optional<
   return ret;
 }
 
+NDArray NDArray::HostPaddedEmpty(ShapeTuple shape, DLDataType dtype, size_t padded_size) {
+  NDArray ret = Internal::Create(shape, dtype, Device{kDLCPU, 0});
+  void* shape_ptr = static_cast<void*>(const_cast<int64_t*>(shape.data()));
+  ret.get_mutable()->dl_tensor.data = (*Registry::Get("device_api.cpu.alloc_space_padded"))(
+      ret->device, shape.size(), shape_ptr, ret->dtype, padded_size);
+  return ret;
+}
+
 NDArray NDArray::FromExternalDLTensor(const DLTensor& dl_tensor) {
   ICHECK(::tvm::runtime::IsContiguous(dl_tensor)) << "External DLTensor must be contiguous.";
   ICHECK(IsAligned(dl_tensor)) << "Data in DLTensor is not aligned as required by NDArray";
@@ -358,6 +366,8 @@ int TVMArrayAlloc(const tvm_index_t* shape, int ndim, int dtype_code, int dtype_
 }
 
 TVM_REGISTER_GLOBAL("runtime.TVMArrayAllocWithScope").set_body_typed(NDArray::Empty);
+
+TVM_REGISTER_GLOBAL("runtime.TVMCPUAllocArrayPadded").set_body_typed(NDArray::HostPaddedEmpty);
 
 TVM_REGISTER_GLOBAL("runtime.TVMArrayCreateView").set_body_typed([](NDArray arr, ShapeTuple shape) {
   NDArray view = arr.CreateView(shape, arr->dtype);
