@@ -64,6 +64,7 @@ class PimKernelFinder : public StmtExprVisitor {
   Map<Var, PrimExpr> vmap;
   bool before_kernel = true, inside_kernel = false, after_kernel = false;
   bool is_single_kernel = false;
+  bool is_pragma_explicit_h2d = false;
   Stmt kernel_body;
   Array<Stmt> kernel_bodies;
   int32_t bank_count = 1;
@@ -175,9 +176,7 @@ class PimKernelFinder : public StmtExprVisitor {
       }
       kernel_body = AttrStmt(symbol_map, "upmem_symbol_map", 0, kernel_body);
       kernel_bodies.push_back(kernel_body);
-    }
-
-    else if (op->attr_key == tvm::tir::attr::thread_extent) {
+    } else if (op->attr_key == tvm::tir::attr::thread_extent) {
       const IterVarNode* iv = op->node.as<IterVarNode>();
       ICHECK(iv);
       Var var = iv->var;
@@ -194,6 +193,10 @@ class PimKernelFinder : public StmtExprVisitor {
         is_single_kernel = true;
       }
       StmtExprVisitor::VisitStmt_(op);
+    } else if (op->attr_key == attr::pragma_explicit_h2d) {
+      is_pragma_explicit_h2d = true;
+      StmtExprVisitor::VisitStmt_(op);
+      is_pragma_explicit_h2d = false;
     } else {
       StmtExprVisitor::VisitStmt_(op);
     }
@@ -216,7 +219,7 @@ class PimKernelFinder : public StmtExprVisitor {
           ICHECK(op->global_indices.size() == 1)
               << "In global->local pattern, BufferStore global_indices should be size 1."
               << load->buffer << " -> " << op->buffer << ", " << op->global_indices;
-          if (is_single_kernel)
+          if (is_single_kernel && is_pragma_explicit_h2d)
             h2d_explicit.push_back(load->buffer);
           else
             h2d_implicit.push_back(load->buffer);

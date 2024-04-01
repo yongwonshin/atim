@@ -1443,6 +1443,8 @@ constexpr const char* pragma_import_c = "pragma_import_c";
 constexpr const char* pragma_import_llvm = "pragma_import_llvm";
 /*! \brief Try to modify the AST to support Tensor Core */
 constexpr const char* pragma_tensor_core = "pragma_tensor_core";
+/*! \brief Try to split the H->D code explicitly, injected by NDArray API for UPMEM*/
+constexpr const char* pragma_explicit_h2d = "pragma_explicit_h2d";
 /*!
  * \brief Mark of prefetch scope, value=offset,
  *  run prefetch of Tensor on the current loop scope

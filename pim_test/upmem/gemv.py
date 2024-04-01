@@ -47,6 +47,7 @@ def gemvRCTile(M, K, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=128, dtype="int32", *
     sch.bind(yo, "threadIdx.x")
     sch.annotate(xb, "bank", True)
     sch.annotate(yb, "bank", True)
+    sch.annotate(sch.get_block("A_local"), "pragma_explicit_h2d", True)
     sch.decompose_reduction(block_crf, xo)
     i, _ = sch.get_loops(block_c)
     it, ii = sch.split(i, factors=[n_rt, None])

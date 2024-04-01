@@ -183,12 +183,20 @@ class LowerMemoryTransfer : public StmtExprMutator {
 
     Stmt body = op->body;
     PrimExpr new_cond;
-    const IfThenElseNode* branch = op->body.as<IfThenElseNode>();
+    bool flag = true;
 
-    if (branch) {
-      body = branch->then_case;  // bypass boundary check
-      new_cond = Substitute(branch->condition, {{op->loop_var, 0}});
-    }
+    do {
+      const AttrStmtNode* attr = body.as<AttrStmtNode>();
+      const IfThenElseNode* branch = body.as<IfThenElseNode>();
+      if (attr) {
+        body = attr->body;
+      } else if (branch) {
+        body = branch->then_case;  // bypass boundary check
+        new_cond = Substitute(branch->condition, {{op->loop_var, 0}});
+      } else {
+        flag = false;
+      }
+    } while (flag);
 
     if (const BufferStoreNode* store = body.as<BufferStoreNode>()) {
       if (const BufferLoadNode* load = store->value.as<BufferLoadNode>()) {

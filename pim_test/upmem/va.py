@@ -34,12 +34,16 @@ def vaTile(L, n_b, n_t, n_c, dtype):
     ca = sch.cache_read(block_c, "A", "local")
     cb = sch.cache_read(block_c, "B", "local")
     cc = sch.cache_write(block_c, "C", "local")
-    ib, it, ii, ic = sch.split(i, factors=[n_b, n_t, None, n_c])
+    # ib, it, ii, ic = sch.split(i, factors=[n_b, n_t, None, n_c])
+    ib, it = sch.split(i, factors=[None, math.ceil(L / n_b / 2) * 2])
+    it, ii, ic = sch.split(it, factors=[n_t, None, n_c])
     sch.compute_at(ca, ii)
     sch.compute_at(cb, ii)
     sch.reverse_compute_at(cc, ii)
     sch.bind(ib, "blockIdx.x")
     sch.bind(it, "threadIdx.x")
+    sch.annotate(sch.get_block("A_local"), "pragma_explicit_h2d", True)
+    sch.annotate(sch.get_block("B_local"), "pragma_explicit_h2d", True)
     sch.parallel(ic)
     return sch
 
@@ -100,26 +104,6 @@ if __name__ == "__main__":
         va.benchmark(**config)
         va.test(vaTile, **config)
     else:  # custom test config
-
-        def newVaTile(L, n_b, n_t, n_c, dtype):
-            sch = tvm.tir.Schedule(va_prim_schedule(L, dtype))
-            block_c = sch.get_block("C")
-            (i,) = sch.get_loops(block_c)
-            ca = sch.cache_read(block_c, "A", "local")
-            cb = sch.cache_read(block_c, "B", "local")
-            cc = sch.cache_write(block_c, "C", "local")
-
-            ib, it = sch.split(i, factors=[None, math.ceil(L / n_b / 2) * 2])
-            it, ii, ic = sch.split(it, factors=[n_t, None, n_c])
-
-            sch.compute_at(ca, ii)
-            sch.compute_at(cb, ii)
-            sch.reverse_compute_at(cc, ii)
-            sch.bind(ib, "blockIdx.x")
-            sch.bind(it, "threadIdx.x")
-            sch.parallel(ic)
-            return sch
-
         configs = [
             (2500000, 1, 16, 256, "int32"),
             (2500000, 2, 16, 256, "int32"),
@@ -137,5 +121,5 @@ if __name__ == "__main__":
         for L, n_b, n_t, n_c, dtype in configs:
             va.benchmark(L=L, n_b=n_b, n_t=n_t, n_c=n_c, dtype=dtype)
         for L, n_b, n_t, n_c, dtype in configs:
-            va.test(newVaTile, L=L, n_b=n_b, n_c=n_c, n_t=n_t, dtype=dtype)
+            va.test(vaTile, L=L, n_b=n_b, n_c=n_c, n_t=n_t, dtype=dtype)
             time.sleep(0.1)
