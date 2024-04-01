@@ -83,7 +83,7 @@ class UPMEMWorkload:
         self.repeat = repeat
         self.warmup = warmup
         self.required = required
-        self.compile_only=compile_only
+        self.compile_only = compile_only
         self.bench = bench
         self.verbose = verbose
         self.symbols = symbols
@@ -308,9 +308,8 @@ class UPMEMWorkload:
                 # )
                 self.post_kernel(f)
 
-
         except Exception as e:
             with open("./errors/" + self.fname + ".txt", "w") as f:
                 print(traceback.format_exc(), file=f)
         finally:
-            tvm._ffi.get_global_func("device_api.upmem.release_resources")()
+            self.target_device.free()

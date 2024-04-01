@@ -560,6 +560,14 @@ class Device(ctypes.Structure):
         """
         self.func = func
 
+    def free(self):
+        if self.device_type == Device.kDLUPMEM:
+            # pylint: disable=import-outside-toplevel
+            from tvm._ffi import get_global_func
+
+            get_global_func("device_api.upmem.release_resources")()
+            self.func = None
+
     def __eq__(self, other):
         return (
             isinstance(other, Device)

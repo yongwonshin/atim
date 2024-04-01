@@ -196,21 +196,17 @@ if __name__ == "__main__":
         gemv.test(schedule, **config)
     else:  # custom test
         configs = [
-            (1, 2048, 2, 256),
-            (2, 1024, 4, 256),
-            (4, 512, 8, 256),
-            (8, 256, 16, 256),
-            (16, 128, 16, 256),
-            (32, 64, 16, 256),
-            (64, 32, 16, 128),
-            (128, 16, 16, 64),
-            (256, 8, 16, 32),
-            (512, 4, 16, 16),
-            (1024, 2, 16, 8),
-            (2048, 1, 16, 4),
+            (8192, 1024, 1, 1, 16, 256),
+            (8192, 1024, 1, 4, 16, 256),
+            (8192, 1024, 1, 16, 16, 256),
+            (8192, 1024, 1, 64, 16, 256),
+            (163840, 4096, 1, 256, 16, 256),
+            (163840, 4096, 1, 512, 16, 256),
+            (163840, 4096, 1, 1024, 16, 256),
+            (163840, 4096, 1, 2048, 16, 256),
         ]
 
-        for xb, yb, yt, cache in configs:
-            gemv.benchmark(n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
-        for xb, yb, yt, cache in configs:
-            gemv.test(gemvRCTile, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
+        for m, k, xb, yb, yt, cache in configs:
+            gemv.benchmark(M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
+        for m, k, xb, yb, yt, cache in configs:
+            gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
