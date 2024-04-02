@@ -213,6 +213,8 @@ int UPMEMDeviceAPI::InitXfer(void* handle, uint64_t in_bank_addr, uint64_t size,
   xfer_direction = direction == 1 ? DPU_XFER_TO_DPU : DPU_XFER_FROM_DPU;
   int padded_size = ((size * GetBytes(handle) + 7) / 8) * 8 / GetBytes(handle);  // TODO-stonerdk
   xfer_bulk_size = padded_size;
+  VLOG(3) << "InitXfer(" << handle << ", " << in_bank_addr << ", " << size << "(" << padded_size
+          << "), " << direction << ")";
   return 0;
 }
 

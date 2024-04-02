@@ -86,10 +86,20 @@ class EliminateBranch : public StmtExprMutator {
 
         stmt = For(op->loop_var, op->min, hoisted_var, op->kind, branch->then_case);
         stmt = LetStmt(hoisted_var, extent, stmt);
+      } else {
+        stmt = For(op->loop_var, op->min, op->extent, op->kind, branch->then_case);
       }
     }
     loop_vars.pop_back();
     return stmt;
+  }
+
+  Stmt VisitStmt_(const IfThenElseNode* op) final {
+    if (const BufferStoreNode* store = op->then_case.as<BufferStoreNode>()) {
+      if (GetPtrStorageScope(store->buffer->data) == "local" && is_zero(store->value)) {
+        return StmtExprMutator::VisitStmt(op->then_case);
+      }
+    }
   }
 };
 
@@ -185,18 +195,12 @@ class LowerMemoryTransfer : public StmtExprMutator {
     PrimExpr new_cond;
     bool flag = true;
 
-    do {
-      const AttrStmtNode* attr = body.as<AttrStmtNode>();
-      const IfThenElseNode* branch = body.as<IfThenElseNode>();
-      if (attr) {
-        body = attr->body;
-      } else if (branch) {
-        body = branch->then_case;  // bypass boundary check
-        new_cond = Substitute(branch->condition, {{op->loop_var, 0}});
-      } else {
-        flag = false;
-      }
-    } while (flag);
+    const AttrStmtNode* attr = body.as<AttrStmtNode>();
+    const IfThenElseNode* branch = body.as<IfThenElseNode>();
+    if (branch) {
+      body = branch->then_case;  // bypass boundary check
+      new_cond = Substitute(branch->condition, {{op->loop_var, 0}});
+    }
 
     if (const BufferStoreNode* store = body.as<BufferStoreNode>()) {
       if (const BufferLoadNode* load = store->value.as<BufferLoadNode>()) {

@@ -489,6 +489,16 @@ class KernelReplacer : public StmtExprMutator {
   }
 };
 
+class EliminateAttr : public StmtExprMutator {
+ public:
+  Stmt VisitStmt_(const AttrStmtNode* op) final {
+    if (op->attr_key == tir::attr::pragma_explicit_h2d) {
+      return VisitStmt(op->body);
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+};
+
 Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map,
                            PrimExpr bank_index, const std::set<std::string>& bank_vars,
                            std::string uuid) {
@@ -538,6 +548,8 @@ Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map
   }
   Stmt res = KernelReplacer(kernel_bodies, SeqStmt::Flatten(early_prologue),
                             SeqStmt::Flatten(prologue), SeqStmt::Flatten(epilogue))(stmt);
+
+  res = EliminateAttr()(res);
 
   // TODO[ywshin]: maybe trans_size = 32 for HBMPIM
   if (IsUPMEMDevice(target)) {
