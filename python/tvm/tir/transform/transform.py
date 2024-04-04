@@ -489,6 +489,7 @@ def SplitHostDevice():
     """
     return _ffi_api.SplitHostDevice()  # type: ignore
 
+
 def SplitPimTransfer():
     """Split pim transfer into separated functions.
 
@@ -790,6 +791,17 @@ def HoistExpression():
 
     """
     return _ffi_api.HoistExpression()  # type: ignore
+
+
+def LowerUpmemDeviceMemoryTransfer():
+    """Lower upmem device memory transfer.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerUpmemDeviceMemoryTransfer()  # type: ignore
 
 
 def LowerCrossThreadReduction():

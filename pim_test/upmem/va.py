@@ -5,6 +5,7 @@ import tvm
 import time
 import math
 from tvm.script import tir as T
+import subprocess
 from tvm.tir.transform import *
 
 from base import UPMEMWorkload, cleanup
@@ -72,6 +73,19 @@ class VA(UPMEMWorkload):
             TYPE={pbtype} BL={bl} make && \
             ./bin/host_code -i {config['L']} -w {self.warmup} -e {self.repeat}"
 
+    def simplepim(self, L, n_b):
+        cmd = 'cd "/root/dev/SimplePIM/benchmarks/va"\
+                sed -i "s/dpu_number = [0-9]\+;/dpu_number = $i;/" Param.h\
+                sed -i "s/nr_elements = [0-9]\+;/nr_elements = $i;/" Param.h\
+                make > /dev/null 2> /dev/null\
+                ./bin/host | grep -E "initial CPU-DPU input transfer|DPU Kernel Time|DPU-CPU Time" | awk \'{printf "%s\t", $NF}\'\
+                echo ""'
+        result = subprocess.check_output(
+            cmd,
+            shell=True,
+            stderr=subprocess.DEVNULL,
+        )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -105,19 +119,21 @@ if __name__ == "__main__":
         va.test(vaTile, **config)
     else:  # custom test config
         configs = [
+            (1000000, 1, 16, 256, "int32"),
+            (4000000, 4, 16, 256, "int32"),
+            (16000000, 16, 16, 256, "int32"),
+            (64000000, 64, 16, 256, "int32"),
             (2500000, 1, 16, 256, "int32"),
-            (2500000, 2, 16, 256, "int32"),
             (2500000, 4, 16, 256, "int32"),
-            (2500000, 8, 16, 256, "int32"),
             (2500000, 16, 16, 256, "int32"),
-            (2500000, 32, 16, 256, "int32"),
             (2500000, 64, 16, 256, "int32"),
-            (2500000, 128, 16, 256, "int32"),
-            (2500000, 256, 16, 256, "int32"),
-            (2500000, 512, 16, 256, "int32"),
-            (2500000, 1024, 8, 256, "int32"),
-            (2500000, 2048, 4, 256, "int32"),
+            (160000000, 256, 16, 256, "int32"),
+            (160000000, 512, 16, 256, "int32"),
+            (160000000, 1024, 8, 256, "int32"),
+            (160000000, 2048, 4, 256, "int32"),
         ]
+        # for L, n_b, _, _, _ in configs:
+        #     va.simplepim(L, n_b)
         for L, n_b, n_t, n_c, dtype in configs:
             va.benchmark(L=L, n_b=n_b, n_t=n_t, n_c=n_c, dtype=dtype)
         for L, n_b, n_t, n_c, dtype in configs:

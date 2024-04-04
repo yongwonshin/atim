@@ -413,6 +413,14 @@ class ScheduleExtractor : public StmtExprVisitor {
       }
       if (found) {
         for (auto it = conds.rbegin(); it != conds.rend(); it++) {
+          // exception (hack): if the condition is "threadIdx.x == 0", just bypass it
+          if (auto eq = (*it).as<EQNode>()) {
+            if (auto var = eq->a.as<VarNode>()) {
+              if (support::StartsWith(var->name_hint, "threadIdx") && is_zero(eq->b)) {
+                continue;
+              }
+            }
+          }
           res_stmt = IfThenElse(*it, std::move(res_stmt), NullOpt);
         }
         for (auto it = loops.rbegin(); it != loops.rend(); it++) {

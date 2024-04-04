@@ -554,6 +554,14 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       auto ret = fload(offset);
       return fstore(ret);
     };
+    auto handshake = [&](PrimExpr expr) {
+      return Evaluate(
+          Call(DataType::Int(32), builtin::call_extern(), {StringImm("handshake_wait_for"), expr}));
+    };
+    auto handshake_notify = [&]() {
+      return Evaluate(
+          Call(DataType::Int(32), builtin::call_extern(), {StringImm("handshake_notify")}));
+    };
 
     std::string sync_scope = "shared";
 
@@ -561,9 +569,17 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     if (reduce_align > reduce_extent) {
       // reduction with the boundary condition
       reduce_align = reduce_align >> 1;
-      PrimExpr cond = reduce_index < (reduce_extent - reduce_align);
-      seq.emplace_back(IfThenElse(cond, freduce(reduce_align)));
-      seq.emplace_back(SyncThread(sync_scope));
+      auto bound = reduce_extent - reduce_align;
+      PrimExpr cond = reduce_index < bound;
+      if (target_->kind->name == "upmem") {
+        PrimExpr other_cond = (bound <= reduce_index) && (reduce_index < (bound * 2));
+        Stmt stmt = SeqStmt({handshake(reduce_index + bound), freduce(reduce_align)});
+        seq.emplace_back(IfThenElse(cond, stmt));
+        seq.emplace_back(IfThenElse(other_cond, handshake_notify()));
+      } else {
+        seq.emplace_back(IfThenElse(cond, freduce(reduce_align)));
+        seq.emplace_back(SyncThread(sync_scope));
+      }
     }
 
     // normal synchronization
@@ -574,8 +590,17 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       }
       reduce_align = reduce_align >> 1;
       PrimExpr cond = reduce_index < reduce_align;
-      seq.emplace_back(IfThenElse(cond, freduce(reduce_align)));
-      seq.emplace_back(SyncThread(sync_scope));
+      if (target_->kind->name == "upmem") {
+        PrimExpr other_cond =
+            (reduce_align <= reduce_index) && (reduce_index < (reduce_align << 1));
+        if (reduce_align == 1) other_cond = (reduce_index == 1);
+        Stmt stmt = SeqStmt({handshake(reduce_index + reduce_align), freduce(reduce_align)});
+        seq.emplace_back(IfThenElse(cond, stmt));
+        seq.emplace_back(IfThenElse(other_cond, handshake_notify()));
+      } else {
+        seq.emplace_back(IfThenElse(cond, freduce(reduce_align)));
+        seq.emplace_back(SyncThread(sync_scope));
+      }
     }
     // in warp synchronization.
     if (reduce_align > 1) {

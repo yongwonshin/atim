@@ -228,11 +228,12 @@ int UPMEMDeviceAPI::BindXfer(int bank_index, uint64_t host_addr, uint64_t size) 
     void* new_ptr = malloc(std::max(8ul, xfer_bulk_size * GetBytes(xfer_handle)));
     d2h_temp[bank_index] = {new_ptr, HostOffset(xfer_handle, host_addr), size};
     UPMEM_CALL(dpu_prepare_xfer(dpu_entry[bank_index], new_ptr));
-    VLOG(3) << "USETMP - dpu_prepare_xfer(" << bank_index << ", " << new_ptr << ")";
+    VLOG(3) << "dpu_prepare_xfer(" << bank_index << ", " << xfer_handle << " + (" << host_addr
+            << ") * " << GetBytes(xfer_handle) << ") // tmp(" << size << ")";
   } else {
     UPMEM_CALL(dpu_prepare_xfer(dpu_entry[bank_index], HostOffset(xfer_handle, host_addr)));
     VLOG(3) << "dpu_prepare_xfer(" << bank_index << ", " << xfer_handle << " + (" << host_addr
-            << ") * " << GetBytes(xfer_handle) << ")";
+            << ") * " << GetBytes(xfer_handle) << ") // normal(" << size << ")";
   }
   return 0;
 }

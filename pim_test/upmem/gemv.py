@@ -63,7 +63,11 @@ def gemvRTile(M, K, n_yb, n_cache=64, n_yt=16, dtype="int32", **kwargs):
     cb = sch.cache_read(block_c, 1, "local")
     cc = sch.cache_write(block_c, 0, "local")
     i, k = sch.get_loops(block_c)
-    yb, yo, yi, yc = sch.split(i, factors=[n_yb, n_yt, None, 2])
+
+    rounded = math.ceil(M / n_yb / 2) * 2
+    yb, yo = sch.split(i, factors=[n_yb, rounded])
+    yo, yi, yc = sch.split(yo, factors=[n_yt, None, 2])
+
     xo, xi = sch.split(k, factors=[None, n_cache])
     sch.reorder(yb, yo, yi, yc, xo, xi)
     sch.compute_at(ca, xo)
@@ -71,6 +75,7 @@ def gemvRTile(M, K, n_yb, n_cache=64, n_yt=16, dtype="int32", **kwargs):
     sch.reverse_compute_at(cc, yi)
     sch.bind(yb, "blockIdx.x")
     sch.bind(yo, "threadIdx.x")
+    sch.annotate(sch.get_block("A_local"), "pragma_explicit_h2d", True)
     sch.annotate(yb, "bank", True)
     sch.decompose_reduction(block_c, xo)
     return sch
@@ -196,14 +201,29 @@ if __name__ == "__main__":
         gemv.test(schedule, **config)
     else:  # custom test
         configs = [
-            (8192, 1024, 1, 1, 16, 256),
-            (8192, 1024, 1, 4, 16, 256),
-            (8192, 1024, 1, 16, 16, 256),
-            (8192, 1024, 1, 64, 16, 256),
-            (163840, 4096, 1, 256, 16, 256),
-            (163840, 4096, 1, 512, 16, 256),
-            (163840, 4096, 1, 1024, 16, 256),
+            # (1024, 2048, 1, 1, 16, 256),
+            # (1024 * 4, 2048, 1, 4, 16, 256),
+            # (1024 * 16, 2048, 1, 16, 16, 256),
+            # (1024 * 64, 2048, 1, 64, 16, 256),
+            # (8192, 1024, 1, 1, 16, 256),
+            # (8192, 1024, 1, 4, 16, 256),
+            # (8192, 1024, 1, 16, 16, 256),
+            # (8192, 1024, 1, 64, 16, 256),
+            # (163840, 4096, 1, 256, 16, 256),
+            # (163840, 4096, 1, 512, 16, 256),
+            # (163840, 4096, 1, 1024, 16, 256),
             (163840, 4096, 1, 2048, 16, 256),
+            (163840, 4096, 2, 1024, 16, 256),
+            (163840, 4096, 4, 512, 16, 256),
+            (163840, 4096, 8, 256, 16, 256),
+            (163840, 4096, 16, 128, 16, 256),
+            (163840, 4096, 32, 64, 16, 128),
+            (163840, 4096, 64, 32, 16, 64),
+            (163840, 4096, 128, 16, 16, 32),
+            (163840, 4096, 256, 8, 16, 16),
+            (163840, 4096, 512, 4, 16, 8),
+            (163840, 4096, 1024, 2, 16, 4),
+            (163840, 4096, 2048, 1, 16, 2),
         ]
 
         for m, k, xb, yb, yt, cache in configs:

@@ -37,6 +37,88 @@
 namespace tvm {
 namespace tir {
 
+class AggressiveHoistBranch : public StmtExprMutator {
+ public:
+  Array<Var> loop_vars;
+  PrimExpr new_cond = make_const(DataType::Bool(), false);
+
+  void fallback() { new_cond = make_const(DataType::Bool(), true); }
+
+  class IsSubNodeExists : public ExprVisitor {
+   public:
+    bool flag = false;
+    void VisitExpr_(const SubNode* op) { flag = true; }
+    void VisitExpr_(const GTNode* op) { flag = true; }
+    void VisitExpr_(const GENode* op) { flag = true; }
+    void VisitExpr_(const NENode* op) { flag = true; }
+    void VisitExpr_(const EQNode* op) { flag = true; }
+    void VisitExpr_(const CallNode* op) { flag = true; }
+  };
+
+  PrimExpr AggOr(PrimExpr a, PrimExpr b) {
+    arith::Analyzer ana;
+    if (ana.CanProve(Not(a) || b))
+      return b;
+    else if (ana.CanProve(Not(b) || a))
+      return a;
+    return a || b;
+  }
+
+  PrimExpr VisitExpr_(const CallNode* op) {
+    if (!(op->op.same_as(builtin::dpu_mram_read()) &&
+          !(op->op.same_as(builtin::dpu_mram_write())))) {
+      static auto eff_map = Op::GetAttrMap<TCallEffectKind>("TCallEffectKind");
+      auto eff = static_cast<CallEffectKind>(eff_map[op->op.as<Op>().value()]->value);
+      if (eff >= CallEffectKind::kUpdateState) {
+        fallback();
+      }
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
+  Stmt VisitStmt_(const BufferStoreNode* op) {
+    fallback();
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  Stmt VisitStmt_(const AllocateNode* op) {
+    fallback();
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  Stmt VisitStmt_(const IfThenElseNode* op) {
+    // it only deals with LT/LENode without Sub.
+    IsSubNodeExists c;
+    c(op->condition);
+    if (c.flag) {
+      fallback();
+    } else {
+      new_cond = AggOr(new_cond, op->condition);
+    }
+
+    return GetRef<Stmt>(op);  // do not traverse
+  }
+
+  Stmt VisitStmt_(const ForNode* op) {
+    PrimExpr prev_cond = new_cond;
+    new_cond = make_const(DataType::Bool(), false);
+    loop_vars.push_back(op->loop_var);
+    auto ret = StmtExprMutator::VisitStmt_(op);
+    loop_vars.pop_back();
+    if (is_one(new_cond)) {
+      return ret;
+    }
+
+    arith::Analyzer ana;
+    new_cond = ana.Simplify(Substitute(new_cond, {{op->loop_var, op->min}}), 3);
+    new_cond = AggOr(prev_cond, new_cond);
+    if (!is_one(new_cond) && loop_vars.size() < 2) {
+      return IfThenElse(new_cond, ret);
+    }
+    return ret;
+  }
+};
+
 class EliminateBranch : public StmtExprMutator {
  public:
   Map<Var, Range> dom_map;
@@ -95,11 +177,12 @@ class EliminateBranch : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const IfThenElseNode* op) final {
-    if (const BufferStoreNode* store = op->then_case.as<BufferStoreNode>()) {
-      if (GetPtrStorageScope(store->buffer->data) == "local" && is_zero(store->value)) {
-        return StmtExprMutator::VisitStmt(op->then_case);
-      }
-    }
+    // if (const BufferStoreNode* store = op->then_case.as<BufferStoreNode>()) {
+    //   if (GetPtrStorageScope(store->buffer->data) == "local" && is_zero(store->value)) {
+    //     return StmtExprMutator::VisitStmt(op->then_case);
+    //   }
+    // }
+    return StmtExprMutator::VisitStmt_(op);
   }
 };
 
@@ -189,8 +272,6 @@ class LowerMemoryTransfer : public StmtExprMutator {
     std::string lvar = op->loop_var->name_hint;
     ICHECK(is_zero(op->min));
 
-    auto ret = StmtExprMutator::VisitStmt_(op);
-
     Stmt body = op->body;
     PrimExpr new_cond;
     bool flag = true;
@@ -213,17 +294,17 @@ class LowerMemoryTransfer : public StmtExprMutator {
                                 op->extent * load->buffer->dtype.bytes()});
 
           if ((sscope == "local" || sscope == "shared") && (lscope == "" || lscope == "global")) {
-            ret = Evaluate(Call(DataType::Int(32), builtin::dpu_mram_read(), args));
+            return Evaluate(Call(DataType::Int(32), builtin::dpu_mram_read(), args));
           } else if ((lscope == "local" || lscope == "shared") &&
                      (sscope == "" || sscope == "global")) {
-            ret = Evaluate(Call(DataType::Int(32), builtin::dpu_mram_write(), args));
+            return Evaluate(Call(DataType::Int(32), builtin::dpu_mram_write(), args));
           } else {
-            return ret;
+            return StmtExprMutator::VisitStmt_(op);
           }
         }
       }
     }
-    return ret;
+    return StmtExprMutator::VisitStmt_(op);
   }
 };
 
@@ -236,12 +317,11 @@ Pass LowerUpmemDeviceMemoryTransfer() {
     VLOG(1) << "LowerUpmemDeviceMemoryTransfer: \n" << f;
     if (target.value()->kind->name == "upmem") {
       auto m = f->body;
-      MoveGlobalIndices moveGlobalIndices;
-      m = moveGlobalIndices(m);
-      LowerMemoryTransfer lowerMemoryTransfer;
-      m = lowerMemoryTransfer(m);
-      EliminateBranch eliminateBranch;
-      n->body = eliminateBranch(m);
+      m = MoveGlobalIndices()(std::move(m));
+      m = LowerMemoryTransfer()(std::move(m));
+      m = AggressiveHoistBranch()(std::move(m));
+      m = EliminateBranch()(std::move(m));
+      n->body = m;
     }
     VLOG(1) << "LowerUpmemDeviceMemoryTransfer: \n" << f;
     return f;

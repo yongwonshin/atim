@@ -63,6 +63,7 @@ CodeGenUpmem::CodeGenUpmem(std::string uuid) : uuid(uuid) {
               << "#include <alloc.h>\n"
               << "#include <barrier.h>\n"
               << "#include <seqread.h>\n"
+              << "#include <handshake.h>\n"
               << "\ntypedef struct { int32_t x, y, z; } BlockInfo;"
               << "\nBARRIER_INIT(barrier, NR_TASKLETS);\n\n"
               << "__host BlockInfo blockIdx;\n\n"
@@ -311,7 +312,7 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
   // return runtime::Module();
 
   ICHECK(!mod->uuid.empty());
-  DPUClangCompile(code.str(), tasklet_num, mod->uuid);
+  DPUClangCompile(code.str(), tasklet_num, mod->uuid, false);
 
   return UPMEMModuleCreate(code.str(), "upmem", ExtractFuncInfo(mod), code.str(),
                            padded_buffer_size);

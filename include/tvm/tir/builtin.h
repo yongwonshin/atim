@@ -824,10 +824,10 @@ TVM_DLL const Op& pim_transfer_device_to_host();
 // buffer, host address, size (not bytes)
 TVM_DLL const Op& pim_broadcast();
 
-
-// Currently only used for UPMEM (opportunity to promote if some other devices are able to support parallel xfer)
-TVM_DLL const Op& dpu_parallel_transfer_init(); // buffer, dpu_offset, bulk_size, direction
-TVM_DLL const Op& dpu_parallel_transfer_bind(); // dpu_id, host_offset, size
+// Currently only used for UPMEM (opportunity to promote if some other devices are able to support
+// parallel xfer)
+TVM_DLL const Op& dpu_parallel_transfer_init();  // buffer, dpu_offset, bulk_size, direction
+TVM_DLL const Op& dpu_parallel_transfer_bind();  // dpu_id, host_offset, size
 TVM_DLL const Op& dpu_parallel_transfer_commit();
 
 TVM_DLL const Op& dpu_mram_read();

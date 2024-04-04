@@ -5,7 +5,8 @@ import argparse
 from glob import glob
 from pathlib import Path
 
-long_int32_arr = np.fromfile("../data/int32_4194304.bin", dtype="int32").reshape((4194304,))
+# long_int32_arr = np.fromfile("../data/int32_4194304.bin", dtype="int32").reshape((4194304,))
+long_int64_arr = np.fromfile("../data/int64_403200000.bin", dtype="int64").reshape((403200000,))
 
 
 @lru_cache(maxsize=4)
@@ -13,8 +14,8 @@ def host_array(dim, dtype, intdist=50, index=0, new=False):
     if isinstance(dim, int):
         dim = (dim,)
 
-    # if len(dim) == 1 and dim[0] <= 4194304 and dtype == "int32":
-    #     return long_int32_arr[: dim[0]]
+    if len(dim) == 1 and dim[0] <= 403200000 and dtype == "int64":
+        return long_int64_arr[: dim[0]]
 
     dimjoin = "_".join(map(str, dim))
     index_suffix = f"_v{index}" if index > 0 else ""
