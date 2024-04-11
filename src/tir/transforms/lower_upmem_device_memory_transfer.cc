@@ -274,7 +274,6 @@ class LowerMemoryTransfer : public StmtExprMutator {
 
     Stmt body = op->body;
     PrimExpr new_cond;
-    bool flag = true;
 
     const AttrStmtNode* attr = body.as<AttrStmtNode>();
     const IfThenElseNode* branch = body.as<IfThenElseNode>();
@@ -289,17 +288,38 @@ class LowerMemoryTransfer : public StmtExprMutator {
           std::string lscope = GetPtrStorageScope(load->buffer->data);
           std::string sscope = GetPtrStorageScope(store->buffer->data);
 
-          Array<PrimExpr> args({load->buffer->data, GetIndexStrided(load->indices[0]),
-                                store->buffer->data, GetIndexStrided(store->indices[0]),
-                                op->extent * load->buffer->dtype.bytes()});
+          PrimExpr size = op->extent * load->buffer->dtype.bytes();
 
-          if ((sscope == "local" || sscope == "shared") && (lscope == "" || lscope == "global")) {
-            return Evaluate(Call(DataType::Int(32), builtin::dpu_mram_read(), args));
-          } else if ((lscope == "local" || lscope == "shared") &&
-                     (sscope == "" || sscope == "global")) {
-            return Evaluate(Call(DataType::Int(32), builtin::dpu_mram_write(), args));
-          } else {
-            return StmtExprMutator::VisitStmt_(op);
+          // size should be 8-byte aligned constant
+          const IntImmNode* size_imm = size.as<IntImmNode>();
+          if (size_imm && size_imm->value % 8 == 0) {
+            Op new_op;
+            if ((sscope == "local" || sscope == "shared") && (lscope == "" || lscope == "global")) {
+              new_op = builtin::dpu_mram_read();
+            } else if ((lscope == "local" || lscope == "shared") &&
+                       (sscope == "" || sscope == "global")) {
+              new_op = builtin::dpu_mram_write();
+            }
+            if (new_op.defined()) {
+              int div = size_imm->value / 2048;
+              int mod = size_imm->value % 2048;
+
+              Array<PrimExpr> div_args({load->buffer->data, GetIndexStrided(load->indices[0]),
+                                        store->buffer->data, GetIndexStrided(store->indices[0]),
+                                        2048});
+              Array<PrimExpr> mod_args({load->buffer->data, GetIndexStrided(load->indices[0]),
+                                        store->buffer->data, GetIndexStrided(store->indices[0]),
+                                        mod});
+              Stmt ret = Evaluate(Call(DataType::Int(32), new_op, mod_args));
+              if (div >= 1) {
+                Stmt bulk_stmt = Evaluate(Call(DataType::Int(32), new_op, div_args));
+                if (div > 1) {
+                  bulk_stmt = For(op->loop_var, 0, div, ForKind::kUnrolled, bulk_stmt);
+                }
+                return SeqStmt({bulk_stmt, ret});
+              }
+              return ret;
+            }
           }
         }
       }

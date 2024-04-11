@@ -50,6 +50,7 @@ def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:
 def matvec_factory(M: int, K: int, dtype="int32") -> Callable[[T.handle, T.handle, T.handle], None]:
     @T.prim_func
     def matvec(a: T.handle, b: T.handle, c: T.handle) -> None:
+        T.func_attr({"pragma_explicit_h2d": ["A"]})
         A = T.match_buffer(a, (M, K), dtype=dtype)
         B = T.match_buffer(b, (K,), dtype=dtype)
         C = T.match_buffer(c, (M,), dtype=dtype)
@@ -61,6 +62,46 @@ def matvec_factory(M: int, K: int, dtype="int32") -> Callable[[T.handle, T.handl
                 C[vi] = C[vi] + A[vi, vk] * B[vk]
 
     return matvec
+
+
+def bgemv_factory(N: int, M: int, K: int, dtype="int32"):
+    @T.prim_func
+    def batched_gemv(a: T.handle, b: T.handle, c: T.handle):
+        T.func_attr({"pragma_explicit_h2d": ["A"]})
+        A = T.match_buffer(a, (N, M, K), dtype=dtype)
+        B = T.match_buffer(b, (N, K), dtype=dtype)
+        C = T.match_buffer(c, (N, M), dtype=dtype)
+
+        for n, i, k in T.grid(N, M, K):
+            with T.block("C"):
+                v_n, v_i, v_k = T.axis.remap("SSR", [n, i, k])
+                with T.init():
+                    C[v_n, v_i] = 0
+                C[v_n, v_i] = C[v_n, v_i] + A[v_n, v_i, v_k] * B[v_n, v_k]
+
+    return batched_gemv
+
+
+def va_factory(L, dtype):
+    @tvm.script.ir_module
+    class VAModule:
+        @T.prim_func
+        def main(a: T.handle, b: T.handle, c: T.handle):
+            T.func_attr(
+                {
+                    "global_symbol": "main",
+                    "tir.noalias": T.bool(True),
+                    "pragma_explicit_h2d": ["A", "B"],
+                }
+            )
+            A = T.match_buffer(a, (L,), dtype=dtype)
+            B = T.match_buffer(b, (L,), dtype=dtype)
+            C = T.match_buffer(c, (L,), dtype=dtype)
+            for i in T.serial(0, L):
+                with T.block("C"):
+                    C[i] = A[i] + B[i]
+
+    return VAModule
 
 
 @T.prim_func
@@ -120,15 +161,15 @@ def test_tune_matmul_hbmpim():
 
 
 def test_tune_matmul_upmem():
-    matvec = matvec_factory(8192, 8192, dtype="int32")
+    matvec = va_factory(160000000, dtype="int32")
     with tempfile.TemporaryDirectory() as work_dir:
         target = Target("upmem --num-cores=96")
         database = ms.tir_integration.tune_tir(
             mod=matvec,
             target=target,
             work_dir=work_dir,
-            max_trials_global=32,
-            num_trials_per_iter=16,
+            max_trials_global=1000,
+            num_trials_per_iter=64,
             num_tuning_cores=1,  # to prevent dpu allocation error
         )
         sch = ms.tir_integration.compile_tir(database, matvec, target)
@@ -139,7 +180,7 @@ def test_tune_matmul_upmem():
             sch.trace.show()
 
 
-@tvm.testing.requires_cuda
+# @tvm.testing.requires_cuda
 def test_tune_matmul_cuda():
     with tempfile.TemporaryDirectory() as work_dir:
         target = Target("nvidia/geforce-rtx-3070")

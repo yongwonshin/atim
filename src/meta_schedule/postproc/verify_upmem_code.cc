@@ -48,6 +48,7 @@ class VerifyUPMEMCodeNode : public PostprocNode {
         {"min_num_blocks", Extract(this->target_, "min_num_blocks")},
         {"max_local_memory_per_block", Extract(this->target_, "max_local_memory_per_block")},
         {"max_shared_memory_per_block", Extract(this->target_, "max_shared_memory_per_block")},
+        {"max_global_memory_per_block", Extract(this->target_, "max_global_memory_per_block")},
         {"max_thread_x", Extract(this->target_, "max_thread_x")},
         {"max_thread_y", Extract(this->target_, "max_thread_y")},
         {"max_thread_z", Extract(this->target_, "max_thread_z")},
@@ -107,6 +108,7 @@ class VerifyUPMEMCodeNode : public PostprocNode {
           pass_list.push_back(tir::transform::InjectDoubleBuffer());
           pass_list.push_back(tir::transform::StorageRewrite());
           pass_list.push_back(tir::transform::MergeDynamicSharedMemoryAllocations());
+          pass_list.push_back(tir::transform::LowerThreadAllreduce());
           pass_list.push_back(tir::transform::LowerIntrin());
           // Convert Function to IRModule
           transform::PassContext pass_ctx = transform::PassContext::Current();

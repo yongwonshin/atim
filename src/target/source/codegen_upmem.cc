@@ -217,17 +217,21 @@ void CodeGenUpmem::VisitExpr_(const CallNode* op, std::ostream& os) {
   if (op->op.same_as(builtin::dpu_mram_read())) {
     ICHECK(is_const_int(op->args[4])) << "mram transfer size must be constant";
     int size = Downcast<IntImm>(op->args[4])->value;
-    std::string func_name = (size % 8 == 0) ? "mram_read" : "mram_read_unaligned";
+    ICHECK(size % 8 == 0) << "mram transfer size must be a multiple of 8, to be aligned";
+    // Current version of driver doesn't support mram_read_unaligned so just constrained it
+    // Update driver will solve the problem
     this->PrintIndent();
-    stream << func_name << "((__mram_ptr void*)(" << PrintExpr(op->args[0]) << " + "
-           << PrintExpr(op->args[1]) << "), " << PrintExpr(op->args[2]) << " + "
-           << PrintExpr(op->args[3]) << ", " << PrintExpr(op->args[4]) << ");\n";
+    stream << "mram_read"
+           << "((__mram_ptr void*)(" << PrintExpr(op->args[0]) << " + " << PrintExpr(op->args[1])
+           << "), " << PrintExpr(op->args[2]) << " + " << PrintExpr(op->args[3]) << ", "
+           << PrintExpr(op->args[4]) << ");\n";
   } else if (op->op.same_as(builtin::dpu_mram_write())) {
     ICHECK(is_const_int(op->args[4])) << "mram transfer size must be constant";
     int size = Downcast<IntImm>(op->args[4])->value;
-    std::string func_name = (size % 8 == 0) ? "mram_write" : "mram_write_unaligned";
+    ICHECK(size % 8 == 0) << "mram transfer size must be a multiple of 8, to be aligned";
     this->PrintIndent();
-    stream << func_name << "(" << PrintExpr(op->args[0]) << " + " << PrintExpr(op->args[1])
+    stream << "mram_write"
+           << "(" << PrintExpr(op->args[0]) << " + " << PrintExpr(op->args[1])
            << ", (__mram_ptr void*)(" << PrintExpr(op->args[2]) << " + " << PrintExpr(op->args[3])
            << "), " << PrintExpr(op->args[4]) << ");\n";
   } else {

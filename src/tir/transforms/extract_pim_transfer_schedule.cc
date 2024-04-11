@@ -64,16 +64,17 @@ class PimKernelFinder : public StmtExprVisitor {
   Map<Var, PrimExpr> vmap;
   bool before_kernel = true, inside_kernel = false, after_kernel = false;
   bool is_single_kernel = false;
-  bool is_pragma_explicit_h2d = false;
+  std::string uuid;
+  Array<String> h2d_explicit_attr;
   Stmt kernel_body;
   Array<Stmt> kernel_bodies;
   int32_t bank_count = 1;
   std::vector<PrimExpr> bank_array;
   std::vector<const ForNode*> loops;
   std::vector<const IfThenElseNode*> ifs;
-  std::string uuid;
 
-  explicit PimKernelFinder(std::string uuid) : uuid(uuid) {}
+  explicit PimKernelFinder(std::string uuid, Array<String> h2d_explicit_attr)
+      : uuid(uuid), h2d_explicit_attr(h2d_explicit_attr) {}
 
   void VisitStmt_(const ForNode* op) {
     loops.push_back(op);
@@ -193,10 +194,6 @@ class PimKernelFinder : public StmtExprVisitor {
         is_single_kernel = true;
       }
       StmtExprVisitor::VisitStmt_(op);
-    } else if (op->attr_key == attr::pragma_explicit_h2d) {
-      is_pragma_explicit_h2d = true;
-      StmtExprVisitor::VisitStmt_(op);
-      is_pragma_explicit_h2d = false;
     } else {
       StmtExprVisitor::VisitStmt_(op);
     }
@@ -219,9 +216,10 @@ class PimKernelFinder : public StmtExprVisitor {
           ICHECK(op->global_indices.size() == 1)
               << "In global->local pattern, BufferStore global_indices should be size 1."
               << load->buffer << " -> " << op->buffer << ", " << op->global_indices;
-          if (is_single_kernel && is_pragma_explicit_h2d)
+          if (is_single_kernel && std::find(h2d_explicit_attr.begin(), h2d_explicit_attr.end(),
+                                            load->buffer->name) != h2d_explicit_attr.end()) {
             h2d_explicit.push_back(load->buffer);
-          else
+          } else
             h2d_implicit.push_back(load->buffer);
           if (alloca_size_map.find(load->buffer) != alloca_size_map.end()) {
             global_index = op->global_indices[0];
@@ -248,6 +246,8 @@ class PimKernelFinder : public StmtExprVisitor {
           global_index = ana.Simplify(global_index);
           host_index = ana.Simplify(host_index);
           if (is_const_number(global_index) && is_const_number(host_index)) {
+            const IntImmNode* gIdx = global_index.as<IntImmNode>();
+            ICHECK(gIdx) << "allocate_size_map must be inferred into constant.";
             alloca_size_map.Set(target_buffer, global_index);
             padded_size_map.Set(target_buffer, host_index);
           }
@@ -509,8 +509,8 @@ class EliminateAttr : public StmtExprMutator {
 
 Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map,
                            PrimExpr bank_index, const std::set<std::string>& bank_vars,
-                           std::string uuid) {
-  PimKernelFinder finder(uuid);
+                           std::string uuid, Array<String> h2d_explicit_attr) {
+  PimKernelFinder finder(uuid, h2d_explicit_attr);
   finder(stmt);
   finder.postFilter();
   Stmt kernel_body = finder.kernel_body;
@@ -603,11 +603,14 @@ Pass ExtractPimTransferSchedule() {
                   << tvm::attr::kTarget << "), but the function only has attributes " << f->attrs;
       return opt.value();
     }();
+
     if (IsPIMDevice(target)) {
       ICHECK(m->uuid.empty());
       m->uuid = UUID();
+      Array<String> h2d_explicit_attr =
+          f->GetAttr<Array<String>>(tir::attr::pragma_explicit_h2d).value_or({});
       n->body = ConstructTransferStmt(n->body, target, n->buffer_map, b.bank_index_, b.bank_vars_,
-                                      m->uuid);
+                                      m->uuid, h2d_explicit_attr);
     }
     return f;
   };

@@ -115,6 +115,7 @@ def run_evaluator_common(
     for args in repeated_args:
         device.sync()
         profile_result = evaluator(*args)
+        device.free()
         repeated_costs.append(profile_result.results)
     costs = [float(cost) for cost in itertools.chain.from_iterable(repeated_costs)]
     return costs

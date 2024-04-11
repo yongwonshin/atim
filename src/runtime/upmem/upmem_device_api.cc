@@ -139,11 +139,15 @@ int UPMEMDeviceAPI::AcquireResources(TVMArgs args) {
   int** dpu_indices = new int*[nr_dpus];
   for (int j = 0; j < nr_dpus; j++) {
     dpu_indices[j] = new int[n_bank_args];
-    for (int k = 0; k < n_bank_args; k++) {
-      int idx = j;
-      for (int u = 0; u < k; u++) idx /= bank_vec[n_bank_args - u - 2];
-      if (k < n_bank_args - 1) idx %= bank_vec[n_bank_args - k - 2];
-      dpu_indices[j][k] = idx;
+    if (n_bank_args == 1) {
+      dpu_indices[j] = new int[1]{j};
+    } else if (n_bank_args == 2) {
+      dpu_indices[j] = new int[2]{j / bank_vec[1], j % bank_vec[1]};
+    } else if (n_bank_args == 3) {
+      dpu_indices[j] = new int[3]{(j / bank_vec[2]) / bank_vec[1], (j / bank_vec[2]) % bank_vec[1],
+                                  j % bank_vec[2]};
+    } else {
+      LOG(FATAL) << "bank argument number should be equal or less than 3. " << n_bank_args;
     }
   }
 

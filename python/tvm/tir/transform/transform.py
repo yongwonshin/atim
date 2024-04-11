@@ -684,6 +684,18 @@ def VerifyMemory():
     return _ffi_api.VerifyMemory()  # type: ignore
 
 
+def VerifyUPMEMCode():
+    """Verify UPMEM code
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+
+    return _ffi_api.VerifyUPMEMCode()
+
+
 def VerifyVTCMLimit(limit: int):
     """Verify if the size of the allocated vtcm memory satisfies the limit.
 

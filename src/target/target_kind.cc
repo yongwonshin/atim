@@ -449,6 +449,8 @@ TVM_REGISTER_TARGET_KIND("upmem", kDLUPMEM)  // line break
     .add_attr_option<Integer>("max_threads_per_block", Integer(24))
     .add_attr_option<Integer>("max_local_memory_per_block", Integer(24576))   // 24KB
     .add_attr_option<Integer>("max_shared_memory_per_block", Integer(24576))  // 24KB
+    .add_attr_option<Integer>("max_global_memory_per_block",
+                              Integer(64000000))  // 64MB, (conservatively, not 64MiB)
     .add_attr_option<Integer>("max_thread_x", Integer(24))
     .add_attr_option<Integer>("max_thread_y", Integer(0))
     .add_attr_option<Integer>("max_thread_z", Integer(0))

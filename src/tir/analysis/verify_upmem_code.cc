@@ -32,25 +32,131 @@
 
 #include "../../runtime/thread_storage_scope.h"
 #include "../transforms/ir_utils.h"
+#include "./var_use_def_analysis.h"
 
 namespace tvm {
 namespace tir {
 
 class UPMEMCodeVerifier : public StmtExprVisitor {
  public:
+  class PimAllocateSizeFinder : public StmtExprVisitor {
+   public:
+    std::unordered_map<Buffer, PrimExpr, ObjectPtrHash, ObjectPtrEqual> alloca_size_map;
+    bool inside_kernel = false;
+    std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> vmap;
+
+    void VisitStmt_(const ForNode* op) {
+      vmap[op->loop_var] = op->min + op->extent - 1;
+      StmtExprVisitor::VisitStmt_(op);
+      vmap.erase(op->loop_var);
+    }
+
+    void VisitStmt_(const AttrStmtNode* op) {
+      if (op->attr_key == attr::thread_extent || op->attr_key == attr::pipeline_exec_scope ||
+          op->attr_key == attr::device_scope) {
+        if (!inside_kernel) {
+          Stmt kernel_body = GetRef<Stmt>(op);
+          VarUseDefAnalyzer use_def({}, false);
+          use_def(kernel_body);
+
+          for (auto& buf : use_def.undefined_buffers_) {
+            for (auto& v : use_def.undefined_) {
+              if (buf->data.get() == v.get()) {
+                alloca_size_map[buf] = 1;
+              }
+            }
+          }
+        }
+        bool prev_inside_kernel = inside_kernel;
+        inside_kernel = true;
+        if (op->attr_key == tvm::tir::attr::thread_extent) {
+          const IterVarNode* iv = op->node.as<IterVarNode>();
+          ICHECK(iv);
+          Var var = iv->var;
+          vmap[iv->var] = op->value - 1;
+          StmtExprVisitor::VisitStmt_(op);
+          vmap.erase(var);
+        } else {
+          StmtExprVisitor::VisitStmt_(op);
+        }
+        inside_kernel = prev_inside_kernel;
+
+        for (auto& kv : alloca_size_map) {
+          alloca_size_map[kv.first] = kv.second * kv.first->dtype.bytes();
+        }
+      } else {
+        StmtExprVisitor::VisitStmt_(op);
+      }
+    }
+
+    void VisitStmt_(const LetStmtNode* op) {
+      vmap[op->var] = op->value;
+      StmtExprVisitor::VisitStmt_(op);
+      vmap.erase(op->var);
+    }
+
+    void VisitStmt_(const BufferStoreNode* op) {
+      if (inside_kernel) {
+        if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
+          std::string lscope = GetPtrStorageScope(load->buffer->data);
+          std::string sscope = GetPtrStorageScope(op->buffer->data);
+          PrimExpr global_index;
+          Buffer target_buffer;
+          if ((sscope == "local" || sscope == "shared") && (lscope == "" || lscope == "global")) {
+            ICHECK(op->global_indices.size() == 1)
+                << "In global->local pattern, BufferStore global_indices should be size 1."
+                << load->buffer << " -> " << op->buffer << ", " << op->global_indices;
+            if (alloca_size_map.find(load->buffer) != alloca_size_map.end()) {
+              global_index = op->global_indices[0];
+              target_buffer = load->buffer;
+            }
+          }
+          if ((lscope == "local" || lscope == "shared") && (sscope == "" || sscope == "global")) {
+            ICHECK(load->global_indices.size() == 1)
+                << "In local->global pattern, BufferLoad global_indices should be size 1.";
+            if (alloca_size_map.find(op->buffer) != alloca_size_map.end()) {
+              global_index = load->global_indices[0];
+              target_buffer = op->buffer;
+            }
+          }
+          if (target_buffer.defined()) {
+            global_index = Substitute(global_index + 1, vmap);
+            arith::Analyzer ana;
+            global_index = ana.Simplify(global_index);
+            const IntImmNode* gIdx = global_index.as<IntImmNode>();
+            ICHECK(gIdx) << "allocate_size_map must be inferred into constant.";
+            alloca_size_map[target_buffer] = global_index;
+          }
+        }
+      }
+      StmtExprVisitor::VisitStmt_(op);
+    }
+  };
+
   std::vector<String> Verify(Stmt stmt, int64_t max_num_blocks, int64_t min_num_blocks,
                              int64_t max_local_memory_per_block,
-                             int64_t max_shared_memory_per_block, int64_t max_threads_per_block,
+                             int64_t max_shared_memory_per_block,
+                             int64_t max_global_memory_per_block, int64_t max_threads_per_block,
                              int64_t max_thread_x, int64_t max_thread_y, int64_t max_thread_z) {
     min_num_blocks_ = static_cast<size_t>(min_num_blocks);
     max_num_blocks_ = static_cast<size_t>(max_num_blocks);
     max_local_memory_per_block_ = static_cast<size_t>(max_local_memory_per_block);
     max_shared_memory_per_block_ = static_cast<size_t>(max_shared_memory_per_block);
+    max_global_memory_per_block_ = static_cast<size_t>(max_global_memory_per_block);
     max_threads_per_block_ = static_cast<size_t>(max_threads_per_block);
     max_thread_x_ = static_cast<size_t>(max_thread_x);
     max_thread_y_ = static_cast<size_t>(max_thread_y);
     max_thread_z_ = static_cast<size_t>(max_thread_z);
     Reset_();
+
+    PimAllocateSizeFinder finder;
+    finder(stmt);
+
+    global_memory_per_block_ = 0;
+    VLOG(2) << finder.alloca_size_map.size();
+    for (auto kv : finder.alloca_size_map) {
+      global_memory_per_block_ += Downcast<IntImm>(kv.second)->value;
+    }
 
     // TODO[ywshin]: Add support of detecting UPMEM Misaligned Address error
     this->VisitStmt(stmt);
@@ -144,11 +250,25 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
 
       if (nest_level_ == 0) {
         // exit a kernel, check the validity
+        if (global_memory_per_block_ == 0) {
+          std::stringstream s;
+          s << "Transfer generation code is failed.";
+          errors_.push_back(s.str());
+        }
+
         err("num blocks", num_block_, max_num_blocks_);
         err2("num blocks", num_block_, min_num_blocks_);
         err("threads per block", thread_per_block_, max_threads_per_block_);
+        err("global memory per block", global_memory_per_block_, max_global_memory_per_block_);
         err("local memory per block", local_memory_per_block_, max_local_memory_per_block_);
         err("shared memory per block", shared_memory_per_block_, max_shared_memory_per_block_);
+
+        if (num_block_ == 2048) {
+          VLOG(2) << "ERRORS";
+          for (auto& err : errors_) {
+            VLOG(2) << "    " << err;
+          }
+        }
       }
     } else {
       StmtVisitor::VisitStmt_(op);
@@ -164,12 +284,14 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
 
   size_t local_memory_per_block_;
   size_t shared_memory_per_block_;
+  size_t global_memory_per_block_;
   size_t thread_per_block_;
   size_t num_block_;
   size_t kernels_launched_{0};
 
   size_t max_local_memory_per_block_;
   size_t max_shared_memory_per_block_;
+  size_t max_global_memory_per_block_;
   size_t max_threads_per_block_;
   size_t max_thread_x_, max_thread_y_, max_thread_z_, max_vthread_;
   size_t max_num_blocks_, min_num_blocks_;
@@ -193,6 +315,7 @@ std::vector<String> VerifyUPMEMCode_(const PrimFunc& func, Map<String, PrimExpr>
   int64_t min_num_blocks = INT64_MAX;
   int64_t max_local_memory_per_block = INT64_MAX;
   int64_t max_shared_memory_per_block = INT64_MAX;
+  int64_t max_global_memory_per_block = INT64_MAX;
   int64_t max_threads_per_block = INT64_MAX;
   int64_t max_thread_x = INT64_MAX;
   int64_t max_thread_y = INT64_MAX;
@@ -208,6 +331,8 @@ std::vector<String> VerifyUPMEMCode_(const PrimFunc& func, Map<String, PrimExpr>
       max_local_memory_per_block = val->value;
     } else if (iter.first == "max_shared_memory_per_block") {
       max_shared_memory_per_block = val->value;
+    } else if (iter.first == "max_global_memory_per_block") {
+      max_global_memory_per_block = val->value;
     } else if (iter.first == "max_threads_per_block") {
       max_threads_per_block = val->value;
     } else if (iter.first == "max_thread_x") {
@@ -222,8 +347,8 @@ std::vector<String> VerifyUPMEMCode_(const PrimFunc& func, Map<String, PrimExpr>
   }
 
   return verifier.Verify(func->body, max_num_blocks, min_num_blocks, max_local_memory_per_block,
-                         max_shared_memory_per_block, max_threads_per_block, max_thread_x,
-                         max_thread_y, max_thread_z);
+                         max_shared_memory_per_block, max_global_memory_per_block,
+                         max_threads_per_block, max_thread_x, max_thread_y, max_thread_z);
 }
 
 bool VerifyUPMEMCode(const PrimFunc& func, Map<String, PrimExpr> constraints) {
