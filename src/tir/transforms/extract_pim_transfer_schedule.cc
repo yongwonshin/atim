@@ -558,7 +558,6 @@ Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map
                             SeqStmt::Flatten(prologue), SeqStmt::Flatten(epilogue))(stmt);
 
   res = EliminateAttr()(res);
-
   // TODO[ywshin]: maybe trans_size = 32 for HBMPIM
   if (IsUPMEMDevice(target)) {
     res = OptimizePimTransferSchedule(res, target);

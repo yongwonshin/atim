@@ -136,6 +136,7 @@ class UPMEMDeviceAPI final : public DeviceAPI {
   std::chrono::high_resolution_clock::time_point kernel_start;
   std::chrono::high_resolution_clock::time_point kernel_end;
   std::chrono::high_resolution_clock::time_point entire_end;
+  std::chrono::high_resolution_clock::time_point last_d2h_end;
 
   double kernel_time;
   double d2h_time;

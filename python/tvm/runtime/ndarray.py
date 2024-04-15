@@ -663,12 +663,15 @@ def array(arr, device=cpu(0), mem_scope=None, symbol=None):
             padded_size = tvm._ffi.get_global_func("runtime.module.upmem.padded_size")(
                 device.func.imported_modules[0], symbol
             )
-            # check host_arr.shape <= padded_size
-            empty_arr = tvm._ffi.get_global_func("runtime.TVMCPUAllocArrayPadded")(
-                tvm.runtime.ShapeTuple([int(dim) for dim in arr.shape]),
-                DataType(arr.dtype),
-                padded_size,
-            )
+            empty_arr = None
+            if padded_size == 0:
+                empty_arr = empty(arr.shape, arr.dtype, cpu(0), mem_scope)
+            else:
+                empty_arr = tvm._ffi.get_global_func("runtime.TVMCPUAllocArrayPadded")(
+                    tvm.runtime.ShapeTuple([int(dim) for dim in arr.shape]),
+                    DataType(arr.dtype),
+                    padded_size,
+                )
             host_arr = empty_arr.copyfrom(arr)
             if device.func is None:
                 raise AttributeError("The function should be loaded to the UPMEM device.")

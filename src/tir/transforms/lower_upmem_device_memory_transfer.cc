@@ -31,6 +31,7 @@
 #include <queue>
 #include <unordered_set>
 
+#include "../../arith/conjunctive_normal_form.h"
 #include "../analysis/var_use_def_analysis.h"
 #include "ir_utils.h"
 
@@ -40,6 +41,11 @@ namespace tir {
 class AggressiveHoistBranch : public StmtExprMutator {
  public:
   Array<Var> loop_vars;
+  Map<Var, Array<Var>> let_seq;
+  Map<Var, PrimExpr> let_bindings;
+  size_t max_loop_vars = 0;
+  Var nearest_loop_var;
+  bool hoist_target_flag = false;
   PrimExpr new_cond = make_const(DataType::Bool(), false);
 
   void fallback() { new_cond = make_const(DataType::Bool(), true); }
@@ -64,16 +70,16 @@ class AggressiveHoistBranch : public StmtExprMutator {
     return a || b;
   }
 
-  PrimExpr VisitExpr_(const CallNode* op) {
-    if (!(op->op.same_as(builtin::dpu_mram_read()) &&
-          !(op->op.same_as(builtin::dpu_mram_write())))) {
-      static auto eff_map = Op::GetAttrMap<TCallEffectKind>("TCallEffectKind");
-      auto eff = static_cast<CallEffectKind>(eff_map[op->op.as<Op>().value()]->value);
-      if (eff >= CallEffectKind::kUpdateState) {
-        fallback();
+  PrimExpr VisitExpr(const PrimExpr& expr) final {
+    if (auto op = expr.as<CallNode>()) {
+      if (op->op.same_as(builtin::dpu_mram_read()) || op->op.same_as(builtin::dpu_mram_write())) {
+        return StmtExprMutator::VisitExpr(expr);
       }
     }
-    return StmtExprMutator::VisitExpr_(op);
+    if (SideEffect(expr) >= CallEffectKind::kReadState) {
+      fallback();
+    }
+    return StmtExprMutator::VisitExpr(expr);
   }
 
   Stmt VisitStmt_(const BufferStoreNode* op) {
@@ -86,8 +92,29 @@ class AggressiveHoistBranch : public StmtExprMutator {
     return StmtExprMutator::VisitStmt_(op);
   }
 
+  Stmt VisitStmt_(const WhileNode* op) {
+    fallback();
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  Stmt VisitStmt_(const LetStmtNode* op) {
+    let_bindings.Set(op->var, op->value);
+    Stmt ret;
+    if (nearest_loop_var.defined()) {
+      Array<Var> seq = let_seq.Get(nearest_loop_var).value_or({});
+      seq.push_back(op->var);
+      let_seq.Set(nearest_loop_var, seq);
+      ret = StmtExprMutator::VisitStmt(op->body);
+      seq.pop_back();
+      let_seq.Set(nearest_loop_var, seq);
+    } else {
+      ret = StmtExprMutator::VisitStmt_(op);
+    }
+    let_bindings.erase(op->var);
+    return ret;
+  }
+
   Stmt VisitStmt_(const IfThenElseNode* op) {
-    // it only deals with LT/LENode without Sub.
     IsSubNodeExists c;
     c(op->condition);
     if (c.flag) {
@@ -100,24 +127,114 @@ class AggressiveHoistBranch : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const ForNode* op) {
+    Var prev_nearest_loop_var = nearest_loop_var;
+    nearest_loop_var = op->loop_var;
     PrimExpr prev_cond = new_cond;
     new_cond = make_const(DataType::Bool(), false);
     loop_vars.push_back(op->loop_var);
+    max_loop_vars = std::max(max_loop_vars, loop_vars.size());
     auto ret = StmtExprMutator::VisitStmt_(op);
     loop_vars.pop_back();
-    if (is_one(new_cond)) {
-      return ret;
-    }
-
     arith::Analyzer ana;
-    new_cond = ana.Simplify(Substitute(new_cond, {{op->loop_var, op->min}}), 3);
-    new_cond = AggOr(prev_cond, new_cond);
-    if (!is_one(new_cond) && loop_vars.size() < 2) {
-      return IfThenElse(new_cond, ret);
+    if (let_seq.find(nearest_loop_var) != let_seq.end()) {
+      Array<Var> seq = let_seq[nearest_loop_var];
+      for (auto it = seq.rbegin(); it != seq.rend(); ++it) {
+        auto var = *it;
+        auto value = let_bindings[var];
+        new_cond = Substitute(new_cond, {{var, value}});
+      }
     }
+    new_cond = ana.Simplify(AggOr(prev_cond, Substitute(new_cond, {{op->loop_var, op->min}})), 3);
+    if (!is_one(new_cond) && !(op->body.as<ForNode>()) && max_loop_vars - loop_vars.size() >= 3) {
+      ret = IfThenElse(new_cond, ret);
+      fallback();
+    }
+    nearest_loop_var = prev_nearest_loop_var;
     return ret;
   }
 };
+
+// class AggressiveHoistBranch : public StmtExprMutator {
+//  public:
+//   Array<Var> loop_vars;
+//   PrimExpr new_cond = make_const(DataType::Bool(), false);
+
+//   void fallback() { new_cond = make_const(DataType::Bool(), true); }
+
+//   class IsSubNodeExists : public ExprVisitor {
+//    public:
+//     bool flag = false;
+//     void VisitExpr_(const SubNode* op) { flag = true; }
+//     void VisitExpr_(const GTNode* op) { flag = true; }
+//     void VisitExpr_(const GENode* op) { flag = true; }
+//     void VisitExpr_(const NENode* op) { flag = true; }
+//     void VisitExpr_(const EQNode* op) { flag = true; }
+//     void VisitExpr_(const CallNode* op) { flag = true; }
+//   };
+
+//   PrimExpr AggOr(PrimExpr a, PrimExpr b) {
+//     arith::Analyzer ana;
+//     if (ana.CanProve(Not(a) || b))
+//       return b;
+//     else if (ana.CanProve(Not(b) || a))
+//       return a;
+//     return a || b;
+//   }
+
+//   PrimExpr VisitExpr_(const CallNode* op) {
+//     if (!(op->op.same_as(builtin::dpu_mram_read()) &&
+//           !(op->op.same_as(builtin::dpu_mram_write())))) {
+//       static auto eff_map = Op::GetAttrMap<TCallEffectKind>("TCallEffectKind");
+//       auto eff = static_cast<CallEffectKind>(eff_map[op->op.as<Op>().value()]->value);
+//       if (eff >= CallEffectKind::kUpdateState) {
+//         fallback();
+//       }
+//     }
+//     return StmtExprMutator::VisitExpr_(op);
+//   }
+
+//   Stmt VisitStmt_(const BufferStoreNode* op) {
+//     fallback();
+//     return StmtExprMutator::VisitStmt_(op);
+//   }
+
+//   Stmt VisitStmt_(const AllocateNode* op) {
+//     fallback();
+//     return StmtExprMutator::VisitStmt_(op);
+//   }
+
+//   Stmt VisitStmt_(const IfThenElseNode* op) {
+//     // it only deals with LT/LENode without Sub.
+//     IsSubNodeExists c;
+//     c(op->condition);
+//     if (c.flag) {
+//       fallback();
+//     } else {
+//       new_cond = AggOr(new_cond, op->condition);
+//     }
+
+//     return GetRef<Stmt>(op);  // do not traverse
+//   }
+
+//   Stmt VisitStmt_(const ForNode* op) {
+//     PrimExpr prev_cond = new_cond;
+//     new_cond = make_const(DataType::Bool(), false);
+//     loop_vars.push_back(op->loop_var);
+//     auto ret = StmtExprMutator::VisitStmt_(op);
+//     loop_vars.pop_back();
+//     if (is_one(new_cond)) {
+//       return ret;
+//     }
+
+//     arith::Analyzer ana;
+//     new_cond = ana.Simplify(Substitute(new_cond, {{op->loop_var, op->min}}), 3);
+//     new_cond = AggOr(prev_cond, new_cond);
+//     if (!is_one(new_cond) && loop_vars.size() < 2) {
+//       return IfThenElse(new_cond, ret);
+//     }
+//     return ret;
+//   }
+// };
 
 class EliminateBranch : public StmtExprMutator {
  public:
@@ -151,6 +268,10 @@ class EliminateBranch : public StmtExprMutator {
 
       auto constraint = arith::SolveLinearInequalities(
           arith::IntConstraints({op->loop_var}, dom_map, conditions));
+
+      if (constraint.second.size() > 0) {
+        return stmt;
+      }
       auto bounds = constraint.first.at(op->loop_var);
 
       auto extent = op->extent;
@@ -337,11 +458,12 @@ Pass LowerUpmemDeviceMemoryTransfer() {
     VLOG(1) << "LowerUpmemDeviceMemoryTransfer: \n" << f;
     if (target.value()->kind->name == "upmem") {
       auto m = f->body;
+
       m = MoveGlobalIndices()(std::move(m));
       m = LowerMemoryTransfer()(std::move(m));
       m = AggressiveHoistBranch()(std::move(m));
       m = EliminateBranch()(std::move(m));
-      n->body = m;
+      n->body = std::move(m);
     }
     VLOG(1) << "LowerUpmemDeviceMemoryTransfer: \n" << f;
     return f;

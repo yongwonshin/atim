@@ -12,7 +12,9 @@ def upmem_gemv_factory(M, K, dtype):
     class UPMEMModule:
         @T.prim_func
         def main(a: T.handle, b: T.handle, c: T.handle):
-            T.func_attr({"global_symbol": "main", "tir.noalias": T.bool(True)})
+            T.func_attr(
+                {"global_symbol": "main", "tir.noalias": T.bool(True), "pragma_explicit_h2d": ["A"]}
+            )
             A = T.match_buffer(a, (M, K), dtype=dtype)
             B = T.match_buffer(b, (K,), dtype=dtype)
             C = T.match_buffer(c, (M,), dtype=dtype)
@@ -26,7 +28,7 @@ def upmem_gemv_factory(M, K, dtype):
     return UPMEMModule
 
 
-def gemvRCTile(M, K, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=128, dtype="int32", **kwargs):
+def gemvRCTile(M, K, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=16, dtype="int32", **kwargs):
     sch = tvm.tir.Schedule(upmem_gemv_factory(M, K, dtype))
     block_c = sch.get_block("C")
     _, k = sch.get_loops(block_c)
@@ -47,7 +49,6 @@ def gemvRCTile(M, K, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=128, dtype="int32", *
     sch.bind(yo, "threadIdx.x")
     sch.annotate(xb, "bank", True)
     sch.annotate(yb, "bank", True)
-    sch.annotate(sch.get_block("A_local"), "pragma_explicit_h2d", True)
     sch.decompose_reduction(block_crf, xo)
     i, _ = sch.get_loops(block_c)
     it, ii = sch.split(i, factors=[n_rt, None])
@@ -176,7 +177,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    cleanup()
+    # cleanup()
     gemv = GEMV(
         repeat=args.repeat,
         warmup=args.warmup,
@@ -201,32 +202,22 @@ if __name__ == "__main__":
         gemv.test(schedule, **config)
     else:  # custom test
         configs = [
-            # (1024, 2048, 1, 1, 16, 256),
-            # (1024 * 4, 2048, 1, 4, 16, 256),
-            # (1024 * 16, 2048, 1, 16, 16, 256),
-            # (1024 * 64, 2048, 1, 64, 16, 256),
-            # (8192, 1024, 1, 1, 16, 256),
-            # (8192, 1024, 1, 4, 16, 256),
-            # (8192, 1024, 1, 16, 16, 256),
-            # (8192, 1024, 1, 64, 16, 256),
-            # (163840, 4096, 1, 256, 16, 256),
-            # (163840, 4096, 1, 512, 16, 256),
-            # (163840, 4096, 1, 1024, 16, 256),
-            (163840, 4096, 1, 2048, 16, 256),
-            (163840, 4096, 2, 1024, 16, 256),
-            (163840, 4096, 4, 512, 16, 256),
-            (163840, 4096, 8, 256, 16, 256),
-            (163840, 4096, 16, 128, 16, 256),
-            (163840, 4096, 32, 64, 16, 128),
-            (163840, 4096, 64, 32, 16, 64),
-            (163840, 4096, 128, 16, 16, 32),
-            (163840, 4096, 256, 8, 16, 16),
-            (163840, 4096, 512, 4, 16, 8),
-            (163840, 4096, 1024, 2, 16, 4),
-            (163840, 4096, 2048, 1, 16, 2),
+            # (28672, 7168, 1, 2048, 16, 256),
+            # (28672, 7168, 2, 1024, 16, 256),
+            # (28672, 7168, 4, 512, 16, 256),
+            # (12288, 4096, 8, 128, 16, 256),
+            # (49152, 12288, 1, 2048, 16, 256),
+            # (49152, 12288, 2, 1024, 16, 256),
+            # (49152, 12288, 4, 512, 16, 256),
+            # (49152, 12288, 8, 256, 16, 256),
+            # (49152, 12288, 16, 128, 16, 128),
+            (163840, 4096, 1, 2048, 16, 128)
         ]
 
         for m, k, xb, yb, yt, cache in configs:
             gemv.benchmark(M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
         for m, k, xb, yb, yt, cache in configs:
-            gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
+            if xb == 1:
+                gemv.test(gemvRTile, M=m, K=k, n_yb=yb, n_yt=yt, n_cache=cache)
+            else:
+                gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)

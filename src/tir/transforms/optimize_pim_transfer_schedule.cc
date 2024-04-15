@@ -35,6 +35,7 @@
 
 #include "../../arith/interval_set.h"
 #include "../../runtime/thread_storage_scope.h"
+#include "../../support/utils.h"
 #include "../analysis/var_use_def_analysis.h"
 #include "ir_utils.h"
 #include "pim_transfer_schedule.h"
@@ -113,6 +114,8 @@ class EliminateTransferBranch : public StmtExprMutator {
 class BulkPimCopy : public StmtExprMutator {
  public:
   std::vector<Var> loop_vars;
+  Map<String, Array<PrimExpr>> symbol_map;
+  Map<Var, PrimExpr> vmap;
 
   class FactorMap : public ExprVisitor {
    public:
@@ -165,10 +168,49 @@ class BulkPimCopy : public StmtExprMutator {
     return PrimExpr();
   }
 
+  Stmt rewrite(Stmt stmt) {
+    class ReplaceAttr : public StmtMutator {
+     public:
+      Map<String, Array<PrimExpr>> symbol_map;
+      ReplaceAttr(Map<String, Array<PrimExpr>>& symbol_map) : symbol_map(symbol_map) {}
+      Stmt VisitStmt_(const AttrStmtNode* op) final {
+        if (op->attr_key == "upmem_symbol_map") {
+          return AttrStmt(symbol_map, op->attr_key, op->value, op->body);
+        }
+        return StmtMutator::VisitStmt_(op);
+      }
+    };
+    PostOrderVisit(stmt, [&](const ObjectRef& node) {
+      if (const AttrStmtNode* attr = node.as<AttrStmtNode>()) {
+        if (attr->attr_key == "upmem_symbol_map") {
+          this->symbol_map = Downcast<Map<String, Array<PrimExpr>>>(attr->node);
+        }
+      }
+    });
+    stmt = this->VisitStmt(stmt);
+    ReplaceAttr replacer(symbol_map);
+    return replacer(stmt);
+  }
+
+  Stmt VisitStmt_(const AttrStmtNode* op) final {
+    if (op->attr_key == tvm::tir::attr::thread_extent) {
+      const IterVarNode* iv = op->node.as<IterVarNode>();
+      vmap.Set(iv->var, op->value - 1);
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  Stmt VisitStmt_(const LetStmtNode* op) {
+    vmap.Set(op->var, op->value);
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
   Stmt VisitStmt_(const ForNode* op) final {
+    vmap.Set(op->loop_var, op->extent - 1);
     loop_vars.push_back(op->loop_var);
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     loop_vars.pop_back();
+    vmap.erase(op->loop_var);
 
     auto body = Downcast<For>(stmt)->body;
     if (const EvaluateNode* eval = body.as<EvaluateNode>()) {
@@ -221,6 +263,23 @@ class BulkPimCopy : public StmtExprMutator {
               }
               new_extent = Max(0, Min(bulk_size, clamp_value));
             }
+            std::string vname = Downcast<Var>(call->args[0])->name_hint->data;
+            String var_name = vname;
+            if (symbol_map.find(var_name) != symbol_map.end()) {
+              arith::Analyzer ana;
+              PrimExpr max_global_index = ana.Simplify(Substitute(host, vmap) + 1 + bulk_size);
+              Array<PrimExpr> symbol_arr = symbol_map[var_name];
+              ICHECK(max_global_index.as<IntImmNode>())
+                  << "max_global_index must be a constant " << max_global_index;
+
+              symbol_arr.Set(2, Max(symbol_arr[2], max_global_index));
+
+              PrimExpr max_host_index = ana.Simplify(Substitute(pim, vmap) + 1 + bulk_size);
+              ICHECK(max_host_index.as<IntImmNode>())
+                  << "max_host_index must be a constant " << max_host_index;
+              symbol_arr.Set(3, Max(symbol_arr[3], max_host_index));
+            }
+
             return Evaluate(Call(DataType::Int(32), call->op,
                                  {call->args[0], host, pim, call->args[3], new_extent, bulk_size}));
           }
@@ -276,7 +335,7 @@ class UpmemParallelTransfer : public StmtExprMutator {
 Stmt OptimizePimTransferSchedule(Stmt stmt, Target target) {
   Stmt res = AllocateFreeOnce()(std::move(stmt));
   res = EliminateTransferBranch()(std::move(res));
-  res = BulkPimCopy()(std::move(res));
+  res = BulkPimCopy().rewrite(std::move(res));
 
   if (target->HasKey("upmem")) res = UpmemParallelTransfer()(std::move(res));
   return res;

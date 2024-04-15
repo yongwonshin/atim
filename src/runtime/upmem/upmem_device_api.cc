@@ -243,15 +243,14 @@ int UPMEMDeviceAPI::BindXfer(int bank_index, uint64_t host_addr, uint64_t size) 
 }
 
 int UPMEMDeviceAPI::PushXfer() {
+  auto api = UPMEMDeviceAPI::Global();
   if (xfer_direction == DPU_XFER_FROM_DPU) {
-    auto now = std::chrono::high_resolution_clock::now();
     UPMEM_CALL(dpu_push_xfer(dpu_set, xfer_direction, GetSymbolName(xfer_handle).c_str(),
                              static_cast<uint32_t>(xfer_offset) * GetBytes(xfer_handle),
                              xfer_bulk_size * GetBytes(xfer_handle), DPU_XFER_DEFAULT));
-    auto after = std::chrono::high_resolution_clock::now();
-    auto t = after - now;
-    UPMEMDeviceAPI::Global()->d2h_time =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(t).count();
+    api->last_d2h_end = std::chrono::high_resolution_clock::now();
+    auto t = api->last_d2h_end - UPMEMDeviceAPI::Global()->kernel_end;
+    api->d2h_time = std::chrono::duration_cast<std::chrono::nanoseconds>(t).count();
   } else {
     UPMEM_CALL(dpu_push_xfer(dpu_set, xfer_direction, GetSymbolName(xfer_handle).c_str(),
                              static_cast<uint32_t>(xfer_offset) * GetBytes(xfer_handle),
@@ -313,6 +312,9 @@ TVM_REGISTER_GLOBAL("device_api.upmem.elapsed_time").set_body([](TVMArgs args, T
   } else if (type == "d2h") {
     *rv = static_cast<double>(api->d2h_time);
     return;
+  } else if (type == "after_d2h") {
+    end = api->entire_end;
+    start = api->last_d2h_end;
   } else {
     LOG(FATAL) << "Invalid type: " << type;
   }

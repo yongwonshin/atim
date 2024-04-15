@@ -159,8 +159,9 @@ class UPMEMWorkload:
         )
 
         different_indices = np.where(host_flatten != dev_flatten)[0]
-        if different_indices.size > 100:
-            different_indices = np.concatenate([different_indices[:50], different_indices[-50:]])
+        print(f"Number of different indices: {different_indices.size}", file=file)
+        # if different_indices.size > 100:
+        #     different_indices = np.concatenate([different_indices[:50], different_indices[-50:]])
         for idx in different_indices:
             print(
                 f"Index: {idx}, Host: {host_flatten[idx]}, Device: {dev_flatten[idx]}",
@@ -273,7 +274,9 @@ class UPMEMWorkload:
                     print("------------------------------")
                 self.h2d()
                 for j in range(self.repeat + self.warmup):
+                    self.target_device.sync()
                     total_start = time.time()
+
                     timestamp("start")
                     self.kernel()
                     timestamp("end")
@@ -282,8 +285,8 @@ class UPMEMWorkload:
                     if j >= self.warmup:
                         before_kernel_time = elapsed_time("before_kernel") / 1e6
                         kernel_time = elapsed_time("kernel") / 1e6
-                        after_kernel_time = elapsed_time("after_kernel") / 1e6
-                        d2h_time = elapsed_time("d2h") / 1e6
+                        after_kernel_time = elapsed_time("d2h") / 1e6
+                        d2h_time = elapsed_time("after_d2h") / 1e6
                         total_time = (total_end - total_start) * 1e3
                         time_tuple = (
                             before_kernel_time,

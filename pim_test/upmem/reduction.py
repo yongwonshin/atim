@@ -14,7 +14,9 @@ def red_prim_schedule(L, dtype):
     class ReductionModule:
         @T.prim_func
         def main(a: T.handle, b: T.handle):
-            T.func_attr({"global_symbol": "main", "tir.noalias": T.bool(True)})
+            T.func_attr(
+                {"global_symbol": "main", "tir.noalias": T.bool(True), "pragma_explicit_h2d": ["A"]}
+            )
             A = T.match_buffer(a, [L, M], dtype=dtype)
             B = T.match_buffer(b, [M], dtype=dtype)
             for i, k in T.grid(L, M):
@@ -45,7 +47,7 @@ def crossReduction(L, n_b, n_t, n_c, dtype):
     sch.reverse_compute_at(brf, tit)
     sch.bind(tib, "blockIdx.x")
     sch.bind(tit, "threadIdx.x")
-    sch.annotate(sch.get_block("A_local"), "pragma_explicit_h2d", True)
+    # sch.annotate(sch.get_block("A_local"), "pragma_explicit_h2d", True)
     sch.decompose_reduction(trf, tii)
     return sch
 

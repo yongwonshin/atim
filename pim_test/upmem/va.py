@@ -17,7 +17,13 @@ def va_prim_schedule(L, dtype):
     class VAModule:
         @T.prim_func
         def main(a: T.handle, b: T.handle, c: T.handle):
-            T.func_attr({"global_symbol": "main", "tir.noalias": T.bool(True)})
+            T.func_attr(
+                {
+                    "global_symbol": "main",
+                    "tir.noalias": T.bool(True),
+                    "pragma_explicit_h2d": ["A", "B"],
+                }
+            )
             A = T.match_buffer(a, (L,), dtype=dtype)
             B = T.match_buffer(b, (L,), dtype=dtype)
             C = T.match_buffer(c, (L,), dtype=dtype)
@@ -36,15 +42,14 @@ def vaTile(L, n_b, n_t, n_c, dtype):
     cb = sch.cache_read(block_c, "B", "local")
     cc = sch.cache_write(block_c, "C", "local")
     # ib, it, ii, ic = sch.split(i, factors=[n_b, n_t, None, n_c])
-    ib, it = sch.split(i, factors=[None, math.ceil(L / n_b / 2) * 2])
+    bytes = np.dtype(dtype).itemsize
+    ib, it = sch.split(i, factors=[n_b, math.ceil(L / n_b / bytes) * bytes])
     it, ii, ic = sch.split(it, factors=[n_t, None, n_c])
     sch.compute_at(ca, ii)
     sch.compute_at(cb, ii)
     sch.reverse_compute_at(cc, ii)
     sch.bind(ib, "blockIdx.x")
     sch.bind(it, "threadIdx.x")
-    sch.annotate(sch.get_block("A_local"), "pragma_explicit_h2d", True)
-    sch.annotate(sch.get_block("B_local"), "pragma_explicit_h2d", True)
     sch.parallel(ic)
     return sch
 
