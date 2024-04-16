@@ -246,6 +246,33 @@ Array<ScheduleRule> ScheduleRule::DefaultUPMEM() {
                                             {{"bank", Integer(BankOrdering::DENSE)}}},
               /*reduction_tile_binds=*/Array<String>{"parallel"},
               /*reduction_annotations=*/NullOpt)};
+  //   ScheduleRule::MultiLevelTilingUPMEM(
+  //     /*intrin_groups=*/NullOpt,
+  //     /*structure=*/"SSSSRR",
+  //     /*tile_binds=*/Array<String>{"blockIdx.x", "blockIdx.y", "blockIdx.z", "threadIdx.x"},
+  //     /*max_innermost_factor=*/Integer(256),
+  //     /*vector_load_lens=*/Array<Integer>{1},
+  //     /*reuse_read=*/
+  //     Map<String, ObjectRef>{{"req", String("must")},
+  //                            {"levels", Array<Integer>{6, 6}},  //
+  //                            {"scope", String("local")},
+  //                            {"sep", Bool(true)}},
+  //     /*reuse_write=*/
+  //     Map<String, ObjectRef>{{"req", String("must")},
+  //                            {"levels", Array<Integer>{4}},  //
+  //                            {"scope", String("local")},
+  //                            {"sep", Bool(true)}},
+  //     /*min_innermost_factor=*/Integer(2),
+  //     /*reordering=*/Array<Integer>{0, 1, 2, 3, 4, 5},
+  //     /*s_split_factors=*/NullOpt,
+  //     /*r_split_factors=*/NullOpt,
+  //     /*hoisted_loops=*/Array<Integer>{2},
+  //     /*annotations=*/
+  //     Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
+  //                                   {{"bank", Integer(BankOrdering::DENSE)}},
+  //                                   {{"bank", Integer(BankOrdering::DENSE)}}},
+  //     /*reduction_tile_binds=*/Array<String>{"parallel"},
+  //     /*reduction_annotations=*/NullOpt)};
 }
 
 Array<ScheduleRule> ScheduleRule::DefaultCUDA() {

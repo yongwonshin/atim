@@ -90,7 +90,7 @@ Array<tir::Schedule> AddUPMEMRFactorNode::Apply(const tir::Schedule& sch,
     sch_tmp->Seed(sch->ForkSeed());
     try {
       // rfactor at 0-axis
-      const tir::BlockRV& block_rf = sch_tmp->RFactor(split_loop, 0, mem_scope);
+      const tir::BlockRV& block_rf = sch_tmp->RFactor(split_loop, num_spatial_loops - 1, mem_scope);
       Array<tir::LoopRV> axes = sch_tmp->GetLoops(block_rf);
       ICHECK_GT(axes.size(), num_spatial_loops);
 

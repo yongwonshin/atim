@@ -125,15 +125,27 @@ std::vector<State> MultiLevelTilingUPMEMNode::HandleReductionBlockUPMEM(State st
     Array<LoopRV> loops = sch->GetLoops(block_rv);
     std::vector<IterVarType> iter_types = GetBlockVarTypes(sch->GetSRef(state->block_rv));
 
-    int n_binds = std::min(reduction_tile_binds.size(), loops.size());
+    Array<LoopRV> fused;
+    for (int i = 0; i < loops.size(); i++) {
+      if (iter_types[i] == IterVarType::kDataPar) {
+        fused.push_back(loops[i]);
+      }
+    }
+    if (fused.size() > 1) {
+      fused = {sch->Fuse(fused)};
+    } else {
+      fused = loops;
+    }
+
+    int n_binds = std::min(reduction_tile_binds.size(), fused.size());
     for (int i = 0; i < n_binds; ++i) {
       if (!reduction_tile_binds[i].empty()) {
         ICHECK_EQ(reduction_tile_binds[i], "parallel");
         Array<tir::ExprRV> factors =
-            sch->SamplePerfectTile2(loops[i], 2, 1, std::thread::hardware_concurrency());
-        Array<tir::LoopRV> splits = sch->Split(/*loop=*/loops[i], {factors.begin(), factors.end()});
+            sch->SamplePerfectTile2(fused[i], 2, 1, std::thread::hardware_concurrency());
+        Array<tir::LoopRV> splits = sch->Split(/*loop=*/fused[i], {factors.begin(), factors.end()});
         sch->Parallel(splits[0]);
-        // sch->Parallel(loops[i]);
+        // sch->Parallel(fused[i]);
       }
     }
   }
