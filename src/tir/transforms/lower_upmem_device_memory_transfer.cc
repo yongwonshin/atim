@@ -104,7 +104,7 @@ class AggressiveHoistBranch : public StmtExprMutator {
       Array<Var> seq = let_seq.Get(nearest_loop_var).value_or({});
       seq.push_back(op->var);
       let_seq.Set(nearest_loop_var, seq);
-      ret = StmtExprMutator::VisitStmt(op->body);
+      ret = StmtExprMutator::VisitStmt_(op);
       seq.pop_back();
       let_seq.Set(nearest_loop_var, seq);
     } else {

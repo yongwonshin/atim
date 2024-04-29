@@ -91,6 +91,7 @@ class UPMEMWorkload:
 
         self.benchmark_results = []
         self.results = []
+        self.hand_tuned = []
 
         self.index = 0
         self.sch = None
@@ -244,6 +245,13 @@ class UPMEMWorkload:
     def file_suffix(self):
         return ""
 
+    def dump_handtune_max(self):
+        if len(self.hand_tuned) == 0:
+            return
+        print("Best config")
+        print(min(self.hand_tuned, key=lambda x: x[1]))
+        self.hand_tuned = []
+
     def test(self, scheduler, **kwargs):
         self.config = {**self.required, **kwargs}
         self.sch = scheduler(**self.config)
@@ -302,6 +310,8 @@ class UPMEMWorkload:
                     print("------------------------------")
                 time_tuple = np.mean(times, axis=0)
                 flag = self.is_passed()
+                if flag:
+                    self.hand_tuned.append([self.config.__repr__(), time_tuple[4]])
                 print(
                     "\t".join([f"{x:.3f}" for x in time_tuple])
                     + f"\t{flag}\t{self.config.__repr__()}"

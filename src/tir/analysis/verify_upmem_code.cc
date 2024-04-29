@@ -44,10 +44,52 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
     std::unordered_map<Buffer, PrimExpr, ObjectPtrHash, ObjectPtrEqual> alloca_size_map;
     bool inside_kernel = false;
     std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> vmap;
+    bool noncontiguous_cache = false;
+    Var current_loop;
+
+    class FactorMap : public ExprVisitor {
+     public:
+      std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> m;
+      bool is_affine = true;
+      PrimExpr factor = 1;
+
+      FactorMap(PrimExpr expr) { VisitExpr(expr); }
+
+      void VisitExpr_(const VarNode* op) final {
+        if (m.count(GetRef<Var>(op)) == 0) {
+          m[GetRef<Var>(op)] = factor;
+        } else {
+          m[GetRef<Var>(op)] = 0;
+        }
+      }
+
+      void VisitExpr_(const MulNode* op) final {
+        if (op->a.as<VarNode>() && op->b.as<IntImmNode>()) {
+          factor = Downcast<IntImm>(op->b);
+        } else if (op->b.as<VarNode>() && op->a.as<IntImmNode>()) {
+          factor = Downcast<IntImm>(op->a);
+        }
+        ExprVisitor::VisitExpr_(op);
+        factor = 1;
+      }
+
+      int get_factor(Var v) {
+        if (m.count(v) > 0) {
+          auto imm = Downcast<IntImm>(m[v]);
+          if (imm.defined()) {
+            return imm->value;
+          }
+        }
+        return 0;
+      }
+    };
 
     void VisitStmt_(const ForNode* op) {
       vmap[op->loop_var] = op->min + op->extent - 1;
+      Var prev_loop = current_loop;
+      current_loop = op->loop_var;
       StmtExprVisitor::VisitStmt_(op);
+      current_loop = prev_loop;
       vmap.erase(op->loop_var);
     }
 
@@ -74,7 +116,10 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
           ICHECK(iv);
           Var var = iv->var;
           vmap[iv->var] = op->value - 1;
+          Var prev_loop = current_loop;
+          current_loop = iv->var;
           StmtExprVisitor::VisitStmt_(op);
+          current_loop = prev_loop;
           vmap.erase(var);
         } else {
           StmtExprVisitor::VisitStmt_(op);
@@ -109,6 +154,11 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
             if (alloca_size_map.find(load->buffer) != alloca_size_map.end()) {
               global_index = op->global_indices[0];
               target_buffer = load->buffer;
+              FactorMap host_fac(load->indices[0]), pim_fac(op->global_indices[0]);
+              if (!(current_loop.defined() && host_fac.get_factor(current_loop) == 1 &&
+                    pim_fac.get_factor(current_loop) == 1)) {
+                noncontiguous_cache = true;
+              }
             }
           }
           if ((lscope == "local" || lscope == "shared") && (sscope == "" || sscope == "global")) {
@@ -117,6 +167,11 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
             if (alloca_size_map.find(op->buffer) != alloca_size_map.end()) {
               global_index = load->global_indices[0];
               target_buffer = op->buffer;
+              FactorMap host_fac(op->indices[0]), pim_fac(load->global_indices[0]);
+              if (!(current_loop.defined() && host_fac.get_factor(current_loop) == 1 &&
+                    pim_fac.get_factor(current_loop) == 1)) {
+                noncontiguous_cache = true;
+              }
             }
           }
           if (target_buffer.defined()) {
@@ -152,8 +207,11 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
     PimAllocateSizeFinder finder;
     finder(stmt);
 
+    if (finder.noncontiguous_cache) {
+      errors_.push_back("Non-contiguous cache access is not allowed.");
+    }
+
     global_memory_per_block_ = 0;
-    VLOG(2) << finder.alloca_size_map.size();
     for (auto kv : finder.alloca_size_map) {
       global_memory_per_block_ += Downcast<IntImm>(kv.second)->value;
     }
@@ -210,6 +268,12 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
       // record the number of blocks
       if (name == "blockIdx.x" || name == "blockIdx.y" || name == "blockIdx.z") {
         size_t length = static_cast<size_t>(extent->value);
+        if (name == "blockIdx.x" && length > 128) {
+          std::stringstream s;
+          s << "Extent of " << name << " (" << length
+            << ") is greater than the allowed maximum (128)";
+          errors_.push_back(s.str());
+        }
         num_block_ *= length;
       }
       // record the number of threads in a block
@@ -262,13 +326,6 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
         err("global memory per block", global_memory_per_block_, max_global_memory_per_block_);
         err("local memory per block", local_memory_per_block_, max_local_memory_per_block_);
         err("shared memory per block", shared_memory_per_block_, max_shared_memory_per_block_);
-
-        if (num_block_ == 2048) {
-          VLOG(2) << "ERRORS";
-          for (auto& err : errors_) {
-            VLOG(2) << "    " << err;
-          }
-        }
       }
     } else {
       StmtVisitor::VisitStmt_(op);
@@ -360,7 +417,7 @@ TVM_REGISTER_GLOBAL("tir.analysis.verify_upmem_code").set_body_typed(VerifyUPMEM
 
 namespace transform {
 
-Pass VerifyUPMEMCode(Map<String, PrimExpr> constraints) {
+Pass VerifyUPMEMCodePass(Map<String, PrimExpr> constraints) {
   auto pass_func = [=](IRModule mod, PassContext ctx) {
     for (auto kv : mod->functions) {
       if (auto func = kv.second.as<PrimFunc>()) {
@@ -381,7 +438,7 @@ Pass VerifyUPMEMCode(Map<String, PrimExpr> constraints) {
   return tvm::transform::CreateModulePass(pass_func, 0, "tir.VerifyUPMEMCode", {});
 }
 
-TVM_REGISTER_GLOBAL("tir.transform.VerifyUPMEMCode").set_body_typed(VerifyUPMEMCode);
+TVM_REGISTER_GLOBAL("tir.transform.VerifyUPMEMCode").set_body_typed(VerifyUPMEMCodePass);
 
 }  // namespace transform
 }  // namespace tir

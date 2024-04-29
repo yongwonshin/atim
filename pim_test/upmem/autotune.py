@@ -76,7 +76,7 @@ tuple_bmv = [(16, j, 256) for j in [16, 32, 64, 128, 256, 512]] + [
 tuple_mv = {
     "175B_qkvgen": (36864, 12288),  # 21775 -> 아놔 진짜 다시 돌려야함
     # "175B_qkvproj": (12288, 12288),  # 7278
-    "175B_fc": (49152, 12288),  # 27918
+    # "175B_fc": (49152, 12288),  # 27918
     # "175B_fcproj": (12288, 49152),# 27847
     # "13B_qkvgen": (15360, 5120),
     # "13B_qkvproj": (5120, 5120),
@@ -92,13 +92,73 @@ tuple_mv = {
     # "30B_fcproj": (7168, 28672),
 }
 
+layers = {6: 16, 13: 20, 30: 28, 175: 48}
+tuple_bmv = {
+    "params6B_batch1_token64": (16, 64, 256),
+    "params6B_batch1_token128": (16, 128, 256),
+    "params6B_batch1_token256": (16, 256, 256),
+    "params6B_batch1_token512": (16, 512, 256),
+    "params6B_batch16_token64": (256, 64, 256),
+    "params6B_batch16_token128": (256, 128, 256),
+    "params6B_batch16_token256": (256, 256, 256),
+    "params6B_batch16_token512": (256, 512, 256),
+    "params13B_batch1_token64": (20, 64, 256),
+    "params13B_batch1_token128": (20, 128, 256),
+    "params13B_batch1_token256": (20, 256, 256),
+    "params13B_batch1_token512": (20, 512, 256),
+    "params13B_batch16_token64": (320, 64, 256),
+    "params13B_batch16_token128": (320, 128, 256),
+    "params13B_batch16_token256": (320, 256, 256),
+    "params13B_batch16_token512": (320, 512, 256),
+    "params30B_batch1_token64": (28, 64, 256),
+    "params30B_batch1_token128": (28, 128, 256),
+    "params30B_batch1_token256": (28, 256, 256),
+    "params30B_batch1_token512": (28, 512, 256),
+    "params30B_batch16_token64": (448, 64, 256),
+    "params30B_batch16_token128": (448, 128, 256),
+    "params30B_batch16_token256": (448, 256, 256),
+    "params30B_batch16_token512": (448, 512, 256),
+    "params175B_batch1_token64": (48, 64, 256),
+    "params175B_batch1_token128": (48, 128, 256),
+    "params175B_batch1_token256": (48, 256, 256),
+    "params175B_batch1_token512": (48, 512, 256),
+    "params175B_batch16_token64": (768, 64, 256),
+    "params175B_batch16_token128": (768, 128, 256),
+    "params175B_batch16_token256": (768, 256, 256),
+    "params175B_batch16_token512": (768, 512, 256),
+}
+
 target = Target("upmem --num-cores=96")
-for name, (M, K) in tuple_mv.items():
+# for name, (M, K) in tuple_mv.items():
+#     start = time.time()
+#     with open(f"./autotuner_result/gemv_{name}.txt", "w") as f:
+#         original_stdout = sys.stdout
+#         sys.stdout = f
+#         mod = matvec_factory(M, K, dtype="int32")
+#         database = ms.tir_integration.tune_tir(
+#             mod=mod,
+#             target=target,
+#             work_dir="./autotuner_result",
+#             max_trials_global=500,
+#             num_trials_per_iter=64,
+#             num_tuning_cores=1,  # to prevent dpu allocation error
+#         )
+#         sch = ms.tir_integration.compile_tir(database, mod, target)
+#         if sch is None:
+#             print("No valid schedule found!")
+#         else:
+#             sch.mod.show()
+#             sch.trace.show()
+#         sys.stdout = original_stdout
+#     end = time.time()
+#     print("DONE ", name, " in ", end - start, " seconds")
+
+for name, (N, M, K) in tuple_bmv.items():
     start = time.time()
-    with open(f"./autotuner_result/gemv_{name}.txt", "w") as f:
+    with open(f"./autotuner_result/bgemv_{name}.txt", "w") as f:
         original_stdout = sys.stdout
         sys.stdout = f
-        mod = matvec_factory(M, K, dtype="int32")
+        mod = bgemv_factory(N, M, K, dtype="int32")
         database = ms.tir_integration.tune_tir(
             mod=mod,
             target=target,
@@ -111,8 +171,13 @@ for name, (M, K) in tuple_mv.items():
         if sch is None:
             print("No valid schedule found!")
         else:
-            sch.mod.show()
             sch.trace.show()
+            print("######################################################")
+            sch.mod.show(
+                black_format=False,
+                name=name,
+            )
+
         sys.stdout = original_stdout
     end = time.time()
     print("DONE ", name, " in ", end - start, " seconds")

@@ -125,15 +125,11 @@ class BulkPimCopy : public StmtExprMutator {
 
     FactorMap(PrimExpr expr) { VisitExpr(expr); }
 
-    void VisitExpr_(const SubNode* op) final { is_affine = false; }
-
-    // todo-stonerdk: find unaffine
-
     void VisitExpr_(const VarNode* op) final {
       if (m.count(GetRef<Var>(op)) == 0) {
         m[GetRef<Var>(op)] = factor;
       } else {
-        is_affine = false;
+        m[GetRef<Var>(op)] = 0;
       }
     }
 
@@ -142,8 +138,6 @@ class BulkPimCopy : public StmtExprMutator {
         factor = Downcast<IntImm>(op->b);
       } else if (op->b.as<VarNode>() && op->a.as<IntImmNode>()) {
         factor = Downcast<IntImm>(op->a);
-      } else {
-        is_affine = false;
       }
       ExprVisitor::VisitExpr_(op);
       factor = 1;
@@ -203,6 +197,7 @@ class BulkPimCopy : public StmtExprMutator {
   Stmt VisitStmt_(const LetStmtNode* op) {
     vmap.Set(op->var, op->value);
     return StmtExprMutator::VisitStmt_(op);
+    vmap.erase(op->var);
   }
 
   Stmt VisitStmt_(const ForNode* op) final {
@@ -267,7 +262,10 @@ class BulkPimCopy : public StmtExprMutator {
             String var_name = vname;
             if (symbol_map.find(var_name) != symbol_map.end()) {
               arith::Analyzer ana;
-              PrimExpr max_global_index = ana.Simplify(Substitute(host, vmap) + 1 + bulk_size);
+              PrimExpr max_global_index =
+                  ana.Simplify(Substitute(Substitute(host, vmap), vmap) + 1 + bulk_size);
+              PrimExpr max_host_index =
+                  ana.Simplify(Substitute(Substitute(pim, vmap), vmap) + 1 + bulk_size);
               Array<PrimExpr> symbol_arr = symbol_map[var_name];
               ICHECK(max_global_index.as<IntImmNode>())
                   << "max_global_index must be a constant " << max_global_index;

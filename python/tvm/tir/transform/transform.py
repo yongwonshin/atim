@@ -684,7 +684,7 @@ def VerifyMemory():
     return _ffi_api.VerifyMemory()  # type: ignore
 
 
-def VerifyUPMEMCode():
+def VerifyUPMEMCode(constraints):
     """Verify UPMEM code
 
     Returns
@@ -693,7 +693,7 @@ def VerifyUPMEMCode():
         The result pass
     """
 
-    return _ffi_api.VerifyUPMEMCode()
+    return _ffi_api.VerifyUPMEMCode(constraints)
 
 
 def VerifyVTCMLimit(limit: int):

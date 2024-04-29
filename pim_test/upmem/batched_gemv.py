@@ -5,6 +5,10 @@ from tensor import host_array
 import numpy as np
 import math
 import argparse
+from tqdm import tqdm
+
+from tvm.script import ir as I
+from tvm.script import tir as T
 
 
 def bgemv_factory(N, M, K, dtype):
@@ -48,7 +52,7 @@ def bgemvTile(N, M, K, n_bb, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=128, dtype="i
     bb, bo = sch.split(b, factors=[n_bb, None])
     yb, yo, yi, yc = sch.split(i, factors=[n_yb, n_yt, None, 2])
     ko, ki = sch.split(ko, factors=[None, n_cache])
-    sch.reorder(bb, kb, yb, bo, yo, yi, yc, ko, ki)
+    sch.reorder(kb, bb, yb, bo, yo, yi, yc, ko, ki)
     sch.compute_at(ca, ko)
     sch.compute_at(cb, ko)
     sch.reverse_compute_at(cc, yi)
@@ -124,10 +128,72 @@ if __name__ == "__main__":
         gemv.benchmark(**config)
         gemv.test(bgemvTile, **config)
     else:  # custom test
-        configs = [(128, 480, 256, 16, 8, 4, 16, 64)]
+        # dims = [
+        #     # (16, 64, 256),
+        #     # (16, 128, 256),
+        #     # (16, 256, 256),
+        #     # (16, 512, 256),
+        #     # (256, 64, 256),
+        #     # (256, 128, 256),
+        #     # (256, 256, 256),
+        #     # (256, 512, 256),
+        #     (48, 64, 256),
+        #     (48, 128, 256),
+        #     (48, 256, 256),
+        #     (48, 512, 256),
+        #     (768, 64, 256),
+        #     (768, 128, 256),
+        #     (768, 256, 256),
+        #     (768, 512, 256),
+        # ]
 
-        for n, m, k, bb, xb, yb, yt, cache in configs:
-            gemv.benchmark(N=n, M=m, K=k, n_bb=bb, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
-        for n, m, k, bb, xb, yb, yt, cache in configs:
-            gemv.test(bgemvTile, N=n, M=m, K=k, n_bb=bb, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
-16
+        # for N, M, K in dims:
+        #     print(N, M, K)
+        #     candidates = []
+        #     for bx in range(5):
+        #         yrange = math.floor(math.log2(M)) - 5
+        #         for by in range(yrange):
+        #             btot = bx + by + math.log2(N)
+        #             print(btot)
+        #             if btot >= 8 and btot <= 11:
+        #                 for c in range(min(3, 5 - bx)):
+        #                     candidates.append((N, 1 << bx, 1 << by, 16 << c))
+        #     for bb, bx, by, c in tqdm(candidates):
+        #         gemv.test(
+        #             bgemvTile,
+        #             N=N,
+        #             M=M,
+        #             K=K,
+        #             dtype="int32",
+        #             n_bb=bb,
+        #             n_xb=bx,
+        #             n_yb=by,
+        #             n_cache=c,
+        #             n_yt=16,
+        #             n_rt=16,
+        #         )
+        #     gemv.dump_handtune_max()
+
+        configs = [
+            (16, 64, 256, 16, 1, 16, 16),
+            (16, 128, 256, 8, 2, 16, 16),
+            (16, 256, 256, 4, 4, 16, 16),
+            (16, 512, 256, 2, 8, 32, 32),
+            (256, 64, 256, 4, 1, 32, 32),
+            (256, 128, 256, 2, 1, 16, 16),
+            (256, 256, 256, 1, 4, 32, 32),
+            (256, 512, 256, 1, 8, 16, 16),
+            (48, 64, 256, 8, 1, 32, 32),
+            (48, 128, 256, 4, 2, 32, 32),
+            (48, 256, 256, 4, 4, 16, 16),
+            (48, 512, 256, 4, 2, 16, 16),
+            (768, 64, 256, 1, 1, 16, 16),
+            (768, 128, 256, 1, 2, 16, 16),
+            (768, 256, 256, 1, 2, 16, 16),
+            (768, 512, 256, 1, 2, 16, 16),
+        ]
+
+        # for n, m, k, bb, xb, yb, yt, cache in configs:
+        #     gemv.benchmark(N=n, M=m, K=k, n_bb=bb, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
+        for n, m, k, xb, yb, cache, _ in configs:
+            gemv.test(bgemvTile, N=n, M=m, K=k, n_bb=n, n_xb=xb, n_yb=yb, n_yt=16, n_cache=cache)

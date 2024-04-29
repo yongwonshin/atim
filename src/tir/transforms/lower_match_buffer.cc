@@ -74,21 +74,40 @@ class TermSeparator : public ExprVisitor {
       auto c2 = Downcast<IntImm>(op->b);
       auto c = IntImm(c1.dtype(), c1->value * c2->value);
       this->VisitExpr(e * c);
+    } else if (op->a.as<FloorDivNode>()) {
+      floordiv = Downcast<IntImm>(Downcast<FloorDiv>(op->a)->b)->value;
+      multiplier = Downcast<IntImm>(op->b)->value;
+      this->VisitExpr(Downcast<FloorDiv>(op->a)->a);
+      floordiv = 1;
+      multiplier = 1;
+    } else if (op->a.as<FloorModNode>()) {
+      floormod = Downcast<IntImm>(Downcast<FloorMod>(op->a)->b)->value;
+      multiplier = Downcast<IntImm>(op->b)->value;
+      this->VisitExpr(Downcast<FloorMod>(op->a)->a);
+      floormod = INT32_MAX;
+      multiplier = 1;
     } else {
-      terms.Set(Downcast<Var>(op->a), op->b.as<IntImmNode>()->value);
-      terms_s.Set(Downcast<Var>(op->a)->name_hint, op->b.as<IntImmNode>()->value);
+      terms.Set(Downcast<Var>(op->a),
+                (op->b.as<IntImmNode>()->value / floordiv % floormod) * multiplier);
+      terms_s.Set(Downcast<Var>(op->a)->name_hint,
+                  (op->b.as<IntImmNode>()->value / floordiv % floormod) * multiplier);
     }
   }
 
   void VisitExpr_(const VarNode* op) final {
     Var v = GetRef<Var>(op);
-    terms.Set(v, 1);
-    terms_s.Set(v->name_hint, 1);
+    terms.Set(v, (1 / floordiv % floormod) * multiplier);
+    terms_s.Set(v->name_hint, (1 / floordiv % floormod) * multiplier);
   }
 
  public:
   Map<Var, Integer> terms;
   Map<String, Integer> terms_s;
+
+ private:
+  int64_t multiplier = 1;
+  int64_t floordiv = 1;
+  int64_t floormod = INT64_MAX;
 };
 
 class MatchBufferLower : public StmtExprMutator {
