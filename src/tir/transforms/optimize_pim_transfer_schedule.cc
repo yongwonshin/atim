@@ -272,7 +272,6 @@ class BulkPimCopy : public StmtExprMutator {
 
               symbol_arr.Set(2, Max(symbol_arr[2], max_global_index));
 
-              PrimExpr max_host_index = ana.Simplify(Substitute(pim, vmap) + 1 + bulk_size);
               ICHECK(max_host_index.as<IntImmNode>())
                   << "max_host_index must be a constant " << max_host_index;
               symbol_arr.Set(3, Max(symbol_arr[3], max_host_index));
