@@ -286,6 +286,7 @@ pim_test/*/results
 pim_test/data/*.bin
 pim_test/upmem/baseline
 pim_test/upmem/temp
+pim_test/upmem/autotuner_result/*
 
 temp
 temp-*

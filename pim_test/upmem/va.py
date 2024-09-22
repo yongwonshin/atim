@@ -109,7 +109,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    cleanup()
+    # cleanup()
     va = VA(
         repeat=args.repeat,
         warmup=args.warmup,
@@ -117,6 +117,7 @@ if __name__ == "__main__":
         verbose=args.verbose,
         compile_only=args.compile_only,
     )
+    cleanup()
 
     if not args.custom:
         config = va.extract_config(args)
@@ -124,16 +125,8 @@ if __name__ == "__main__":
         va.test(vaTile, **config)
     else:  # custom test config
         configs = [
-            (1000000, 1, 16, 256, "int32"),
-            (4000000, 4, 16, 256, "int32"),
-            (16000000, 16, 16, 256, "int32"),
-            (64000000, 64, 16, 256, "int32"),
-            (2500000, 1, 16, 256, "int32"),
-            (2500000, 4, 16, 256, "int32"),
             (2500000, 16, 16, 256, "int32"),
             (2500000, 64, 16, 256, "int32"),
-            (160000000, 256, 16, 256, "int32"),
-            (160000000, 512, 16, 256, "int32"),
             (160000000, 1024, 8, 256, "int32"),
             (160000000, 2048, 4, 256, "int32"),
         ]

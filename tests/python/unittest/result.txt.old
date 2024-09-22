@@ -1,0 +1,288 @@
+2024-04-05 11:03:34 [INFO] Logging directory: /tmp/tmpwuhl16ug/logs
+2024-04-05 11:03:45 [INFO] LocalBuilder: max_workers = 1
+2024-04-05 11:03:45 [INFO] LocalRunner: max_workers = 1
+2024-04-05 11:03:45 [INFO] [task_scheduler.cc:165] Initializing Task #0: "main"
+2024-04-05 11:03:45 [INFO] [task_scheduler.cc:326] 
+ ID | Name |      FLOP | Weight | Speed (GFLOPS) | Latency (us) | Weighted Latency (us) | Trials | Done 
+--------------------------------------------------------------------------------------------------------
+  0 | main | 134217728 |      1 |            N/A |          N/A |                   N/A |      0 |      
+--------------------------------------------------------------------------------------------------------
+Total trials: 0
+Total latency (us): 0
+
+2024-04-05 11:03:45 [INFO] [task_scheduler.cc:186] TaskScheduler picks Task #0: "main"
+2024-04-05 11:04:13 [INFO] [task_scheduler.cc:199] Sending 62 sample(s) to builder
+2024-04-05 11:04:33 [INFO] [task_scheduler.cc:201] Sending 62 sample(s) to runner
+2024-04-05 11:06:32 [DEBUG] XGB iter   0: tr-p-rmse: 1.168961	tr-a-peak@32: 0.000000	tr-rmse: 0.770534	tr-rmse: 0.770534
+2024-04-05 11:06:32 [DEBUG] XGB iter  25: tr-p-rmse: 1.008125	tr-a-peak@32: 0.652372	tr-rmse: 0.789316	tr-rmse: 0.789316
+2024-04-05 11:06:32 [DEBUG] XGB iter  50: tr-p-rmse: 1.008125	tr-a-peak@32: 0.652372	tr-rmse: 0.789316	tr-rmse: 0.789316
+2024-04-05 11:06:32 [DEBUG] XGB stopped. Best iteration: [19] tr-p-rmse:1.00812	tr-a-peak@32:0.65237	tr-rmse:0.78932	tr-rmse:0.78932 
+2024-04-05 11:06:32 [INFO] [task_scheduler.cc:243] [Updated] Task #0: "main"
+2024-04-05 11:06:32 [INFO] [task_scheduler.cc:326] 
+ ID | Name |      FLOP | Weight | Speed (GFLOPS) | Latency (us) | Weighted Latency (us) | Trials | Done 
+--------------------------------------------------------------------------------------------------------
+  0 | main | 134217728 |      1 |         2.8199 |   47596.0060 |            47596.0060 |     62 |      
+--------------------------------------------------------------------------------------------------------
+Total trials: 62
+Total latency (us): 47596
+
+2024-04-05 11:06:32 [INFO] [task_scheduler.cc:186] TaskScheduler picks Task #0: "main"
+2024-04-05 11:07:00 [INFO] [task_scheduler.cc:199] Sending 62 sample(s) to builder
+2024-04-05 11:07:21 [INFO] [task_scheduler.cc:201] Sending 62 sample(s) to runner
+2024-04-05 11:09:17 [DEBUG] XGB validation: p-rmse: 1.003280	a-peak@32: 0.000000
+2024-04-05 11:09:17 [DEBUG] XGB iter   0: tr-p-rmse: 1.135542	tr-a-peak@32: 0.124953	tr-rmse: 0.780899	tr-rmse: 0.780899
+2024-04-05 11:09:17 [DEBUG] XGB iter  25: tr-p-rmse: 1.034111	tr-a-peak@32: 0.124953	tr-rmse: 0.792473	tr-rmse: 0.792473
+2024-04-05 11:09:17 [DEBUG] XGB iter  50: tr-p-rmse: 1.034111	tr-a-peak@32: 0.124953	tr-rmse: 0.792473	tr-rmse: 0.792473
+2024-04-05 11:09:17 [DEBUG] XGB stopped. Best iteration: [21] tr-p-rmse:1.03411	tr-a-peak@32:0.12495	tr-rmse:0.79247	tr-rmse:0.79247 
+2024-04-05 11:09:17 [INFO] [task_scheduler.cc:243] [Updated] Task #0: "main"
+2024-04-05 11:09:17 [INFO] [task_scheduler.cc:326] 
+ ID | Name |      FLOP | Weight | Speed (GFLOPS) | Latency (us) | Weighted Latency (us) | Trials | Done 
+--------------------------------------------------------------------------------------------------------
+  0 | main | 134217728 |      1 |         2.8210 |   47578.2397 |            47578.2397 |    124 |      
+--------------------------------------------------------------------------------------------------------
+Total trials: 124
+Total latency (us): 47578.2
+
+2024-04-05 11:09:17 [INFO] [task_scheduler.cc:186] TaskScheduler picks Task #0: "main"
+2024-04-05 11:09:57 [INFO] [task_scheduler.cc:199] Sending 4 sample(s) to builder
+2024-04-05 11:09:59 [INFO] [task_scheduler.cc:201] Sending 4 sample(s) to runner
+2024-04-05 11:10:06 [DEBUG] XGB validation: p-rmse: 1.701447	a-peak@32: 1.000000
+2024-04-05 11:10:06 [INFO] [task_scheduler.cc:243] [Updated] Task #0: "main"
+2024-04-05 11:10:06 [INFO] [task_scheduler.cc:326] 
+ ID | Name |      FLOP | Weight | Speed (GFLOPS) | Latency (us) | Weighted Latency (us) | Trials | Done 
+--------------------------------------------------------------------------------------------------------
+  0 | main | 134217728 |      1 |         2.8210 |   47578.2397 |            47578.2397 |    128 |      
+--------------------------------------------------------------------------------------------------------
+Total trials: 128
+Total latency (us): 47578.2
+
+2024-04-05 11:10:06 [INFO] [task_scheduler.cc:266] Task #0 has finished. Remaining task(s): 0
+2024-04-05 11:10:06 [INFO] [task_scheduler.cc:326] 
+ ID | Name |      FLOP | Weight | Speed (GFLOPS) | Latency (us) | Weighted Latency (us) | Trials | Done 
+--------------------------------------------------------------------------------------------------------
+  0 | main | 134217728 |      1 |         2.8210 |   47578.2397 |            47578.2397 |    128 |    Y 
+--------------------------------------------------------------------------------------------------------
+Total trials: 128
+Total latency (us): 47578.2
+
+[90;03m# from tvm.script import ir as I[39;00m
+[90;03m# from tvm.script import tir as T[39;00m
+
+
+[95;03m@I[39;00m[35;01m.[39;00mir_module
+[32;01mclass[39;00m [34;01mModule[39;00m:
+    [95;03m@T[39;00m[35;01m.[39;00mprim_func
+    [32;01mdef[39;00m [34;01mmain[39;00m(
+        A: T[35;01m.[39;00mBuffer(([92m8192[39m, [92m8192[39m), [33m"[39m[33mint32[39m[33m"[39m),
+        B: T[35;01m.[39;00mBuffer(([92m8192[39m,), [33m"[39m[33mint32[39m[33m"[39m),
+        C: T[35;01m.[39;00mBuffer(([92m8192[39m,), [33m"[39m[33mint32[39m[33m"[39m),
+    ):
+        T[35;01m.[39;00mfunc_attr(
+            {
+                [33m"[39m[33mglobal_symbol[39m[33m"[39m: [33m"[39m[33mmain[39m[33m"[39m,
+                [33m"[39m[33mpragma_explicit_h2d[39m[33m"[39m: [[33m"[39m[33mA[39m[33m"[39m],
+                [33m"[39m[33mtir.noalias[39m[33m"[39m: T[35;01m.[39;00mbool([32;01mTrue[39;00m),
+            }
+        )
+        [90;03m# with T.block("root"):[39;00m
+        C_rf_global [35;01m=[39;00m T[35;01m.[39;00malloc_buffer(([92m16[39m, [92m8192[39m), [33m"[39m[33mint32[39m[33m"[39m)
+        C_rf_global_local [35;01m=[39;00m T[35;01m.[39;00malloc_buffer(([92m16[39m, [92m8192[39m), [33m"[39m[33mint32[39m[33m"[39m, scope[35;01m=[39;00m[33m"[39m[33mlocal[39m[33m"[39m)
+        A_local [35;01m=[39;00m T[35;01m.[39;00malloc_buffer(([92m8192[39m, [92m8192[39m), [33m"[39m[33mint32[39m[33m"[39m, scope[35;01m=[39;00m[33m"[39m[33mlocal[39m[33m"[39m)
+        B_local [35;01m=[39;00m T[35;01m.[39;00malloc_buffer(([92m8192[39m,), [33m"[39m[33mint32[39m[33m"[39m, scope[35;01m=[39;00m[33m"[39m[33mlocal[39m[33m"[39m)
+        [32;01mfor[39;00m k_0 [32;01min[39;00m T[35;01m.[39;00mthread_binding([92m16[39m, thread[35;01m=[39;00m[33m"[39m[33mblockIdx.x[39m[33m"[39m, annotations[35;01m=[39;00m{[33m"[39m[33mbank[39m[33m"[39m: [92m1[39m}):
+            [32;01mfor[39;00m i_0 [32;01min[39;00m T[35;01m.[39;00mthread_binding(
+                [92m128[39m, thread[35;01m=[39;00m[33m"[39m[33mblockIdx.y[39m[33m"[39m, annotations[35;01m=[39;00m{[33m"[39m[33mbank[39m[33m"[39m: [92m1[39m}
+            ):
+                [32;01mfor[39;00m i_1 [32;01min[39;00m T[35;01m.[39;00mthread_binding([92m2[39m, thread[35;01m=[39;00m[33m"[39m[33mthreadIdx.x[39m[33m"[39m):
+                    [32;01mfor[39;00m i_2 [32;01min[39;00m range([92m16[39m):
+                        [32;01mfor[39;00m i_3 [32;01min[39;00m range([92m2[39m):
+                            [32;01mwith[39;00m T[35;01m.[39;00mblock([33m"[39m[33mupdate_rf_init[39m[33m"[39m):
+                                vi [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial(
+                                    [92m8192[39m, i_0 [35;01m*[39;00m [92m64[39m [35;01m+[39;00m i_1 [35;01m*[39;00m [92m32[39m [35;01m+[39;00m i_2 [35;01m*[39;00m [92m2[39m [35;01m+[39;00m i_3
+                                )
+                                vk_0 [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial([92m16[39m, k_0)
+                                T[35;01m.[39;00mreads()
+                                T[35;01m.[39;00mwrites(C_rf_global_local[vk_0, vi])
+                                T[35;01m.[39;00mblock_attr(
+                                    {
+                                        [33m"[39m[33mmeta_schedule.meta_schedule_rfactor_producer_block[39m[33m"[39m: [92m1[39m,
+                                        [33m"[39m[33mmeta_schedule.tiling_structure[39m[33m"[39m: [33m"[39m[33mSSSSRR[39m[33m"[39m,
+                                    }
+                                )
+                                C_rf_global_local[vk_0, vi] [35;01m=[39;00m [92m0[39m
+                            [32;01mfor[39;00m k_1_0 [32;01min[39;00m range([92m256[39m):
+                                [32;01mfor[39;00m ax0_ax1_fused [32;01min[39;00m range([92m2[39m):
+                                    [32;01mwith[39;00m T[35;01m.[39;00mblock([33m"[39m[33mA_local[39m[33m"[39m):
+                                        v0 [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial(
+                                            [92m8192[39m, i_0 [35;01m*[39;00m [92m64[39m [35;01m+[39;00m i_1 [35;01m*[39;00m [92m32[39m [35;01m+[39;00m i_2 [35;01m*[39;00m [92m2[39m [35;01m+[39;00m i_3
+                                        )
+                                        v1 [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial(
+                                            [92m8192[39m, k_0 [35;01m*[39;00m [92m512[39m [35;01m+[39;00m k_1_0 [35;01m*[39;00m [92m2[39m [35;01m+[39;00m ax0_ax1_fused
+                                        )
+                                        T[35;01m.[39;00mreads(A[v0, v1])
+                                        T[35;01m.[39;00mwrites(A_local[v0, v1])
+                                        T[35;01m.[39;00mblock_attr(
+                                            {[33m"[39m[33mmeta_schedule.cooperative_fetch[39m[33m"[39m: [92m1[39m}
+                                        )
+                                        A_local[v0, v1] [35;01m=[39;00m A[v0, v1]
+                                [32;01mfor[39;00m ax0_fused [32;01min[39;00m range([92m2[39m):
+                                    [32;01mwith[39;00m T[35;01m.[39;00mblock([33m"[39m[33mB_local[39m[33m"[39m):
+                                        v0 [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial(
+                                            [92m8192[39m, k_0 [35;01m*[39;00m [92m512[39m [35;01m+[39;00m k_1_0 [35;01m*[39;00m [92m2[39m [35;01m+[39;00m ax0_fused
+                                        )
+                                        T[35;01m.[39;00mreads(B[v0])
+                                        T[35;01m.[39;00mwrites(B_local[v0])
+                                        T[35;01m.[39;00mblock_attr(
+                                            {[33m"[39m[33mmeta_schedule.cooperative_fetch[39m[33m"[39m: [92m1[39m}
+                                        )
+                                        B_local[v0] [35;01m=[39;00m B[v0]
+                                [32;01mfor[39;00m k_1_1 [32;01min[39;00m range([92m2[39m):
+                                    [32;01mwith[39;00m T[35;01m.[39;00mblock([33m"[39m[33mupdate_rf_update[39m[33m"[39m):
+                                        vi [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial(
+                                            [92m8192[39m, i_0 [35;01m*[39;00m [92m64[39m [35;01m+[39;00m i_1 [35;01m*[39;00m [92m32[39m [35;01m+[39;00m i_2 [35;01m*[39;00m [92m2[39m [35;01m+[39;00m i_3
+                                        )
+                                        vk_0 [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial([92m16[39m, k_0)
+                                        vk_1 [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mreduce([92m512[39m, k_1_0 [35;01m*[39;00m [92m2[39m [35;01m+[39;00m k_1_1)
+                                        T[35;01m.[39;00mreads(
+                                            C_rf_global_local[vk_0, vi],
+                                            A_local[vi, vk_0 [35;01m*[39;00m [92m512[39m [35;01m+[39;00m vk_1],
+                                            B_local[vk_0 [35;01m*[39;00m [92m512[39m [35;01m+[39;00m vk_1],
+                                        )
+                                        T[35;01m.[39;00mwrites(C_rf_global_local[vk_0, vi])
+                                        T[35;01m.[39;00mblock_attr(
+                                            {
+                                                [33m"[39m[33mmeta_schedule.meta_schedule_rfactor_producer_block[39m[33m"[39m: [92m1[39m,
+                                                [33m"[39m[33mmeta_schedule.tiling_structure[39m[33m"[39m: [33m"[39m[33mSSSSRR[39m[33m"[39m,
+                                            }
+                                        )
+                                        C_rf_global_local[vk_0, vi] [35;01m=[39;00m (
+                                            C_rf_global_local[vk_0, vi]
+                                            [35;01m+[39;00m A_local[vi, vk_0 [35;01m*[39;00m [92m512[39m [35;01m+[39;00m vk_1]
+                                            [35;01m*[39;00m B_local[vk_0 [35;01m*[39;00m [92m512[39m [35;01m+[39;00m vk_1]
+                                        )
+                        [32;01mfor[39;00m ax0, ax1 [32;01min[39;00m T[35;01m.[39;00mgrid([92m1[39m, [92m2[39m):
+                            [32;01mwith[39;00m T[35;01m.[39;00mblock([33m"[39m[33mC_rf_global_local[39m[33m"[39m):
+                                v0 [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial([92m16[39m, k_0 [35;01m+[39;00m ax0)
+                                v1 [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial(
+                                    [92m8192[39m, i_0 [35;01m*[39;00m [92m64[39m [35;01m+[39;00m i_1 [35;01m*[39;00m [92m32[39m [35;01m+[39;00m i_2 [35;01m*[39;00m [92m2[39m [35;01m+[39;00m ax1
+                                )
+                                T[35;01m.[39;00mreads(C_rf_global_local[v0, v1])
+                                T[35;01m.[39;00mwrites(C_rf_global[v0, v1])
+                                C_rf_global[v0, v1] [35;01m=[39;00m C_rf_global_local[v0, v1]
+        [32;01mfor[39;00m i_0 [32;01min[39;00m T[35;01m.[39;00mparallel([92m1[39m):
+            [32;01mfor[39;00m i_1 [32;01min[39;00m range([92m8192[39m):
+                [32;01mwith[39;00m T[35;01m.[39;00mblock([33m"[39m[33mupdate_init[39m[33m"[39m):
+                    vi [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial([92m8192[39m, i_0 [35;01m*[39;00m [92m8192[39m [35;01m+[39;00m i_1)
+                    T[35;01m.[39;00mreads()
+                    T[35;01m.[39;00mwrites(C[vi])
+                    T[35;01m.[39;00mblock_attr(
+                        {
+                            [33m"[39m[33mmeta_schedule.meta_schedule_rfactor_consumer_block[39m[33m"[39m: [92m1[39m,
+                            [33m"[39m[33mmeta_schedule.random_compute_producer[39m[33m"[39m: [92m1[39m,
+                        }
+                    )
+                    C[vi] [35;01m=[39;00m [92m0[39m
+                [32;01mfor[39;00m k_0 [32;01min[39;00m range([92m16[39m):
+                    [32;01mwith[39;00m T[35;01m.[39;00mblock([33m"[39m[33mupdate_update[39m[33m"[39m):
+                        vi [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mspatial([92m8192[39m, i_0 [35;01m*[39;00m [92m8192[39m [35;01m+[39;00m i_1)
+                        vk_0 [35;01m=[39;00m T[35;01m.[39;00maxis[35;01m.[39;00mreduce([92m16[39m, k_0)
+                        T[35;01m.[39;00mreads(C[vi], C_rf_global[vk_0, vi])
+                        T[35;01m.[39;00mwrites(C[vi])
+                        T[35;01m.[39;00mblock_attr(
+                            {
+                                [33m"[39m[33mmeta_schedule.meta_schedule_rfactor_consumer_block[39m[33m"[39m: [92m1[39m,
+                                [33m"[39m[33mmeta_schedule.random_compute_producer[39m[33m"[39m: [92m1[39m,
+                            }
+                        )
+                        C[vi] [35;01m=[39;00m C[vi] [35;01m+[39;00m C_rf_global[vk_0, vi]
+
+[90;03m# from tvm import tir[39;00m
+[32;01mdef[39;00m [34;01mapply_trace[39;00m(sch: tir[35;01m.[39;00mSchedule) [35;01m-[39;00m[35;01m>[39;00m [32;01mNone[39;00m:
+    b0 [35;01m=[39;00m sch[35;01m.[39;00mget_block(name[35;01m=[39;00m[33m"[39m[33mupdate[39m[33m"[39m, func_name[35;01m=[39;00m[33m"[39m[33mmain[39m[33m"[39m)
+    l1, l2 [35;01m=[39;00m sch[35;01m.[39;00mget_loops(block[35;01m=[39;00mb0)
+    v3, v4 [35;01m=[39;00m sch[35;01m.[39;00msample_perfect_tile2(
+        loop[35;01m=[39;00ml2, n[35;01m=[39;00m[92m2[39m, min_n_splits[35;01m=[39;00m[92m1[39m, max_n_splits[35;01m=[39;00m[92m64[39m, decision[35;01m=[39;00m[[92m16[39m, [92m512[39m]
+    )
+    l5, l6 [35;01m=[39;00m sch[35;01m.[39;00msplit(loop[35;01m=[39;00ml2, factors[35;01m=[39;00m[v3, v4], preserve_unit_iters[35;01m=[39;00m[32;01mTrue[39;00m)
+    b7 [35;01m=[39;00m sch[35;01m.[39;00mrfactor(loop[35;01m=[39;00ml5, factor_axis[35;01m=[39;00m[92m0[39m, mem_scope[35;01m=[39;00m[33m"[39m[33mglobal[39m[33m"[39m)
+    sch[35;01m.[39;00mannotate(
+        block_or_loop[35;01m=[39;00mb0, ann_key[35;01m=[39;00m[33m"[39m[33mmeta_schedule.random_compute_producer[39m[33m"[39m, ann_val[35;01m=[39;00m[92m1[39m
+    )
+    sch[35;01m.[39;00mannotate(
+        block_or_loop[35;01m=[39;00mb7,
+        ann_key[35;01m=[39;00m[33m"[39m[33mmeta_schedule.meta_schedule_rfactor_producer_block[39m[33m"[39m,
+        ann_val[35;01m=[39;00m[92m1[39m,
+    )
+    sch[35;01m.[39;00mannotate(
+        block_or_loop[35;01m=[39;00mb0,
+        ann_key[35;01m=[39;00m[33m"[39m[33mmeta_schedule.meta_schedule_rfactor_consumer_block[39m[33m"[39m,
+        ann_val[35;01m=[39;00m[92m1[39m,
+    )
+    b8 [35;01m=[39;00m sch[35;01m.[39;00mget_block(name[35;01m=[39;00m[33m"[39m[33mupdate_rf[39m[33m"[39m, func_name[35;01m=[39;00m[33m"[39m[33mmain[39m[33m"[39m)
+    b9 [35;01m=[39;00m sch[35;01m.[39;00mget_block(name[35;01m=[39;00m[33m"[39m[33mupdate[39m[33m"[39m, func_name[35;01m=[39;00m[33m"[39m[33mmain[39m[33m"[39m)
+    sch[35;01m.[39;00mreorder_block_iter_var(block[35;01m=[39;00mb8, new_order[35;01m=[39;00m[[92m1[39m, [92m0[39m, [92m2[39m])
+    sch[35;01m.[39;00mannotate(
+        block_or_loop[35;01m=[39;00mb8, ann_key[35;01m=[39;00m[33m"[39m[33mmeta_schedule.tiling_structure[39m[33m"[39m, ann_val[35;01m=[39;00m[33m"[39m[33mSSSSRR[39m[33m"[39m
+    )
+    l10, l11, l12 [35;01m=[39;00m sch[35;01m.[39;00mget_loops(block[35;01m=[39;00mb8)
+    v13, v14, v15, v16 [35;01m=[39;00m sch[35;01m.[39;00msample_perfect_tile(
+        loop[35;01m=[39;00ml10,
+        n[35;01m=[39;00m[92m4[39m,
+        max_innermost_factor[35;01m=[39;00m[92m256[39m,
+        min_innermost_factor[35;01m=[39;00m[92m2[39m,
+        decision[35;01m=[39;00m[[92m128[39m, [92m2[39m, [92m16[39m, [92m2[39m],
+    )
+    l17, l18, l19, l20 [35;01m=[39;00m sch[35;01m.[39;00msplit(
+        loop[35;01m=[39;00ml10, factors[35;01m=[39;00m[v13, v14, v15, v16], preserve_unit_iters[35;01m=[39;00m[32;01mTrue[39;00m
+    )
+    v21, v22 [35;01m=[39;00m sch[35;01m.[39;00msample_perfect_tile(
+        loop[35;01m=[39;00ml12,
+        n[35;01m=[39;00m[92m2[39m,
+        max_innermost_factor[35;01m=[39;00m[92m256[39m,
+        min_innermost_factor[35;01m=[39;00m[92m2[39m,
+        decision[35;01m=[39;00m[[92m256[39m, [92m2[39m],
+    )
+    l23, l24 [35;01m=[39;00m sch[35;01m.[39;00msplit(loop[35;01m=[39;00ml12, factors[35;01m=[39;00m[v21, v22], preserve_unit_iters[35;01m=[39;00m[32;01mTrue[39;00m)
+    sch[35;01m.[39;00mreorder(l11, l17, l18, l19, l20, l23, l24)
+    sch[35;01m.[39;00mbind(loop[35;01m=[39;00ml11, thread_axis[35;01m=[39;00m[33m"[39m[33mblockIdx.x[39m[33m"[39m)
+    sch[35;01m.[39;00mbind(loop[35;01m=[39;00ml17, thread_axis[35;01m=[39;00m[33m"[39m[33mblockIdx.y[39m[33m"[39m)
+    sch[35;01m.[39;00mbind(loop[35;01m=[39;00ml18, thread_axis[35;01m=[39;00m[33m"[39m[33mthreadIdx.x[39m[33m"[39m)
+    sch[35;01m.[39;00mannotate(block_or_loop[35;01m=[39;00ml11, ann_key[35;01m=[39;00m[33m"[39m[33mbank[39m[33m"[39m, ann_val[35;01m=[39;00m[92m1[39m)
+    sch[35;01m.[39;00mannotate(block_or_loop[35;01m=[39;00ml17, ann_key[35;01m=[39;00m[33m"[39m[33mbank[39m[33m"[39m, ann_val[35;01m=[39;00m[92m1[39m)
+    b25 [35;01m=[39;00m sch[35;01m.[39;00mcache_write(block[35;01m=[39;00mb8, write_buffer_index[35;01m=[39;00m[92m0[39m, storage_scope[35;01m=[39;00m[33m"[39m[33mlocal[39m[33m"[39m)
+    sch[35;01m.[39;00mreverse_compute_at(block[35;01m=[39;00mb25, loop[35;01m=[39;00ml19, preserve_unit_loops[35;01m=[39;00m[32;01mTrue[39;00m, index[35;01m=[39;00m[35;01m-[39;00m[92m1[39m)
+    b26 [35;01m=[39;00m sch[35;01m.[39;00mcache_read(
+        block[35;01m=[39;00mb8, read_buffer_index[35;01m=[39;00m[92m0[39m, storage_scope[35;01m=[39;00m[33m"[39m[33mlocal[39m[33m"[39m, consumer_blocks[35;01m=[39;00m[b8]
+    )
+    sch[35;01m.[39;00mcompute_at(block[35;01m=[39;00mb26, loop[35;01m=[39;00ml23, preserve_unit_loops[35;01m=[39;00m[32;01mTrue[39;00m, index[35;01m=[39;00m[35;01m-[39;00m[92m1[39m)
+    l27, l28, l29, l30, l31, l32, l33, l34 [35;01m=[39;00m sch[35;01m.[39;00mget_loops(block[35;01m=[39;00mb26)
+    l35 [35;01m=[39;00m sch[35;01m.[39;00mfuse(l33, l34, preserve_unit_iters[35;01m=[39;00m[32;01mTrue[39;00m)
+    v36 [35;01m=[39;00m sch[35;01m.[39;00msample_categorical(candidates[35;01m=[39;00m[[92m1[39m], probs[35;01m=[39;00m[[92m1[39m], decision[35;01m=[39;00m[92m0[39m)
+    sch[35;01m.[39;00mannotate(
+        block_or_loop[35;01m=[39;00mb26, ann_key[35;01m=[39;00m[33m"[39m[33mmeta_schedule.cooperative_fetch[39m[33m"[39m, ann_val[35;01m=[39;00mv36
+    )
+    b37 [35;01m=[39;00m sch[35;01m.[39;00mcache_read(
+        block[35;01m=[39;00mb8, read_buffer_index[35;01m=[39;00m[92m1[39m, storage_scope[35;01m=[39;00m[33m"[39m[33mlocal[39m[33m"[39m, consumer_blocks[35;01m=[39;00m[b8]
+    )
+    sch[35;01m.[39;00mcompute_at(block[35;01m=[39;00mb37, loop[35;01m=[39;00ml23, preserve_unit_loops[35;01m=[39;00m[32;01mTrue[39;00m, index[35;01m=[39;00m[35;01m-[39;00m[92m1[39m)
+    l38, l39, l40, l41, l42, l43, l44 [35;01m=[39;00m sch[35;01m.[39;00mget_loops(block[35;01m=[39;00mb37)
+    l45 [35;01m=[39;00m sch[35;01m.[39;00mfuse(l44, preserve_unit_iters[35;01m=[39;00m[32;01mTrue[39;00m)
+    v46 [35;01m=[39;00m sch[35;01m.[39;00msample_categorical(candidates[35;01m=[39;00m[[92m1[39m], probs[35;01m=[39;00m[[92m1[39m], decision[35;01m=[39;00m[92m0[39m)
+    sch[35;01m.[39;00mannotate(
+        block_or_loop[35;01m=[39;00mb37, ann_key[35;01m=[39;00m[33m"[39m[33mmeta_schedule.cooperative_fetch[39m[33m"[39m, ann_val[35;01m=[39;00mv46
+    )
+    sch[35;01m.[39;00mreorder_block_iter_var(block[35;01m=[39;00mb9, new_order[35;01m=[39;00m[[92m1[39m, [92m0[39m])
+    l47, l48 [35;01m=[39;00m sch[35;01m.[39;00mget_loops(block[35;01m=[39;00mb9)
+    v49, v50 [35;01m=[39;00m sch[35;01m.[39;00msample_perfect_tile2(
+        loop[35;01m=[39;00ml47, n[35;01m=[39;00m[92m2[39m, min_n_splits[35;01m=[39;00m[92m1[39m, max_n_splits[35;01m=[39;00m[92m96[39m, decision[35;01m=[39;00m[[92m1[39m, [92m8192[39m]
+    )
+    l51, l52 [35;01m=[39;00m sch[35;01m.[39;00msplit(loop[35;01m=[39;00ml47, factors[35;01m=[39;00m[v49, v50], preserve_unit_iters[35;01m=[39;00m[32;01mTrue[39;00m)
+    sch[35;01m.[39;00mparallel(loop[35;01m=[39;00ml51)
+    sch[35;01m.[39;00menter_postproc()
+    b53 [35;01m=[39;00m sch[35;01m.[39;00mget_block(name[35;01m=[39;00m[33m"[39m[33mupdate_rf[39m[33m"[39m, func_name[35;01m=[39;00m[33m"[39m[33mmain[39m[33m"[39m)
+    l54, l55, l56, l57, l58, l59, l60 [35;01m=[39;00m sch[35;01m.[39;00mget_loops(block[35;01m=[39;00mb53)
+    b61 [35;01m=[39;00m sch[35;01m.[39;00mdecompose_reduction(block[35;01m=[39;00mb53, loop[35;01m=[39;00ml59)
+    b62 [35;01m=[39;00m sch[35;01m.[39;00mget_block(name[35;01m=[39;00m[33m"[39m[33mupdate[39m[33m"[39m, func_name[35;01m=[39;00m[33m"[39m[33mmain[39m[33m"[39m)
+    l63, l64, l65 [35;01m=[39;00m sch[35;01m.[39;00mget_loops(block[35;01m=[39;00mb62)
+    b66 [35;01m=[39;00m sch[35;01m.[39;00mdecompose_reduction(block[35;01m=[39;00mb62, loop[35;01m=[39;00ml65)
+
