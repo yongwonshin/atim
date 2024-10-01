@@ -132,7 +132,7 @@ void CodeGenUpmem::BindThreadIndex(const IterVar& iv) {
   if (ts.rank == 1) {
     var_idmap_[iv->var.get()] = "tasklet_id";
   } else if (ts.rank == 0) {
-    if (ts.dim_index == 0) var_idmap_[iv->var.get()] = "blockIdx.x";
+    if (ts.dim_index == 0) var_idmap_[iv->var.get()] = "blockIdx_x";
     if (ts.dim_index == 1) var_idmap_[iv->var.get()] = "blockIdx_y";
     if (ts.dim_index == 2) var_idmap_[iv->var.get()] = "blockIdx_z";
   }
