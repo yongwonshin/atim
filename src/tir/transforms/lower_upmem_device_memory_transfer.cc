@@ -336,10 +336,12 @@ Pass LowerUpmemDeviceMemoryTransfer() {
           arith::RewriteSimplifier::kApplyConstraintsToBooleanBranches));
 
       m = MoveGlobalIndices()(std::move(m));  // required
-      m = LowerMemoryTransfer()(std::move(m));
 
       int64_t opt_level =
           ctx->GetConfig<Integer>("tir.UpmemKernelOptimize", Integer(3)).value().IntValue();
+      if (opt_level >= 1) {
+        m = LowerMemoryTransfer()(std::move(m));
+      }
       // 0: NO OPT
       // 1: CLIP
       // 2: CLIP -> HOIST (WEAK)
@@ -348,26 +350,26 @@ Pass LowerUpmemDeviceMemoryTransfer() {
       // 5: HOIST (STRONG)
       // 6: HOIST (STRONG) -> CLIP
       switch (opt_level) {
-        case 1:
-          m = EliminateBranch(&ana)(std::move(m));
-          break;
         case 2:
           m = EliminateBranch(&ana)(std::move(m));
-          m = Hoist(&ana, false)(std::move(m));
           break;
         case 3:
           m = EliminateBranch(&ana)(std::move(m));
-          m = Hoist(&ana, true)(std::move(m));
+          m = Hoist(&ana, false)(std::move(m));
           break;
         case 4:
           m = EliminateBranch(&ana)(std::move(m));
           m = Hoist(&ana, true)(std::move(m));
-          m = EliminateBranch(&ana)(std::move(m));
           break;
         case 5:
+          m = EliminateBranch(&ana)(std::move(m));
           m = Hoist(&ana, true)(std::move(m));
+          m = EliminateBranch(&ana)(std::move(m));
           break;
         case 6:
+          m = Hoist(&ana, true)(std::move(m));
+          break;
+        case 7:
           m = Hoist(&ana, true)(std::move(m));
           m = EliminateBranch(&ana)(std::move(m));
           break;
