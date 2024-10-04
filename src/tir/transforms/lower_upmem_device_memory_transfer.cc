@@ -98,34 +98,6 @@ class EliminateBranch : public StmtExprMutator {
   }
 };
 
-// class MergeBranch : public StmtExprMutator {
-//  public:
-//   arith::Analyzer* ana;
-
-//   MergeBranch(arith::Analyzer* ana) : ana(ana) {}
-
-//   Stmt VisitStmt_(const SeqStmtNode* op) final {
-//     PrimExpr agg_cond = make_const(DataType::Bool(), false);
-//     std::vector<Stmt> new_seq;
-
-//     for (const Stmt& stmt : op->seq) {
-//       if (const IfThenElseNode* branch = stmt.as<IfThenElseNode>()) {
-//         agg_cond = ana->Simplify(agg_cond || branch->condition);
-//         new_seq.push_back(branch->then_case);
-//       } else {
-//         return StmtExprMutator::VisitStmt_(op);
-//       }
-//     }
-
-//     for (const Stmt& stmt : op->seq) {
-//       if (!ana->CanProve(Not(agg_cond) || stmt.as<IfThenElseNode>()->condition)) {
-//         return StmtExprMutator::VisitStmt_(op);  // Return early if condition fails
-//       }
-//     }
-//     return IfThenElse(agg_cond, SeqStmt(new_seq));
-//   }
-// };
-
 class Hoist : public StmtExprMutator {
  public:
   arith::Analyzer* ana;
@@ -145,6 +117,17 @@ class Hoist : public StmtExprMutator {
     return nullptr;
   }
 
+  bool isDPUCopyNode(Stmt stmt) {
+    if (const EvaluateNode* eval = stmt.as<EvaluateNode>()) {
+      if (const CallNode* call = eval->value.as<CallNode>()) {
+        if (call->op.same_as(builtin::dpu_mram_read())) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   Stmt VisitStmt_(const ForNode* op) final {
     Stmt body = this->VisitStmt(op->body);
     if (const IfThenElseNode* branch = CheckInvariantIf(body, op->loop_var)) {
@@ -162,33 +145,35 @@ class Hoist : public StmtExprMutator {
     return StmtExprMutator::VisitStmt_(op);
   }
 
-  Stmt VisitStmt_(const SeqStmtNode* op) final {
-    PrimExpr cond;
-    Array<Stmt> seq;
-
-    for (const Stmt& stmt : op->seq) {
-      Stmt new_stmt = this->VisitStmt(stmt);
-      if (const IfThenElseNode* branch = new_stmt.as<IfThenElseNode>()) {
-        if (cond.defined() && !ana->CanProve(Not(cond) || branch->condition)) {
-          return StmtExprMutator::VisitStmt_(op);
-        }
-        cond = branch->condition;
-        seq.push_back(branch->then_case);
-        continue;
-      }
-      else if (ignore_mram_read) {
-        if (const EvaluateNode* eval = new_stmt.as<EvaluateNode>()) {
-          if (const CallNode* call = eval->value.as<CallNode>()) {
-            if (call->op.same_as(builtin::dpu_mram_read())) {
-              seq.push_back(new_stmt);
-              continue;
-            }
-          }
-        }
-      }
-      return StmtExprMutator::VisitStmt_(op);
+  Array<Stmt> InternalVisitSubsequence(Array<Stmt> seq) {
+    Stmt first_stmt = this->VisitStmt(seq[0]);
+    if (seq.size() == 1) {
+      return {first_stmt};
     }
-    return cond.defined() ? IfThenElse(cond, SeqStmt(seq)) : StmtExprMutator::VisitStmt_(op);
+
+    Array<Stmt> rest = InternalVisitSubsequence(Array<Stmt>(seq.begin() + 1, seq.end()));
+    if (rest.size() == 1) {
+      if (const IfThenElseNode* branch = rest[0].as<IfThenElseNode>()) {
+        if (ignore_mram_read && isDPUCopyNode(first_stmt)) {
+          auto new_seq = SeqStmt::Flatten(std::vector<Stmt>({first_stmt, branch->then_case}));
+          return {IfThenElse(branch->condition, new_seq)};
+        }
+        if (const IfThenElseNode* candidate_branch = first_stmt.as<IfThenElseNode>()) {
+          auto new_seq = SeqStmt::Flatten(std::vector<Stmt>({candidate_branch->then_case, branch->then_case}));
+          return {IfThenElse(branch->condition, new_seq)};
+        }
+      }
+    }
+    rest.insert(rest.begin(), first_stmt);
+    return rest;
+  }
+
+  Stmt VisitStmt_(const SeqStmtNode* op) final {
+    Array<Stmt> seq = InternalVisitSubsequence(op->seq);
+    if (seq.size() == 1) {
+      return seq[0];
+    }
+    return SeqStmt(seq);
   }
 };
 
@@ -354,7 +339,7 @@ Pass LowerUpmemDeviceMemoryTransfer() {
       m = LowerMemoryTransfer()(std::move(m));
 
       int64_t opt_level =
-          ctx->GetConfig<Integer>("tir.UpmemKernelOptimize", Integer(0)).value().IntValue();
+          ctx->GetConfig<Integer>("tir.UpmemKernelOptimize", Integer(3)).value().IntValue();
       // 0: NO OPT
       // 1: CLIP
       // 2: CLIP -> HOIST (WEAK)
