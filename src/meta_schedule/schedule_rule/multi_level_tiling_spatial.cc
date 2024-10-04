@@ -16,8 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./multi_level_tiling.h"
-
 #include <tvm/meta_schedule/schedule_rule.h>
 
 #include <algorithm>
@@ -26,9 +24,11 @@
 #include <vector>
 
 #include "../utils.h"
+#include "./multi_level_tiling.h"
 
 namespace tvm {
 namespace tir {
+namespace {
 
 std::vector<int> GetReadBufferNDims(const StmtSRef& block_sref) {
   const BlockNode* block = TVM_SREF_TO_BLOCK(block_sref);
@@ -44,6 +44,7 @@ std::vector<int> GetReadBufferNDims(const StmtSRef& block_sref) {
   return results;
 }
 
+}  // namespace
 }  // namespace tir
 }  // namespace tvm
 
@@ -55,24 +56,8 @@ using tir::IterVarType;
 using tir::LoopRV;
 using tir::Schedule;
 
-TVM_REGISTER_OBJECT_TYPE(StateNode);
-
-State::State(tir::Schedule sch, tir::BlockRV block_rv, Array<Array<tir::LoopRV>> tiles) {
-  ObjectPtr<StateNode> node = make_object<StateNode>();
-  node->sch = std::move(sch);
-  node->block_rv = std::move(block_rv);
-  node->tiles = std::move(tiles);
-  data_ = std::move(node);
-}
-
-State StateNode::Copy() const {
-  ObjectPtr<StateNode> node = make_object<StateNode>(*this);
-  node->sch = sch->Copy();
-  return State(node);
-}
-
 // Do nothing; Inherited from ScheduleRuleNode
-void MultiLevelTilingNode::InitializeWithTuneContext(const TuneContext& context) {
+void MultiLevelTilingSpatialNode::InitializeWithTuneContext(const TuneContext& context) {
   if (Optional<Integer> v = context->target.value()->GetAttr<Integer>("max_threads_per_block")) {
     this->max_threads_per_block_ = v.value()->value;
     if (Optional<Integer> v = context->target.value()->GetAttr<Integer>("thread_warp_size")) {
@@ -102,12 +87,12 @@ void MultiLevelTilingNode::InitializeWithTuneContext(const TuneContext& context)
 }
 
 // Entry of the mega rule; Inherited from ScheduleRuleNode
-Array<Schedule> MultiLevelTilingNode::Apply(const Schedule& sch, const BlockRV& block_rv) {
-  // std::cerr << "MultiLevelTilingNode::Apply: "
+Array<Schedule> MultiLevelTilingSpatialNode::Apply(const Schedule& sch, const BlockRV& block_rv) {
+  // std::cerr << "MultiLevelTilingSpatialNode::Apply: "
   //           << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
   bool try_reorder = false;
   if ((filter_fn_ && filter_fn_.value()(sch, sch->GetSRef(block_rv))) ||
-      NeedsMultiLevelTiling(sch->state(), sch->GetSRef(block_rv), &try_reorder)) {
+      NeedsMultiLevelTilingSpatial(sch->state(), sch->GetSRef(block_rv), &try_reorder)) {
     sch->Annotate(block_rv, tir::attr::meta_schedule_tiling_structure, structure);
 
     Array<Schedule> results;
@@ -121,7 +106,7 @@ Array<Schedule> MultiLevelTilingNode::Apply(const Schedule& sch, const BlockRV& 
     // std::cerr << sch->mod() << std::endl;
   }
   if ((filter_fn_ && filter_fn_.value()(sch, sch->GetSRef(block_rv))) ||
-      NeedsMultiLevelTiling(sch->state(), sch->GetSRef(block_rv))) {
+      NeedsMultiLevelTilingSpatial(sch->state(), sch->GetSRef(block_rv))) {
     sch->Annotate(block_rv, tir::attr::meta_schedule_tiling_structure, structure);
 
     Array<Schedule> results;
@@ -141,25 +126,23 @@ Array<Schedule> MultiLevelTilingNode::Apply(const Schedule& sch, const BlockRV& 
 }
 
 // Inherited from ScheduleRuleNode
-ScheduleRule MultiLevelTilingNode::Clone() const {
-  ObjectPtr<MultiLevelTilingNode> n = make_object<MultiLevelTilingNode>(*this);
+ScheduleRule MultiLevelTilingSpatialNode::Clone() const {
+  ObjectPtr<MultiLevelTilingSpatialNode> n = make_object<MultiLevelTilingSpatialNode>(*this);
   return ScheduleRule(n);
 }
 
-std::vector<State> MultiLevelTilingNode::ApplySubRules(std::vector<State> states) {
+std::vector<State> MultiLevelTilingSpatialNode::ApplySubRules(std::vector<State> states) {
   states = SubRule(std::move(states), [&](State state) { return TileLoopNest(std::move(state)); });
   states = SubRule(std::move(states), [&](State state) { return AddWriteReuse(std::move(state)); });
   states = SubRule(std::move(states), [&](State state) { return AddReadReuse(std::move(state)); });
-  states =
-      SubRule(std::move(states), [&](State state) { return AddAsyncPipeline(std::move(state)); });
   return states;
 }
 
-std::vector<State> MultiLevelTilingNode::ApplyExtraSubRules(std::vector<State> states) {
+std::vector<State> MultiLevelTilingSpatialNode::ApplyExtraSubRules(std::vector<State> states) {
   return states;
 }
 
-std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
+std::vector<State> MultiLevelTilingSpatialNode::AddWriteReuse(State state) const {
   const ReuseConfig& config = this->reuse_write_;
   if (config.req == ReuseType::kNoReuse) {
     return {std::move(state)};
@@ -208,7 +191,7 @@ std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
   return results;
 }
 
-std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> MultiLevelTilingNode::SplitLoop(
+std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> MultiLevelTilingSpatialNode::SplitLoop(
     const Schedule& sch, BlockRV block, LoopRV loop, int n_tiles,
     Array<Optional<PrimExpr>> split_factors) const {
   if (split_factors.empty()) {
@@ -231,7 +214,7 @@ std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> MultiLevelTilingNode::SplitLoo
   }
 }
 
-std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
+std::vector<State> MultiLevelTilingSpatialNode::TileLoopNest(State state) const {
   Schedule& sch = state->sch;
   const BlockRV& block_rv = state->block_rv;
   // Step 1. Assuming trivial binding, pair the loops and their iter-var-types
@@ -240,12 +223,11 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   ICHECK_EQ(loops.size(), iter_types.size());
   // Step 2. For each loop axis, tile it
   int64_t spatial_loop_product = 1;
-  std::vector<Array<LoopRV>> tiles(s_indices_.size() + r_indices_.size());
+  std::vector<Array<LoopRV>> tiles(s_indices_.size());
   state->tile_factors.resize(tiles.size());
   std::vector<Array<tir::ExprRV>> tile_factors;
   tile_factors.resize(tiles.size());
   int s = 0, r = 0;
-  Array<LoopRV> hoisted_loops;
   int num_spatial_loops = 0;
   for (int i = 0, n = loops.size(); i < n; ++i) {
     if (iter_types[i] == IterVarType::kDataPar) {
@@ -254,10 +236,6 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   }
   for (int i = 0, n = loops.size(); i < n; ++i) {
     LoopRV loop = loops[i];
-    if (this->hoist_rfactor_loop && i == num_spatial_loops - 1) {
-      hoisted_loops.push_back(loop);
-      continue;
-    }
     const std::vector<int>* idx = nullptr;
 
     Array<Optional<PrimExpr>> split_factors;
@@ -275,18 +253,6 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
         s++;
         if (split_factors.empty()) {
           // Skip splitting
-          hoisted_loops.push_back(loop);
-          continue;
-        }
-      }
-    } else if (iter_types[i] == IterVarType::kCommReduce) {
-      idx = &r_indices_;
-      if (!this->r_split_factors.empty()) {
-        split_factors = this->r_split_factors[r];
-        r++;
-        if (split_factors.empty()) {
-          // Skip splitting
-          hoisted_loops.push_back(loop);
           continue;
         }
       }
@@ -307,17 +273,6 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
         tile_factors[idx->at(j)].push_back(factors[j]);
       }
     }
-  }
-  Optional<Integer> rfactor_producer =
-      tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_producer_block);
-  Optional<Integer> rfactor_consumer =
-      tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_consumer_block);
-  if (!hoisted_loops.empty() && (rfactor_producer.defined() || rfactor_consumer.defined())) {
-    ICHECK_EQ(hoisted_loops.size(), 1);
-    LoopRV loop = hoisted_loops[0];
-    tiles.insert(tiles.begin(), {loop});
-    tile_factors.insert(tile_factors.begin(),
-                        {Integer(*tir::GetLoopIntExtent(sch->Get(loop).get()))});
   }
   state->tile_factors = std::move(tile_factors);
   // Step 3. Reorder to organize the tiles
@@ -365,7 +320,7 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   return {state};
 }
 
-std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
+std::vector<State> MultiLevelTilingSpatialNode::AddReadReuse(State state) const {
   const ReuseConfig& config = this->reuse_read_;
   if (config.req == ReuseType::kNoReuse) {
     return {std::move(state)};
@@ -421,45 +376,8 @@ std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
   return results;
 }
 
-std::vector<State> MultiLevelTilingNode::AddAsyncPipeline(State state) const {
-  // For arch that does not support async pipeline, this->stages will be an empty vector
-  if (r_indices_.size() < 1 || this->stages.empty()) {
-    return {state};
-  }
-  // Current only support default config used by ScheduleRule::DefaultCUDA
-  // @see src/meta_schedule/schedule_rule/schedule_rule.cc
-  // check the reduce loop contains exactly 3 for loops
-  // therefore it matches the notation array size in the following code
-  tir::StmtSRef r_loop_sref = state->sch->GetSRef(state->tiles[r_indices_[0]].back());
-  const tir::ForNode* r_for_loop = TVM_SREF_TO_FOR(r_loop_sref);
-  Array<tir::Stmt> seq = Downcast<tir::SeqStmt>(r_for_loop->body)->seq;
-  if (seq.size() != 3) {
-    return {state};
-  }
-  for (auto& stmt : seq) {
-    if (!stmt.as<tir::ForNode>()) {
-      return {state};
-    }
-  }
-
-  std::vector<State> ret;
-  ret.push_back(state);
-  for (int stage : this->stages) {
-    State new_state = state->Copy();
-    LoopRV r_loop_fused = new_state->sch->Fuse(new_state->tiles[r_indices_[0]]);
-    new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_stage,
-                             Array<Integer>{0, 0, stage - 2});
-    new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_order,
-                             Array<Integer>{0, 1, 2});
-    new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_async_stages,
-                             Array<Integer>{0});
-    ret.push_back(std::move(new_state));
-  }
-  return ret;
-}
-
-void MultiLevelTilingNode::AnnotateCooperativeFetching(Schedule* sch,
-                                                       const tir::BlockRV& block) const {
+void MultiLevelTilingSpatialNode::AnnotateCooperativeFetching(Schedule* sch,
+                                                              const tir::BlockRV& block) const {
   // Filter out invalid vector lanes according to the data type.
   const tir::BlockNode* block_node = (*sch)->GetSRef(block)->StmtAs<tir::BlockNode>();
   ICHECK_EQ(block_node->writes.size(), 1);
@@ -493,23 +411,7 @@ void MultiLevelTilingNode::AnnotateCooperativeFetching(Schedule* sch,
   }
 }
 
-// Constructor
-
-ScheduleRule ScheduleRule::MultiLevelTiling(String structure, Optional<Array<String>> tile_binds,
-                                            Optional<Integer> max_innermost_factor,
-                                            Optional<Array<Integer>> vector_load_lens,
-                                            Optional<Map<String, ObjectRef>> reuse_read,
-                                            Optional<Map<String, ObjectRef>> reuse_write,
-                                            Optional<runtime::PackedFunc> filter_fn) {
-  auto node = MultiLevelTilingInitCommon<MultiLevelTilingNode>(
-      structure, tile_binds, max_innermost_factor, vector_load_lens, reuse_read, reuse_write);
-  node->filter_fn_ = filter_fn;
-  return ScheduleRule(node);
-}
-
-TVM_REGISTER_NODE_TYPE(MultiLevelTilingNode);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleRuleMultiLevelTiling")
-    .set_body_typed(ScheduleRule::MultiLevelTiling);
+TVM_REGISTER_NODE_TYPE(MultiLevelTilingSpatialNode);
 
 }  // namespace meta_schedule
 }  // namespace tvm

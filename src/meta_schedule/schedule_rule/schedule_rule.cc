@@ -191,7 +191,7 @@ Array<ScheduleRule> ScheduleRule::DefaultHBMPIM() {
               Array<Array<Integer>>{{0, N_CHAN, N_PU, N_GRF_B}, {}},
               /*r_split_factors=*/
               Array<Array<Integer>>{{0, N_BANK / N_PU}},
-              /*hoisted_loops=*/NullOpt,
+              /*hoist_rfactor_loop=*/NullOpt,
               /*annotations=*/
               Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
                                             {{"pim", Bool(true)}, {"change_pim_mode", Bool(true)}},
@@ -207,7 +207,8 @@ Array<ScheduleRule> ScheduleRule::DefaultHBMPIM() {
 }
 
 Array<ScheduleRule> ScheduleRule::DefaultUPMEM() {
-  return {ScheduleRule::ApplyCustomRule(), ScheduleRule::InlineConstantScalars(),
+  return {ScheduleRule::ApplyCustomRule(),
+          ScheduleRule::InlineConstantScalars(),
           ScheduleRule::AutoInline(
               /*into_producer=*/false,
               /*into_consumer=*/true,
@@ -217,62 +218,146 @@ Array<ScheduleRule> ScheduleRule::DefaultUPMEM() {
               /*require_ordered=*/true,
               /*disallow_op=*/Array<String>{"tir.exp"}),
           ScheduleRule::AddUPMEMRFactor(
-              /*min_n_splits=*/1,
-              /*max_n_splits=*/64,
+              /*min_n_splits=*/2,
+              /*max_n_splits=*/2048,
               /*mem_scope=*/"global"),
-          //   ScheduleRule::MultiLevelTilingUPMEM(
-          //       /*intrin_groups=*/NullOpt,
-          //       /*structure=*/"SSSSRR",
-          //       /*tile_binds=*/Array<String>{"blockIdx.x", "blockIdx.y", "threadIdx.x"},
-          //       /*max_innermost_factor=*/Integer(256),
-          //       /*vector_load_lens=*/Array<Integer>{1},
-          //       /*reuse_read=*/
-          //       Map<String, ObjectRef>{{"req", String("must")},
-          //                              {"levels", Array<Integer>{6, 6}},  //
-          //                              {"scope", String("local")},
-          //                              {"sep", Bool(true)}},
-          //       /*reuse_write=*/
-          //       Map<String, ObjectRef>{{"req", String("must")},
-          //                              {"levels", Array<Integer>{4}},  //
-          //                              {"scope", String("local")},
-          //                              {"sep", Bool(true)}},
-          //       /*min_innermost_factor=*/Integer(2),
-          //       /*reordering=*/Array<Integer>{0, 1, 2, 3, 4, 5},
-          //       /*s_split_factors=*/NullOpt,
-          //       /*r_split_factors=*/NullOpt,
-          //       /*hoisted_loops=*/Array<Integer>{1},
-          //       /*annotations=*/
-          //       Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
-          //                                     {{"bank", Integer(BankOrdering::DENSE)}}},
-          //       /*reduction_tile_binds=*/Array<String>{"parallel"},
-          //       /*reduction_annotations=*/NullOpt)};
           ScheduleRule::MultiLevelTilingUPMEM(
               /*intrin_groups=*/NullOpt,
-              /*structure=*/"SSSSRR",
-              /*tile_binds=*/Array<String>{"blockIdx.x", "blockIdx.y", "blockIdx.z", "threadIdx.x"},
+              /*structure=*/"SSSSRSRSR",
+              /*tile_binds=*/Array<String>{"blockIdx.x", "blockIdx.y", "threadIdx.x"},
               /*max_innermost_factor=*/Integer(256),
               /*vector_load_lens=*/Array<Integer>{1},
               /*reuse_read=*/
               Map<String, ObjectRef>{{"req", String("must")},
-                                     {"levels", Array<Integer>{6, 6}},  //
+                                     {"levels", Array<Integer>{7, 9}},  //
                                      {"scope", String("local")},
-                                     {"sep", Bool(true)}},
+                                     {"sep", Bool(false)}},
               /*reuse_write=*/
               Map<String, ObjectRef>{{"req", String("must")},
-                                     {"levels", Array<Integer>{4}},  //
+                                     {"levels", Array<Integer>{7, 9}},  //
                                      {"scope", String("local")},
-                                     {"sep", Bool(true)}},
+                                     {"sep", Bool(false)}},
               /*min_innermost_factor=*/Integer(2),
-              /*reordering=*/Array<Integer>{0, 1, 2, 3, 4, 5},
+              /*reordering=*/NullOpt,
               /*s_split_factors=*/NullOpt,
               /*r_split_factors=*/NullOpt,
-              /*hoisted_loops=*/Array<Integer>{2},
+              /*hoist_rfactor_loop=*/Bool(true),
               /*annotations=*/
-              Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
-                                            {{"bank", Integer(BankOrdering::DENSE)}},
-                                            {{"bank", Integer(BankOrdering::DENSE)}}},
+              Array<Map<String, ObjectRef>>{
+                  {{"bank", Integer(BankOrdering::DENSE)}},
+                  {{"bank", Integer(BankOrdering::DENSE)}},
+              },
               /*reduction_tile_binds=*/Array<String>{"parallel"},
+              /*reduction_annotations=*/NullOpt),
+          ScheduleRule::MultiLevelTilingSpatialUPMEM(
+              /*intrin_groups=*/NullOpt,
+              /*structure=*/"SSSSS",
+              /*tile_binds=*/Array<String>{"blockIdx.x", "threadIdx.x"},
+              /*max_innermost_factor=*/Integer(256),
+              /*vector_load_lens=*/Array<Integer>{1},
+              /*reuse_read=*/
+              Map<String, ObjectRef>{{"req", String("must")},
+                                     {"levels", Array<Integer>{4, 5}},  //
+                                     {"scope", String("local")},
+                                     {"sep", Bool(false)}},
+              /*reuse_write=*/
+              Map<String, ObjectRef>{{"req", String("must")},
+                                     {"levels", Array<Integer>{4, 5}},  //
+                                     {"scope", String("local")},
+                                     {"sep", Bool(false)}},
+              /*min_innermost_factor=*/Integer(2),
+              /*reordering=*/NullOpt,
+              /*s_split_factors=*/NullOpt,
+              /*r_split_factors=*/NullOpt,
+              /*hoist_rfactor_loop=*/NullOpt,
+              /*annotations=*/
+              Array<Map<String, ObjectRef>>{
+                  {{"bank", Integer(BankOrdering::DENSE)}},
+              },
+              /*reduction_tile_binds=*/NullOpt,
+              /*reduction_annotations=*/NullOpt),
+          ScheduleRule::PrepareCrossThreadReduction(),
+          ScheduleRule::MultiLevelTilingReductionUPMEM(
+              /*intrin_groups=*/NullOpt,
+              /*structure=*/"SRRR",
+              /*tile_binds=*/Array<String>{"blockIdx.x", "threadIdx.x"},
+              /*max_innermost_factor=*/Integer(256),
+              /*vector_load_lens=*/Array<Integer>{1},
+              /*reuse_read=*/
+              Map<String, ObjectRef>{{"req", String("must")},
+                                     {"levels", Array<Integer>{3, 4}},  //
+                                     {"scope", String("local")},
+                                     {"sep", Bool(false)}},
+              /*reuse_write=*/
+              Map<String, ObjectRef>{{"req", String("must")},
+                                     {"levels", Array<Integer>{3, 4}},  //
+                                     {"scope", String("local")},
+                                     {"sep", Bool(false)}},
+              /*min_innermost_factor=*/Integer(2),
+              /*reordering=*/NullOpt,
+              /*s_split_factors=*/NullOpt,
+              /*r_split_factors=*/NullOpt,
+              /*hoist_rfactor_loop=*/NullOpt,
+              /*annotations=*/
+              Array<Map<String, ObjectRef>>{
+                  {{"bank", Integer(BankOrdering::DENSE)}},
+              },
+              /*reduction_tile_binds=*/NullOpt,
               /*reduction_annotations=*/NullOpt)};
+  //   ScheduleRule::MultiLevelTilingUPMEM(
+  //       /*intrin_groups=*/NullOpt,
+  //       /*structure=*/"SSSSRR",
+  //       /*tile_binds=*/Array<String>{"blockIdx.x", "blockIdx.y", "threadIdx.x"},
+  //       /*max_innermost_factor=*/Integer(256),
+  //       /*vector_load_lens=*/Array<Integer>{1},
+  //       /*reuse_read=*/
+  //       Map<String, ObjectRef>{{"req", String("must")},
+  //                              {"levels", Array<Integer>{6, 6}},  //
+  //                              {"scope", String("local")},
+  //                              {"sep", Bool(true)}},
+  //       /*reuse_write=*/
+  //       Map<String, ObjectRef>{{"req", String("must")},
+  //                              {"levels", Array<Integer>{4}},  //
+  //                              {"scope", String("local")},
+  //                              {"sep", Bool(true)}},
+  //       /*min_innermost_factor=*/Integer(2),
+  //       /*reordering=*/Array<Integer>{0, 1, 2, 3, 4, 5},
+  //       /*s_split_factors=*/NullOpt,
+  //       /*r_split_factors=*/NullOpt,
+  //       /*hoist_rfactor_loop=*/Bool(true),
+  //       /*annotations=*/
+  //       Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
+  //                                     {{"bank", Integer(BankOrdering::DENSE)}}},
+  //       /*reduction_tile_binds=*/Array<String>{"parallel"},
+  //       /*reduction_annotations=*/NullOpt)};
+  //   ScheduleRule::MultiLevelTilingUPMEM(
+  //       /*intrin_groups=*/NullOpt,
+  //       /*structure=*/"SSSSRR",
+  //       /*tile_binds=*/Array<String>{"blockIdx.x", "blockIdx.y", "blockIdx.z",
+  //       "threadIdx.x"},
+  //       /*max_innermost_factor=*/Integer(256),
+  //       /*vector_load_lens=*/Array<Integer>{1},
+  //       /*reuse_read=*/
+  //       Map<String, ObjectRef>{{"req", String("must")},
+  //                              {"levels", Array<Integer>{6, 6}},  //
+  //                              {"scope", String("local")},
+  //                              {"sep", Bool(true)}},
+  //       /*reuse_write=*/
+  //       Map<String, ObjectRef>{{"req", String("must")},
+  //                              {"levels", Array<Integer>{4}},  //
+  //                              {"scope", String("local")},
+  //                              {"sep", Bool(true)}},
+  //       /*min_innermost_factor=*/Integer(2),
+  //       /*reordering=*/Array<Integer>{0, 1, 2, 3, 4, 5},
+  //       /*s_split_factors=*/NullOpt,
+  //       /*r_split_factors=*/NullOpt,
+  //       /*hoist_rfactor_loop=*/Bool(true),
+  //       /*annotations=*/
+  //       Array<Map<String, ObjectRef>>{{{"bank", Integer(BankOrdering::DENSE)}},
+  //                                     {{"bank", Integer(BankOrdering::DENSE)}},
+  //                                     {{"bank", Integer(BankOrdering::DENSE)}}},
+  //       /*reduction_tile_binds=*/Array<String>{"parallel"},
+  //       /*reduction_annotations=*/NullOpt)};
 }
 
 Array<ScheduleRule> ScheduleRule::DefaultCUDA() {

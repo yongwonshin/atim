@@ -64,8 +64,18 @@ Array<tir::Schedule> AddUPMEMRFactorNode::Apply(const tir::Schedule& sch,
   tir::StmtSRef block_sref = sch->GetSRef(block_rv);
   Array<tir::LoopRV> loops = sch->GetLoops(block_rv);
   if (loops.empty()) {
-    // std::cerr << "NOT RFACTORED: " << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint
-    //           << std::endl;
+    // std::cerr << "NOT RFACTORED (empty): "
+    //           << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
+    return {sch};
+  }
+
+  const tir::ScheduleState& self = sch->state();
+  const tir::StmtSRef& scope_sref = GetScopeRoot(self, block_sref,
+                                                 /*require_stage_pipeline=*/false);
+  if (!IsReductionBlock(self, block_sref, scope_sref) || HasBeenMultiLevelTiled(block_sref) ||
+      IsSpatial(block_sref)) {
+    // std::cerr << "NOT RFACTORED (no reduction): "
+    //           << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
     return {sch};
   }
 
@@ -90,7 +100,9 @@ Array<tir::Schedule> AddUPMEMRFactorNode::Apply(const tir::Schedule& sch,
     sch_tmp->Seed(sch->ForkSeed());
     try {
       // rfactor at 0-axis
-      const tir::BlockRV& block_rf = sch_tmp->RFactor(split_loop, num_spatial_loops - 1, mem_scope);
+      int axis = num_spatial_loops - 1;
+      if (num_spatial_loops == 0) axis = 0;
+      const tir::BlockRV& block_rf = sch_tmp->RFactor(split_loop, axis, mem_scope);
       Array<tir::LoopRV> axes = sch_tmp->GetLoops(block_rf);
       ICHECK_GT(axes.size(), num_spatial_loops);
 

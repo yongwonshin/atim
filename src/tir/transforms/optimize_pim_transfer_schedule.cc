@@ -262,10 +262,17 @@ class BulkPimCopy : public StmtExprMutator {
             String var_name = vname;
             if (symbol_map.find(var_name) != symbol_map.end()) {
               arith::Analyzer ana;
-              PrimExpr max_global_index =
-                  ana.Simplify(Substitute(Substitute(host, vmap), vmap) + 1 + bulk_size);
-              PrimExpr max_host_index =
-                  ana.Simplify(Substitute(Substitute(pim, vmap), vmap) + 1 + bulk_size);
+              PrimExpr max_global_index = host;
+              PrimExpr max_host_index = pim;
+              for (int i = 0; i < 10 && !max_global_index.as<IntImmNode>(); i++) {
+                max_global_index = ana.Simplify(Substitute(max_global_index, vmap));
+              }
+              for (int i = 0; i < 10 && !max_host_index.as<IntImmNode>(); i++) {
+                max_host_index = ana.Simplify(Substitute(max_host_index, vmap));
+              }
+              max_global_index = ana.Simplify(max_global_index + 1 + bulk_size);
+              max_host_index = ana.Simplify(max_host_index + 1 + bulk_size);
+
               Array<PrimExpr> symbol_arr = symbol_map[var_name];
               ICHECK(max_global_index.as<IntImmNode>())
                   << "max_global_index must be a constant " << max_global_index;

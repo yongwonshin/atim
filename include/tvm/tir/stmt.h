@@ -1617,6 +1617,9 @@ constexpr const char* meta_schedule_rfactor_consumer_block =
 constexpr const char* meta_schedule_rfactor_producer_block =
     "meta_schedule.meta_schedule_rfactor_producer_block";
 
+constexpr const char* meta_schedule_cross_thread_reduction_block =
+    "meta_schedule.meta_schedule_cross_thread_reduction_block";
+
 /*! \brief Mark auto-parallel setting on the block. */
 constexpr const char* meta_schedule_parallel = "meta_schedule.parallel";
 

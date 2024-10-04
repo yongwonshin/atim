@@ -1583,6 +1583,145 @@ bool NeedsMultiLevelTiling(const ScheduleState& self, const StmtSRef& block_sref
   return total_unused_block_vars >= 1;
 }
 
+bool NeedsMultiLevelTilingSpatial(const ScheduleState& self, const StmtSRef& block_sref,
+                                  bool* try_reorder) {
+  if (HasBeenMultiLevelTiled(block_sref)) {
+    // std::cerr << "NOT NeedsMultiLevelTiling: 1" << std::endl;
+    return false;
+  }
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block_sref);
+  if (block->writes.size() != 1 || block->reads.empty() || !IsSpatial(block_sref) ||
+      (false || !IsTrivialBinding(self, block_sref))) {
+    if (block->writes.size() == 1 && !block->reads.empty() && IsSpatial(block_sref) &&
+        !IsTrivialBinding(self, block_sref)) {
+      if (try_reorder != nullptr) {
+        *try_reorder = true;
+      }
+    }
+    return false;
+  }
+  const BufferNode* write_buffer = block->writes[0]->buffer.get();
+  // Step 1. Sort out spatial block variables. Skip the block iters of domain [0, 1), since such
+  // block iters distracts the following check of the unused block iters.
+  std::vector<const VarNode*> spatial_block_vars;
+  spatial_block_vars.reserve(block->iter_vars.size());
+  for (const IterVar& block_var : block->iter_vars) {
+    const int64_t* dom_min = as_const_int(block_var->dom->min);
+    const int64_t* dom_extent = as_const_int(block_var->dom->extent);
+    bool has_trivial_dom =
+        dom_min != nullptr && dom_extent != nullptr && *dom_min == 0 && *dom_extent == 1;
+    if (block_var->iter_type == IterVarType::kDataPar && !has_trivial_dom) {
+      spatial_block_vars.push_back(block_var->var.get());
+    }
+  }
+  // Step 2. Enumerate each read region, check the number of block vars that are not used
+  // to index the read region
+  int total_unused_block_vars = 0;
+  std::unordered_set<const BufferNode*> read_buffers;
+  read_buffers.reserve(block->reads.size());
+  for (const BufferRegion& buffer_region : block->reads) {
+    const BufferNode* buffer = buffer_region->buffer.get();
+    const Array<Range>& regions = buffer_region->region;
+    // Step 2.1. Duplication of read buffers are not allowed
+    if (read_buffers.insert(buffer).second == false) {
+      return false;
+    }
+    // Step 2.2. Skip the reduction buffer
+    if (buffer == write_buffer) {
+      continue;
+    }
+    // Step 2.3. Collect the block vars that are used to index the read region
+    std::unordered_set<const VarNode*> vars;
+    for (const Range& range : regions) {
+      if (as_const_int(range->extent) == nullptr) {
+        return false;
+      }
+      for (const Var& var : UndefinedVars(range->min)) {
+        vars.insert(var.get());
+      }
+    }
+    // // Step 2.4. Check if the block vars are not used to index the read region
+    // int n_unused_block_vars = 0;
+    // for (const VarNode* block_var : spatial_block_vars) {
+    //   if (vars.count(block_var) == 0) {
+    //     ++n_unused_block_vars;
+    //   }
+    // }
+    // total_unused_block_vars += n_unused_block_vars;
+  }
+  // return total_unused_block_vars > 0;
+  return true;
+}
+
+bool NeedsMultiLevelTilingReduction(const ScheduleState& self, const StmtSRef& block_sref,
+                                    bool* try_reorder) {
+  if (HasBeenMultiLevelTiled(block_sref)) {
+    return false;
+  }
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block_sref);
+  if (block->writes.size() != 1 || block->reads.empty() || IsSpatial(block_sref) ||
+      (false || !IsTrivialBinding(self, block_sref))) {
+    if (block->writes.size() == 1 && !block->reads.empty() && !IsSpatial(block_sref) &&
+        !IsTrivialBinding(self, block_sref)) {
+      if (try_reorder != nullptr) {
+        *try_reorder = true;
+      }
+    }
+    return false;
+  }
+  const BufferNode* write_buffer = block->writes[0]->buffer.get();
+  // Step 1. Sort out spatial block variables. Skip the block iters of domain [0, 1), since such
+  // block iters distracts the following check of the unused block iters.
+  std::vector<const VarNode*> spatial_block_vars;
+  spatial_block_vars.reserve(block->iter_vars.size());
+  for (const IterVar& block_var : block->iter_vars) {
+    const int64_t* dom_min = as_const_int(block_var->dom->min);
+    const int64_t* dom_extent = as_const_int(block_var->dom->extent);
+    bool has_trivial_dom =
+        dom_min != nullptr && dom_extent != nullptr && *dom_min == 0 && *dom_extent == 1;
+    if (block_var->iter_type == IterVarType::kDataPar && !has_trivial_dom) {
+      spatial_block_vars.push_back(block_var->var.get());
+    }
+  }
+  // Step 2. Enumerate each read region, check the number of block vars that are not used
+  // to index the read region
+  int total_unused_block_vars = 0;
+  std::unordered_set<const BufferNode*> read_buffers;
+  read_buffers.reserve(block->reads.size());
+  for (const BufferRegion& buffer_region : block->reads) {
+    const BufferNode* buffer = buffer_region->buffer.get();
+    const Array<Range>& regions = buffer_region->region;
+    // Step 2.1. Duplication of read buffers are not allowed
+    if (read_buffers.insert(buffer).second == false) {
+      return false;
+    }
+    // Step 2.2. Skip the reduction buffer
+    if (buffer == write_buffer) {
+      continue;
+    }
+    // Step 2.3. Collect the block vars that are used to index the read region
+    std::unordered_set<const VarNode*> vars;
+    for (const Range& range : regions) {
+      if (as_const_int(range->extent) == nullptr) {
+        return false;
+      }
+      for (const Var& var : UndefinedVars(range->min)) {
+        vars.insert(var.get());
+      }
+    }
+    // // Step 2.4. Check if the block vars are not used to index the read region
+    // int n_unused_block_vars = 0;
+    // for (const VarNode* block_var : spatial_block_vars) {
+    //   if (vars.count(block_var) == 0) {
+    //     ++n_unused_block_vars;
+    //   }
+    // }
+    // total_unused_block_vars += n_unused_block_vars;
+  }
+  // return total_unused_block_vars > 0;
+  return true;
+}
+
 bool IsSpatialPrimFunc(const PrimFunc& func) {
   bool result = true;
   PreOrderVisit(func->body, [&result](const ObjectRef& obj) {

@@ -39,36 +39,37 @@ using tir::Schedule;
  * \brief Extension of MultiLevelTiling for auto-tensorizing with a single group of tensor core
  * intrinsics.
  */
-class MultiLevelTilingUPMEMNode : public MultiLevelTilingNode {
+class MultiLevelTilingReductionUPMEMNode : public MultiLevelTilingReductionNode {
  private:
-  // Subrule: Add tensorized store
-  inline std::vector<State> HandleReductionBlockUPMEM(State state) const;
-
   // Override ApplySubRules to apply tensorization-specific sub-rules
   virtual std::vector<State> ApplySubRules(std::vector<State> states) final;
   virtual std::vector<State> ApplyExtraSubRules(std::vector<State> states) final;
+  inline std::vector<State> DecomposeReduction(State state) const;
+  inline std::vector<State> HandleReductionBlockUPMEM(State state) const;
 
   // Override Apply to apply tensorization-specific analysis before applying sub-rules
   Array<Schedule> Apply(const Schedule& sch, const BlockRV& block_rv) final;
 
   // Inherited from ScheduleRuleNode
   ScheduleRule Clone() const final {
-    ObjectPtr<MultiLevelTilingUPMEMNode> n = make_object<MultiLevelTilingUPMEMNode>(*this);
+    ObjectPtr<MultiLevelTilingReductionUPMEMNode> n =
+        make_object<MultiLevelTilingReductionUPMEMNode>(*this);
     return ScheduleRule(n);
   }
 
  public:
   /*! \brief Whether to use software pipeline */
   bool use_software_pipeline = false;
-  static constexpr const char* _type_key = "meta_schedule.MultiLevelTilingUPMEM";
-  TVM_DECLARE_FINAL_OBJECT_INFO(MultiLevelTilingUPMEMNode, MultiLevelTilingNode);
+  static constexpr const char* _type_key = "meta_schedule.MultiLevelTilingReductionUPMEM";
+  TVM_DECLARE_FINAL_OBJECT_INFO(MultiLevelTilingReductionUPMEMNode, MultiLevelTilingNode);
 
  private:
 };
 
 // Entry of the mega rule; Inherited from ScheduleRuleNode
-Array<Schedule> MultiLevelTilingUPMEMNode::Apply(const Schedule& sch, const BlockRV& block_rv) {
-  auto res = MultiLevelTilingNode::Apply(sch->Copy(), block_rv);
+Array<Schedule> MultiLevelTilingReductionUPMEMNode::Apply(const Schedule& sch,
+                                                          const BlockRV& block_rv) {
+  auto res = MultiLevelTilingReductionNode::Apply(sch->Copy(), block_rv);
 
   if (res.empty()) {
     TVM_PY_LOG(INFO, logger) << "The workload cannot be tensorized.";
@@ -77,11 +78,80 @@ Array<Schedule> MultiLevelTilingUPMEMNode::Apply(const Schedule& sch, const Bloc
   return res;
 }
 
-std::vector<State> MultiLevelTilingUPMEMNode::ApplySubRules(std::vector<State> states) {
+std::vector<State> MultiLevelTilingReductionUPMEMNode::DecomposeReduction(State state) const {
+  Schedule& sch = state->sch;
+  const BlockRV& block_rv = state->block_rv;
+  if (tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_producer_block)
+          .defined()) {
+    std::vector<State> results;
+    State new_state = state->Copy();
+    Array<tir::LoopRV> loops = new_state->sch->GetLoops(block_rv);
+    new_state->sch->DecomposeReduction(block_rv, loops[2]);
+    results.push_back(new_state);
+    return results;
+  }
+  return {state};
+}
+
+std::vector<State> MultiLevelTilingReductionUPMEMNode::ApplyExtraSubRules(
+    std::vector<State> states) {
+  states = SubRule(std::move(states), [&](State state) {
+    auto new_states = HandleReductionBlockUPMEM(state);
+    for (auto new_state : new_states) {
+      // std::cerr << "AFTER HandleReductionBlockUPMEM (reduction): " << std::endl;
+      // std::cerr << new_state->sch->mod() << std::endl;
+    }
+    return new_states;
+  });
+  return states;
+}
+
+std::vector<State> MultiLevelTilingReductionUPMEMNode::HandleReductionBlockUPMEM(
+    State state) const {
+  Schedule& sch = state->sch;
+  const BlockRV& block_rv = state->block_rv;
+  if (tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_consumer_block)
+          .defined()) {
+    // std::cerr << "HandleReductionBlockUPMEM START!" << std::endl;
+    Array<LoopRV> loops = sch->GetLoops(block_rv);
+    std::vector<IterVarType> iter_types = GetBlockVarTypes(sch->GetSRef(state->block_rv));
+
+    Array<LoopRV> fused;
+    if (fused.size() > 1) {
+      fused = {sch->Fuse(fused)};
+    } else {
+      fused = loops;
+    }
+
+    int n_binds = std::min(reduction_tile_binds.size(), fused.size());
+    for (int i = 0; i < n_binds; ++i) {
+      if (!reduction_tile_binds[i].empty()) {
+        ICHECK_EQ(reduction_tile_binds[i], "parallel");
+        Array<tir::ExprRV> factors =
+            sch->SamplePerfectTile2(fused[i], 2, 1, std::thread::hardware_concurrency());
+        Array<tir::LoopRV> splits = sch->Split(/*loop=*/fused[i], {factors.begin(), factors.end()});
+        sch->Parallel(splits[0]);
+        // sch->Parallel(fused[i]);
+      }
+    }
+  }
+
+  return {state};
+}
+
+std::vector<State> MultiLevelTilingReductionUPMEMNode::ApplySubRules(std::vector<State> states) {
+  // states = SubRule(std::move(states), [&](State state) {
+  //   auto new_states = RemoveRfactorAnnotations(state);
+  //   for (auto new_state : new_states) {
+  //     std::cerr << "AFTER RemoveRfactorAnnotations (reduction): " << std::endl;
+  //     std::cerr << new_state->sch->mod() << std::endl;
+  //   }
+  //   return new_states;
+  // });
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = TileLoopNest(std::move(state));
     for (auto new_state : new_states) {
-      // std::cerr << "AFTER TILING: " << std::endl;
+      // std::cerr << "AFTER TILING (reduction): " << std::endl;
       // std::cerr << new_state->sch->mod() << std::endl;
     }
     return new_states;
@@ -102,14 +172,10 @@ std::vector<State> MultiLevelTilingUPMEMNode::ApplySubRules(std::vector<State> s
     }
     return new_states;
   });
-  return states;
-}
-
-std::vector<State> MultiLevelTilingUPMEMNode::ApplyExtraSubRules(std::vector<State> states) {
   states = SubRule(std::move(states), [&](State state) {
-    auto new_states = HandleReductionBlockUPMEM(state);
+    auto new_states = DecomposeReduction(state);
     for (auto new_state : new_states) {
-      // std::cerr << "AFTER HandleReductionBlockUPMEM: " << std::endl;
+      // std::cerr << "AFTER DecomposeReduction (reduction): " << std::endl;
       // std::cerr << new_state->sch->mod() << std::endl;
     }
     return new_states;
@@ -117,45 +183,7 @@ std::vector<State> MultiLevelTilingUPMEMNode::ApplyExtraSubRules(std::vector<Sta
   return states;
 }
 
-std::vector<State> MultiLevelTilingUPMEMNode::HandleReductionBlockUPMEM(State state) const {
-  Schedule& sch = state->sch;
-  const BlockRV& block_rv = state->block_rv;
-  if (tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_consumer_block)
-          .defined()) {
-    Array<LoopRV> loops = sch->GetLoops(block_rv);
-    std::vector<IterVarType> iter_types = GetBlockVarTypes(sch->GetSRef(state->block_rv));
-
-    Array<LoopRV> fused;
-    bool all_reduction_iter_vars = true;
-    for (int i = 0; i < loops.size(); i++) {
-      if (iter_types[i] == IterVarType::kDataPar) {
-        fused.push_back(loops[i]);
-        all_reduction_iter_vars = false;
-      }
-    }
-    if (fused.size() > 1) {
-      fused = {sch->Fuse(fused)};
-    } else {
-      fused = loops;
-    }
-
-    int n_binds = std::min(reduction_tile_binds.size(), fused.size());
-    for (int i = 0; i < n_binds; ++i) {
-      if (!all_reduction_iter_vars && !reduction_tile_binds[i].empty()) {
-        ICHECK_EQ(reduction_tile_binds[i], "parallel");
-        Array<tir::ExprRV> factors =
-            sch->SamplePerfectTile2(fused[i], 2, 1, std::thread::hardware_concurrency());
-        Array<tir::LoopRV> splits = sch->Split(/*loop=*/fused[i], {factors.begin(), factors.end()});
-        sch->Parallel(splits[0]);
-        // sch->Parallel(fused[i]);
-      }
-    }
-  }
-
-  return {state};
-}
-
-ScheduleRule ScheduleRule::MultiLevelTilingUPMEM(
+ScheduleRule ScheduleRule::MultiLevelTilingReductionUPMEM(
     Optional<Array<Map<String, String>>> intrin_groups, String structure,
     Optional<Array<String>> tile_binds, Optional<Integer> max_innermost_factor,
     Optional<Array<Integer>> vector_load_lens, Optional<Map<String, ObjectRef>> reuse_read,
@@ -165,20 +193,20 @@ ScheduleRule ScheduleRule::MultiLevelTilingUPMEM(
     Optional<Array<Map<String, ObjectRef>>> annotations,
     Optional<Array<String>> reduction_tile_binds,
     Optional<Array<Map<String, ObjectRef>>> reduction_annotations) {
-  auto node = MultiLevelTilingInitCommon<MultiLevelTilingUPMEMNode>(
+  auto node = MultiLevelTilingInitCommon<MultiLevelTilingReductionUPMEMNode>(
       structure, tile_binds, max_innermost_factor, vector_load_lens, reuse_read, reuse_write,
       min_innermost_factor, reordering, s_split_factors, r_split_factors, hoist_rfactor_loop,
       annotations, reduction_tile_binds, reduction_annotations);
   return ScheduleRule(node);
 }
 
-bool ScheduleRule::IsMultiLevelTilingUPMEM(const ScheduleRule& rule) {
-  return rule->IsInstance<MultiLevelTilingUPMEMNode>();
+bool ScheduleRule::IsMultiLevelTilingReductionUPMEM(const ScheduleRule& rule) {
+  return rule->IsInstance<MultiLevelTilingReductionUPMEMNode>();
 }
 
-TVM_REGISTER_NODE_TYPE(MultiLevelTilingUPMEMNode);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleRuleMultiLevelTilingUPMEM")
-    .set_body_typed(ScheduleRule::MultiLevelTilingUPMEM);
+TVM_REGISTER_NODE_TYPE(MultiLevelTilingReductionUPMEMNode);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleRuleMultiLevelTilingReductionUPMEM")
+    .set_body_typed(ScheduleRule::MultiLevelTilingReductionUPMEM);
 
 }  // namespace meta_schedule
 }  // namespace tvm

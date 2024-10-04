@@ -239,14 +239,16 @@ class ScheduleRule : public runtime::ObjectRef {
   TVM_DLL static bool IsAddHBMPIMRFactor(const ScheduleRule& rule);
   TVM_DLL static ScheduleRule AddUPMEMRFactor(int min_n_splits, int max_n_splits,
                                               const String& mem_scope = "global");
+  TVM_DLL static ScheduleRule PrepareCrossThreadReduction();
   TVM_DLL static bool IsAddUPMEMRFactor(const ScheduleRule& rule);
+  TVM_DLL static bool IsPrepareCrossThreadReduction(const ScheduleRule& rule);
   TVM_DLL static ScheduleRule MultiLevelTilingHBMPIM(
       Array<Map<String, String>> intrin_groups, String structure,
       Optional<Array<String>> tile_binds, Optional<Integer> max_innermost_factor,
       Optional<Array<Integer>> vector_load_lens, Optional<Map<String, ObjectRef>> reuse_read,
       Optional<Map<String, ObjectRef>> reuse_write, Optional<Integer> min_innermost_factor,
       Optional<Array<Integer>> reordering, Optional<Array<Array<Integer>>> s_split_factors,
-      Optional<Array<Array<Integer>>> r_split_factors, Optional<Array<Integer>> hoisted_loops,
+      Optional<Array<Array<Integer>>> r_split_factors, Optional<Bool> hoist_rfactor_loop,
       Optional<Array<Map<String, ObjectRef>>> annotations,
       Optional<Array<String>> reduction_tile_binds,
       Optional<Array<Map<String, ObjectRef>>> reduction_annotations);
@@ -256,12 +258,34 @@ class ScheduleRule : public runtime::ObjectRef {
       Optional<Array<Integer>> vector_load_lens, Optional<Map<String, ObjectRef>> reuse_read,
       Optional<Map<String, ObjectRef>> reuse_write, Optional<Integer> min_innermost_factor,
       Optional<Array<Integer>> reordering, Optional<Array<Array<Integer>>> s_split_factors,
-      Optional<Array<Array<Integer>>> r_split_factors, Optional<Array<Integer>> hoisted_loops,
+      Optional<Array<Array<Integer>>> r_split_factors, Optional<Bool> hoist_rfactor_loop,
+      Optional<Array<Map<String, ObjectRef>>> annotations,
+      Optional<Array<String>> reduction_tile_binds,
+      Optional<Array<Map<String, ObjectRef>>> reduction_annotations);
+  TVM_DLL static ScheduleRule MultiLevelTilingSpatialUPMEM(
+      Optional<Array<Map<String, String>>> intrin_groups, String structure,
+      Optional<Array<String>> tile_binds, Optional<Integer> max_innermost_factor,
+      Optional<Array<Integer>> vector_load_lens, Optional<Map<String, ObjectRef>> reuse_read,
+      Optional<Map<String, ObjectRef>> reuse_write, Optional<Integer> min_innermost_factor,
+      Optional<Array<Integer>> reordering, Optional<Array<Array<Integer>>> s_split_factors,
+      Optional<Array<Array<Integer>>> r_split_factors, Optional<Bool> hoist_rfactor_loop,
+      Optional<Array<Map<String, ObjectRef>>> annotations,
+      Optional<Array<String>> reduction_tile_binds,
+      Optional<Array<Map<String, ObjectRef>>> reduction_annotations);
+  TVM_DLL static ScheduleRule MultiLevelTilingReductionUPMEM(
+      Optional<Array<Map<String, String>>> intrin_groups, String structure,
+      Optional<Array<String>> tile_binds, Optional<Integer> max_innermost_factor,
+      Optional<Array<Integer>> vector_load_lens, Optional<Map<String, ObjectRef>> reuse_read,
+      Optional<Map<String, ObjectRef>> reuse_write, Optional<Integer> min_innermost_factor,
+      Optional<Array<Integer>> reordering, Optional<Array<Array<Integer>>> s_split_factors,
+      Optional<Array<Array<Integer>>> r_split_factors, Optional<Bool> hoist_rfactor_loop,
       Optional<Array<Map<String, ObjectRef>>> annotations,
       Optional<Array<String>> reduction_tile_binds,
       Optional<Array<Map<String, ObjectRef>>> reduction_annotations);
   TVM_DLL static bool IsMultiLevelTilingHBMPIM(const ScheduleRule& rule);
   TVM_DLL static bool IsMultiLevelTilingUPMEM(const ScheduleRule& rule);
+  TVM_DLL static bool IsMultiLevelTilingSpatialUPMEM(const ScheduleRule& rule);
+  TVM_DLL static bool IsMultiLevelTilingReductionUPMEM(const ScheduleRule& rule);
   /*!
    * \brief Create a schedule rule which applies cross-thread reduction to some reduction blocks
    * correspondingly when needed

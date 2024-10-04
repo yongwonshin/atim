@@ -16,8 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./multi_level_tiling.h"
-
 #include <tvm/meta_schedule/schedule_rule.h>
 
 #include <algorithm>
@@ -26,9 +24,11 @@
 #include <vector>
 
 #include "../utils.h"
+#include "./multi_level_tiling.h"
 
 namespace tvm {
 namespace tir {
+namespace {
 
 std::vector<int> GetReadBufferNDims(const StmtSRef& block_sref) {
   const BlockNode* block = TVM_SREF_TO_BLOCK(block_sref);
@@ -44,6 +44,7 @@ std::vector<int> GetReadBufferNDims(const StmtSRef& block_sref) {
   return results;
 }
 
+}  // namespace
 }  // namespace tir
 }  // namespace tvm
 
@@ -55,24 +56,72 @@ using tir::IterVarType;
 using tir::LoopRV;
 using tir::Schedule;
 
-TVM_REGISTER_OBJECT_TYPE(StateNode);
+namespace {
+/*! \brief Collecting all the blocks */
+class BlockCollector : public tir::StmtVisitor {
+ public:
+  static Array<tir::BlockRV> Collect(const tir::Schedule& sch,
+                                     const runtime::PackedFunc f_block_filter = nullptr) {  //
+    return BlockCollector(sch, f_block_filter).Run();
+  }
 
-State::State(tir::Schedule sch, tir::BlockRV block_rv, Array<Array<tir::LoopRV>> tiles) {
-  ObjectPtr<StateNode> node = make_object<StateNode>();
-  node->sch = std::move(sch);
-  node->block_rv = std::move(block_rv);
-  node->tiles = std::move(tiles);
-  data_ = std::move(node);
-}
+ private:
+  /*! \brief Entry point */
+  Array<tir::BlockRV> Run() {
+    std::vector<tir::BlockRV> results;
+    for (const auto& kv : sch_->mod()->functions) {
+      const GlobalVar& gv = kv.first;         // `gv->name_hint` is the name of the function
+      const BaseFunc& base_func = kv.second;  // this can be PrimFunc or relay::Function
+      if (const auto* func = base_func.as<tir::PrimFuncNode>()) {
+        func_name_ = gv->name_hint;
+        block_names_.clear();
+        blocks_to_collect_.clear();
+        VisitStmt(func->body);
+        for (const String& name : blocks_to_collect_) {
+          results.push_back(sch_->GetBlock(name, func_name_));
+        }
+      }
+    }
+    return results;
+  }
+  /*! \brief Constructor */
+  explicit BlockCollector(const tir::Schedule& sch,
+                          const runtime::PackedFunc f_block_filter = nullptr)
+      : sch_(sch), f_block_filter_(f_block_filter) {}
+  /*! \brief Override the Stmt visiting behaviour */
+  void VisitStmt_(const tir::BlockNode* block) override {
+    tir::StmtVisitor::VisitStmt_(block);
+    CHECK(block_names_.count(block->name_hint) == 0)
+        << "Duplicated block name " << block->name_hint << " in function " << func_name_
+        << " not supported!";
+    block_names_.insert(block->name_hint);
 
-State StateNode::Copy() const {
-  ObjectPtr<StateNode> node = make_object<StateNode>(*this);
-  node->sch = sch->Copy();
-  return State(node);
-}
+    // If filter function is provided, use it to selectively collect blocks.
+    // Otherwise collect all blocks.
+    Bool collect_block = Bool(true);
+    if (f_block_filter_ != nullptr) {
+      collect_block = f_block_filter_(GetRef<tir::Block>(block));
+    }
+    if (collect_block) {
+      blocks_to_collect_.push_back(block->name_hint);
+    }
+  }
+
+  /*! \brief The schedule to be collected */
+  const tir::Schedule& sch_;
+  /*! \brief An optional packed func that allows only certain blocks to be collected. */
+  const runtime::PackedFunc f_block_filter_;
+  /*! \brief The set of func name and block name pair */
+  std::unordered_set<String> block_names_;
+  /* \brief The list of blocks to collect in order */
+  Array<String> blocks_to_collect_;
+  /*! \brief Name of the current PrimFunc */
+  String func_name_;
+};
+}  // namespace
 
 // Do nothing; Inherited from ScheduleRuleNode
-void MultiLevelTilingNode::InitializeWithTuneContext(const TuneContext& context) {
+void MultiLevelTilingReductionNode::InitializeWithTuneContext(const TuneContext& context) {
   if (Optional<Integer> v = context->target.value()->GetAttr<Integer>("max_threads_per_block")) {
     this->max_threads_per_block_ = v.value()->value;
     if (Optional<Integer> v = context->target.value()->GetAttr<Integer>("thread_warp_size")) {
@@ -102,12 +151,10 @@ void MultiLevelTilingNode::InitializeWithTuneContext(const TuneContext& context)
 }
 
 // Entry of the mega rule; Inherited from ScheduleRuleNode
-Array<Schedule> MultiLevelTilingNode::Apply(const Schedule& sch, const BlockRV& block_rv) {
-  // std::cerr << "MultiLevelTilingNode::Apply: "
-  //           << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
+Array<Schedule> MultiLevelTilingReductionNode::Apply(const Schedule& sch, const BlockRV& block_rv) {
   bool try_reorder = false;
   if ((filter_fn_ && filter_fn_.value()(sch, sch->GetSRef(block_rv))) ||
-      NeedsMultiLevelTiling(sch->state(), sch->GetSRef(block_rv), &try_reorder)) {
+      NeedsMultiLevelTilingReduction(sch->state(), sch->GetSRef(block_rv), &try_reorder)) {
     sch->Annotate(block_rv, tir::attr::meta_schedule_tiling_structure, structure);
 
     Array<Schedule> results;
@@ -121,7 +168,7 @@ Array<Schedule> MultiLevelTilingNode::Apply(const Schedule& sch, const BlockRV& 
     // std::cerr << sch->mod() << std::endl;
   }
   if ((filter_fn_ && filter_fn_.value()(sch, sch->GetSRef(block_rv))) ||
-      NeedsMultiLevelTiling(sch->state(), sch->GetSRef(block_rv))) {
+      NeedsMultiLevelTilingReduction(sch->state(), sch->GetSRef(block_rv))) {
     sch->Annotate(block_rv, tir::attr::meta_schedule_tiling_structure, structure);
 
     Array<Schedule> results;
@@ -141,12 +188,12 @@ Array<Schedule> MultiLevelTilingNode::Apply(const Schedule& sch, const BlockRV& 
 }
 
 // Inherited from ScheduleRuleNode
-ScheduleRule MultiLevelTilingNode::Clone() const {
-  ObjectPtr<MultiLevelTilingNode> n = make_object<MultiLevelTilingNode>(*this);
+ScheduleRule MultiLevelTilingReductionNode::Clone() const {
+  ObjectPtr<MultiLevelTilingReductionNode> n = make_object<MultiLevelTilingReductionNode>(*this);
   return ScheduleRule(n);
 }
 
-std::vector<State> MultiLevelTilingNode::ApplySubRules(std::vector<State> states) {
+std::vector<State> MultiLevelTilingReductionNode::ApplySubRules(std::vector<State> states) {
   states = SubRule(std::move(states), [&](State state) { return TileLoopNest(std::move(state)); });
   states = SubRule(std::move(states), [&](State state) { return AddWriteReuse(std::move(state)); });
   states = SubRule(std::move(states), [&](State state) { return AddReadReuse(std::move(state)); });
@@ -155,11 +202,58 @@ std::vector<State> MultiLevelTilingNode::ApplySubRules(std::vector<State> states
   return states;
 }
 
-std::vector<State> MultiLevelTilingNode::ApplyExtraSubRules(std::vector<State> states) {
+std::vector<State> MultiLevelTilingReductionNode::ApplyExtraSubRules(std::vector<State> states) {
   return states;
 }
 
-std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
+std::vector<State> MultiLevelTilingReductionNode::RemoveRfactorAnnotations(State state) const {
+  Schedule& sch = state->sch;
+  const BlockRV& block_rv = state->block_rv;
+  // Array<tir::BlockRV> all_blocks = BlockCollector::Collect(sch, nullptr);
+  // while (!all_blocks.empty()) {
+  //   tir::BlockRV block_rv = all_blocks.front();
+  //   all_blocks.erase(all_blocks.begin());
+  std::vector<State> results;
+  if (tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_producer_block)
+          .defined()) {
+    Array<tir::BlockRV> blocks = BlockCollector::Collect(sch, nullptr);
+    while (!blocks.empty()) {
+      tir::BlockRV block_rf = blocks.front();
+      blocks.erase(blocks.begin());
+      Optional<Integer> cross_thread_reduction = tir::GetAnn<Integer>(
+          sch->GetSRef(block_rf), tir::attr::meta_schedule_cross_thread_reduction_block);
+      if (cross_thread_reduction.defined()) {
+        State new_state = state->Copy();
+        const BlockRV& block_rv_ = new_state->block_rv;
+        Array<tir::LoopRV> axes = new_state->sch->GetLoops(block_rf);
+        new_state->sch->ComputeAt(block_rv_, axes[1], false);
+        // Array<tir::LoopRV> loops = new_state->sch->GetLoops(block_rv);
+        // new_state->sch->DecomposeReduction(block_rv, loops[2]);
+        // new_state->sch->Unannotate(block_rf,
+        // tir::attr::meta_schedule_cross_thread_reduction_block);
+        // new_state->block_rv = block_rv;
+        results.push_back(new_state);
+        return results;
+      }
+    }
+    // sch->Unannotate(block_rv, tir::attr::meta_schedule_rfactor_producer_block);
+  }
+  // }
+  // const BlockRV& block_rv = state->block_rv;
+  // if (tir::GetAnn<Integer>(sch->GetSRef(block_rv),
+  // tir::attr::meta_schedule_rfactor_producer_block)
+  //         .defined()) {
+  //   sch->Unannotate(block_rv, tir::attr::meta_schedule_rfactor_producer_block);
+  // }
+  // if (tir::GetAnn<Integer>(sch->GetSRef(block_rv),
+  // tir::attr::meta_schedule_rfactor_consumer_block)
+  //         .defined()) {
+  //   sch->Unannotate(block_rv, tir::attr::meta_schedule_rfactor_consumer_block);
+  // }
+  return {state};
+}
+
+std::vector<State> MultiLevelTilingReductionNode::AddWriteReuse(State state) const {
   const ReuseConfig& config = this->reuse_write_;
   if (config.req == ReuseType::kNoReuse) {
     return {std::move(state)};
@@ -208,7 +302,7 @@ std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
   return results;
 }
 
-std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> MultiLevelTilingNode::SplitLoop(
+std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> MultiLevelTilingReductionNode::SplitLoop(
     const Schedule& sch, BlockRV block, LoopRV loop, int n_tiles,
     Array<Optional<PrimExpr>> split_factors) const {
   if (split_factors.empty()) {
@@ -231,7 +325,30 @@ std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> MultiLevelTilingNode::SplitLoo
   }
 }
 
-std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
+std::vector<State> MultiLevelTilingReductionNode::AddRfactor(State state) const {
+  Schedule& sch = state->sch;
+  const BlockRV& block_rv = state->block_rv;
+  if (tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_producer_block)
+          .defined()) {
+    // Reorder the loop axes if reduction loops are not innermost.
+    // After the reordering, fuse all the reduction loops.
+    size_t num_spatial_loops;
+    tir::LoopRV fused_reduce_loop;
+    ReorderAndFuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
+
+    // Split the fused reduction loop.
+    Array<tir::ExprRV> factors = sch->SamplePerfectTile2(fused_reduce_loop, 2, 24);
+    Array<tir::LoopRV> split_loops =
+        sch->Split(fused_reduce_loop, {factors.begin(), factors.end()});
+    const tir::BlockRV& block_rf = sch->RFactor(split_loops[0], 0, "shared");
+    Array<tir::LoopRV> axes = sch->GetLoops(block_rf);
+    // std::cerr << "SIZE 1: " << axes.size() << std::endl;
+    // sch->ReverseComputeAt(block_rv, axes[1], false);
+  }
+  return {state};
+}
+
+std::vector<State> MultiLevelTilingReductionNode::TileLoopNest(State state) const {
   Schedule& sch = state->sch;
   const BlockRV& block_rv = state->block_rv;
   // Step 1. Assuming trivial binding, pair the loops and their iter-var-types
@@ -321,33 +438,23 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   }
   state->tile_factors = std::move(tile_factors);
   // Step 3. Reorder to organize the tiles
-  sch->Reorder(support::ConcatArrayList<LoopRV>(tiles.begin(), tiles.end()));
+  // sch->Reorder(support::ConcatArrayList<LoopRV>(tiles.begin(), tiles.end()));
   // Step 4. Bind the tiles to threads
-  int n_binds = std::min(tile_binds.size(), tiles.size());
-  for (int i = 0; i < n_binds; ++i) {
-    if (!tiles[i].empty()) {
-      LoopRV fused = tiles[i][0];
-      if (tiles[i].size() > 1) {
-        fused = sch->Fuse(tiles[i]);
-      }
-      sch->Bind(fused, tile_binds[i]);
-      tiles[i] = {fused};
+  int n_binds = tile_binds.size();
+  for (int i = 0, bind = 0; i < tiles.size(); ++i) {
+    for (int j = 0; j < tiles[i].size() && bind < n_binds; j++, bind++) {
+      sch->Bind(tiles[i][j], tile_binds[bind]);
     }
   }
-  int n_annotations = std::min(annotations.size(), tiles.size());
-  for (int i = 0; i < n_annotations; ++i) {
-    if (!tiles[i].empty()) {
-      LoopRV fused = tiles[i][0];
-      if (tiles[i].size() > 1) {
-        fused = sch->Fuse(tiles[i]);
-      }
-      auto annotation_for_fused = annotations[i];
-      for (auto annotation : annotation_for_fused) {
-        if (!annotation.first.empty()) {
-          sch->Annotate(fused, annotation.first, annotation.second);
+  int n_annotations = annotations.size();
+  for (int i = 0, ann = 0; i < n_annotations; ++i) {
+    for (int j = 0; j < tiles[i].size() && ann < n_annotations; j++, ann++) {
+      auto annotation = annotations[i];
+      for (auto a : annotation) {
+        if (!a.first.empty()) {
+          sch->Annotate(tiles[i][j], a.first, a.second);
         }
       }
-      tiles[i] = {fused};
     }
   }
   state->tiles = Array<Array<LoopRV>>{tiles.begin(), tiles.end()};
@@ -365,7 +472,7 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   return {state};
 }
 
-std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
+std::vector<State> MultiLevelTilingReductionNode::AddReadReuse(State state) const {
   const ReuseConfig& config = this->reuse_read_;
   if (config.req == ReuseType::kNoReuse) {
     return {std::move(state)};
@@ -404,7 +511,7 @@ std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
       Array<LoopRV> buffer_loops = sch->GetLoops(cache_read_block);
       sch->Fuse(Array<LoopRV>{buffer_loops.end() - buffer_ndim,  //
                               buffer_loops.end()});
-      AnnotateCooperativeFetching(&sch, cache_read_block);
+      // AnnotateCooperativeFetching(&sch, cache_read_block);
       // if (!config.sep) {
       new_state->read_reuse.emplace(j, cache_read_block);
       // } else {
@@ -421,7 +528,7 @@ std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
   return results;
 }
 
-std::vector<State> MultiLevelTilingNode::AddAsyncPipeline(State state) const {
+std::vector<State> MultiLevelTilingReductionNode::AddAsyncPipeline(State state) const {
   // For arch that does not support async pipeline, this->stages will be an empty vector
   if (r_indices_.size() < 1 || this->stages.empty()) {
     return {state};
@@ -458,8 +565,8 @@ std::vector<State> MultiLevelTilingNode::AddAsyncPipeline(State state) const {
   return ret;
 }
 
-void MultiLevelTilingNode::AnnotateCooperativeFetching(Schedule* sch,
-                                                       const tir::BlockRV& block) const {
+void MultiLevelTilingReductionNode::AnnotateCooperativeFetching(Schedule* sch,
+                                                                const tir::BlockRV& block) const {
   // Filter out invalid vector lanes according to the data type.
   const tir::BlockNode* block_node = (*sch)->GetSRef(block)->StmtAs<tir::BlockNode>();
   ICHECK_EQ(block_node->writes.size(), 1);
@@ -493,23 +600,7 @@ void MultiLevelTilingNode::AnnotateCooperativeFetching(Schedule* sch,
   }
 }
 
-// Constructor
-
-ScheduleRule ScheduleRule::MultiLevelTiling(String structure, Optional<Array<String>> tile_binds,
-                                            Optional<Integer> max_innermost_factor,
-                                            Optional<Array<Integer>> vector_load_lens,
-                                            Optional<Map<String, ObjectRef>> reuse_read,
-                                            Optional<Map<String, ObjectRef>> reuse_write,
-                                            Optional<runtime::PackedFunc> filter_fn) {
-  auto node = MultiLevelTilingInitCommon<MultiLevelTilingNode>(
-      structure, tile_binds, max_innermost_factor, vector_load_lens, reuse_read, reuse_write);
-  node->filter_fn_ = filter_fn;
-  return ScheduleRule(node);
-}
-
-TVM_REGISTER_NODE_TYPE(MultiLevelTilingNode);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleRuleMultiLevelTiling")
-    .set_body_typed(ScheduleRule::MultiLevelTiling);
+TVM_REGISTER_NODE_TYPE(MultiLevelTilingReductionNode);
 
 }  // namespace meta_schedule
 }  // namespace tvm

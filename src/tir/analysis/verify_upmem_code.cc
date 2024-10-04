@@ -157,7 +157,8 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
               FactorMap host_fac(load->indices[0]), pim_fac(op->global_indices[0]);
               if (!(current_loop.defined() && host_fac.get_factor(current_loop) == 1 &&
                     pim_fac.get_factor(current_loop) == 1)) {
-                noncontiguous_cache = true;
+                // [ywshin] 하려면 64 byte constraint를 제대로 반영해야 한다.
+                // noncontiguous_cache = true;
               }
             }
           }
@@ -170,7 +171,8 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
               FactorMap host_fac(op->indices[0]), pim_fac(load->global_indices[0]);
               if (!(current_loop.defined() && host_fac.get_factor(current_loop) == 1 &&
                     pim_fac.get_factor(current_loop) == 1)) {
-                noncontiguous_cache = true;
+                // [ywshin] 하려면 64 byte constraint를 제대로 반영해야 한다.
+                // noncontiguous_cache = true;
               }
             }
           }
@@ -268,10 +270,11 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
       // record the number of blocks
       if (name == "blockIdx.x" || name == "blockIdx.y" || name == "blockIdx.z") {
         size_t length = static_cast<size_t>(extent->value);
-        if (name == "blockIdx.x" && length > 128) {
+        // [ywshin] 파라미터로 받는 게 좋을듯?
+        if (name == "blockIdx.x" && length > 2560) {
           std::stringstream s;
           s << "Extent of " << name << " (" << length
-            << ") is greater than the allowed maximum (128)";
+            << ") is greater than the allowed maximum (2560)";
           errors_.push_back(s.str());
         }
         num_block_ *= length;

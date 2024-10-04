@@ -82,6 +82,8 @@ void FindSamplePerfectTile(const Trace& trace, std::vector<Instruction>* inst,
                            std::vector<std::vector<int64_t>>* decision) {
   static const InstructionKind& inst_sample_perfect_tile =
       InstructionKind::Get("SamplePerfectTile");
+  static const InstructionKind& inst_sample_perfect_tile2 =
+      InstructionKind::Get("SamplePerfectTile2");
   std::vector<Instruction>& instructions = *inst;
   std::vector<std::vector<int64_t>>& decisions = *decision;
   instructions.reserve(trace->decisions.size());
@@ -90,6 +92,12 @@ void FindSamplePerfectTile(const Trace& trace, std::vector<Instruction>* inst,
     const Instruction& inst = kv.first;
     const ObjectRef& decision = kv.second;
     if (inst->kind.same_as(inst_sample_perfect_tile)) {
+      std::vector<int64_t> tiles = DowncastTilingDecision(decision);
+      if (tiles.size() >= 2 && Product(tiles) >= 2) {
+        instructions.push_back(inst);
+        decisions.push_back(tiles);
+      }
+    } else if (inst->kind.same_as(inst_sample_perfect_tile2)) {
       std::vector<int64_t> tiles = DowncastTilingDecision(decision);
       if (tiles.size() >= 2 && Product(tiles) >= 2) {
         instructions.push_back(inst);

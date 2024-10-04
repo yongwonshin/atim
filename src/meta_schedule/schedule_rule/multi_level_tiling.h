@@ -170,6 +170,199 @@ std::vector<State> SubRule(std::vector<State> states, FLambda sub_rule) {
 /*!
  * \brief The mega rule: multi-level tiling with data reuse
  */
+class MultiLevelTilingSpatialNode : public ScheduleRuleNode {
+ public:
+  virtual ~MultiLevelTilingSpatialNode() = default;
+
+  // SubRule 1. add write cache
+  std::vector<State> AddWriteReuse(State state) const;
+  // SubRule 2. tile the loop nest
+  std::vector<State> TileLoopNest(State state) const;
+  // SubRule 3. add read cache
+  std::vector<State> AddReadReuse(State state) const;
+
+  // Do nothing; Inherited from ScheduleRuleNode
+  void InitializeWithTuneContext(const TuneContext& context) final;
+
+  // Entry of the mega rule; Inherited from ScheduleRuleNode
+  Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv) override;
+
+  // Inherited from ScheduleRuleNode
+  ScheduleRule Clone() const override;
+
+ protected:
+  virtual std::vector<State> ApplySubRules(std::vector<State> states);
+  virtual std::vector<State> ApplyExtraSubRules(std::vector<State> states);
+
+  virtual std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> SplitLoop(
+      const tir::Schedule& sch, tir::BlockRV block, tir::LoopRV loop, int n_tiles,
+      Array<Optional<PrimExpr>> split_factors = {}) const;
+
+  // Annotate a block to use cooperative fetching
+  void AnnotateCooperativeFetching(tir::Schedule* sch, const tir::BlockRV& block) const;
+
+ public:
+  /*!
+   * \brief The tiling structure. Recommended:
+   * - 'SSRSRS' on CPU
+   * - 'SSSRRSRS' on GPU
+   */
+  String structure;
+  /*! \brief For each level of tiles, which thread axis it is bound to */
+  Array<String> tile_binds;
+  /*! \brief The maximum size of the innermost factor */
+  int max_innermost_factor;
+  int min_innermost_factor;
+  /*! \brief The length of vector lane in vectorized cooperative fetching */
+  std::vector<int> vector_load_lens;
+  /*! \brief Data reuse configuration for reading */
+  ReuseConfig reuse_read_;
+  /*! \brief Data reuse configuration for writing */
+  ReuseConfig reuse_write_;
+  std::vector<int> reordering;
+  Array<Array<Optional<PrimExpr>>> s_split_factors;
+  Array<Array<Optional<PrimExpr>>> r_split_factors;
+  Array<Map<String, ObjectRef>> annotations;
+  Array<String> reduction_tile_binds;
+  Array<Map<String, ObjectRef>> reduction_annotations;
+  std::vector<int> rfactor_reordering;
+  /*! \brief The indices of spatial tiles in `structure` */
+  std::vector<int> s_indices_;
+  /*! \brief The indices of reduction tiles in `structure` */
+  std::vector<int> r_indices_;
+  bool hoist_rfactor_loop;
+  /*! \brief The size of the thread warp */
+  int thread_warp_size_;
+  /*! \brief The maximum number of threads to be used size of a thread warp */
+  int max_threads_per_block_;
+  /*! \brief All available async pipeline stages. */
+  std::vector<int> stages;
+  /*! \brief The logging function */
+  PackedFunc logger;
+  /*! \brief The function to overwrite the default condition for applying MultiLevelTiling. */
+  Optional<PackedFunc> filter_fn_;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("structure", &structure);
+    v->Visit("tile_binds", &tile_binds);
+    v->Visit("annotations", &annotations);
+    v->Visit("max_innermost_factor", &max_innermost_factor);
+    v->Visit("min_innermost_factor", &min_innermost_factor);
+    // `vector_load_lens` is not visited
+    // `reuse_read_` is not visited
+    // `reuse_write_` is not visited
+    // `s_indices_` is not visited
+    // `r_indices_` is not visited
+    // `thread_warp_size_` is not visited
+    // `max_threads_per_block` is not visited
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.MultiLevelTilingSpatial";
+  TVM_DECLARE_BASE_OBJECT_INFO(MultiLevelTilingSpatialNode, ScheduleRuleNode);
+};
+
+/*!
+ * \brief The mega rule: multi-level tiling with data reuse
+ */
+class MultiLevelTilingReductionNode : public ScheduleRuleNode {
+ public:
+  virtual ~MultiLevelTilingReductionNode() = default;
+
+  // SubRule 0. add additional rfactor for cross thread reduction
+  std::vector<State> AddRfactor(State state) const;
+  // SubRule 1. add write cache
+  std::vector<State> AddWriteReuse(State state) const;
+  // SubRule 2. tile the loop nest
+  std::vector<State> TileLoopNest(State state) const;
+  // SubRule 3. add read cache
+  std::vector<State> AddReadReuse(State state) const;
+  // SubRule 4. add async pipeline
+  std::vector<State> AddAsyncPipeline(State state) const;
+  std::vector<State> RemoveRfactorAnnotations(State state) const;
+
+  // Do nothing; Inherited from ScheduleRuleNode
+  void InitializeWithTuneContext(const TuneContext& context) final;
+
+  // Entry of the mega rule; Inherited from ScheduleRuleNode
+  Array<tir::Schedule> Apply(const tir::Schedule& sch, const tir::BlockRV& block_rv) override;
+
+  // Inherited from ScheduleRuleNode
+  ScheduleRule Clone() const override;
+
+ protected:
+  virtual std::vector<State> ApplySubRules(std::vector<State> states);
+  virtual std::vector<State> ApplyExtraSubRules(std::vector<State> states);
+
+  virtual std::pair<Array<tir::ExprRV>, Array<tir::LoopRV>> SplitLoop(
+      const tir::Schedule& sch, tir::BlockRV block, tir::LoopRV loop, int n_tiles,
+      Array<Optional<PrimExpr>> split_factors = {}) const;
+
+  // Annotate a block to use cooperative fetching
+  void AnnotateCooperativeFetching(tir::Schedule* sch, const tir::BlockRV& block) const;
+
+ public:
+  /*!
+   * \brief The tiling structure. Recommended:
+   * - 'SSRSRS' on CPU
+   * - 'SSSRRSRS' on GPU
+   */
+  String structure;
+  /*! \brief For each level of tiles, which thread axis it is bound to */
+  Array<String> tile_binds;
+  /*! \brief The maximum size of the innermost factor */
+  int max_innermost_factor;
+  int min_innermost_factor;
+  /*! \brief The length of vector lane in vectorized cooperative fetching */
+  std::vector<int> vector_load_lens;
+  /*! \brief Data reuse configuration for reading */
+  ReuseConfig reuse_read_;
+  /*! \brief Data reuse configuration for writing */
+  ReuseConfig reuse_write_;
+  std::vector<int> reordering;
+  Array<Array<Optional<PrimExpr>>> s_split_factors;
+  Array<Array<Optional<PrimExpr>>> r_split_factors;
+  Array<Map<String, ObjectRef>> annotations;
+  Array<String> reduction_tile_binds;
+  Array<Map<String, ObjectRef>> reduction_annotations;
+  std::vector<int> rfactor_reordering;
+  /*! \brief The indices of spatial tiles in `structure` */
+  std::vector<int> s_indices_;
+  /*! \brief The indices of reduction tiles in `structure` */
+  std::vector<int> r_indices_;
+  bool hoist_rfactor_loop;
+  /*! \brief The size of the thread warp */
+  int thread_warp_size_;
+  /*! \brief The maximum number of threads to be used size of a thread warp */
+  int max_threads_per_block_;
+  /*! \brief All available async pipeline stages. */
+  std::vector<int> stages;
+  /*! \brief The logging function */
+  PackedFunc logger;
+  /*! \brief The function to overwrite the default condition for applying MultiLevelTiling. */
+  Optional<PackedFunc> filter_fn_;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("structure", &structure);
+    v->Visit("tile_binds", &tile_binds);
+    v->Visit("annotations", &annotations);
+    v->Visit("max_innermost_factor", &max_innermost_factor);
+    v->Visit("min_innermost_factor", &min_innermost_factor);
+    // `vector_load_lens` is not visited
+    // `reuse_read_` is not visited
+    // `reuse_write_` is not visited
+    // `s_indices_` is not visited
+    // `r_indices_` is not visited
+    // `thread_warp_size_` is not visited
+    // `max_threads_per_block` is not visited
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.MultiLevelTilingReduction";
+  TVM_DECLARE_BASE_OBJECT_INFO(MultiLevelTilingReductionNode, ScheduleRuleNode);
+};
+
+/*!
+ * \brief The mega rule: multi-level tiling with data reuse
+ */
 class MultiLevelTilingNode : public ScheduleRuleNode {
  public:
   virtual ~MultiLevelTilingNode() = default;
@@ -232,7 +425,7 @@ class MultiLevelTilingNode : public ScheduleRuleNode {
   std::vector<int> s_indices_;
   /*! \brief The indices of reduction tiles in `structure` */
   std::vector<int> r_indices_;
-  std::set<int> hoisted_loops;
+  bool hoist_rfactor_loop;
   /*! \brief The size of the thread warp */
   int thread_warp_size_;
   /*! \brief The maximum number of threads to be used size of a thread warp */
@@ -271,7 +464,7 @@ ObjectPtr<NodeType> MultiLevelTilingInitCommon(
     Optional<Array<Integer>> reordering = NullOpt,
     Optional<Array<Array<Integer>>> s_split_factors = NullOpt,
     Optional<Array<Array<Integer>>> r_split_factors = NullOpt,
-    Optional<Array<Integer>> hoisted_loops = NullOpt,
+    Optional<Bool> hoist_rfactor_loop = NullOpt,
     Optional<Array<Map<String, ObjectRef>>> annotations = NullOpt,
     Optional<Array<String>> reduction_tile_binds = NullOpt,
     Optional<Array<Map<String, ObjectRef>>> reduction_annotations = NullOpt) {
@@ -322,10 +515,8 @@ ObjectPtr<NodeType> MultiLevelTilingInitCommon(
       n->r_split_factors.push_back(split_factors);
     }
   }
-  if (hoisted_loops.defined()) {
-    for (auto index : hoisted_loops.value()) {
-      n->hoisted_loops.insert(index.IntValue());
-    }
+  if (hoist_rfactor_loop.defined()) {
+    n->hoist_rfactor_loop = hoist_rfactor_loop.value();
   }
   for (int i = 0, len = structure.size(); i < len; ++i) {
     char c = structure.data()[i];
