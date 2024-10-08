@@ -141,12 +141,6 @@ class UPMEMWorkload:
         # m = LowerDeviceKernelLaunch()(m)
         print("[TIR with PIM data copy]\n", m, file=file)
 
-        print("\n\n[UPMEM source]\n", file=file)
-        print(self.func.imported_modules[0].get_source(), file=file)
-
-        print("\n\n[LLVM Source]\n", file=file)
-        print(self.func.get_source(), file=file)
-
     def post_kernel(self, file):
         host_flatten = self.host.output.flatten()
         dev_flatten = self.dev.output.asnumpy().flatten()
@@ -245,6 +239,9 @@ class UPMEMWorkload:
     def file_suffix(self):
         return ""
 
+    def print_header(self):
+        print("BK\tK\tAK\tD2H\tTOT\tPASS\tCONF")
+
     def dump_handtune_max(self):
         if len(self.hand_tuned) == 0:
             return
@@ -253,6 +250,7 @@ class UPMEMWorkload:
         self.hand_tuned = []
 
     def test(self, scheduler, **kwargs):
+        ret = "ERROR"
         self.config = {**self.required, **kwargs}
         self.sch = scheduler(**self.config)
         suffix = self.file_suffix()
@@ -269,10 +267,16 @@ class UPMEMWorkload:
 
         try:
             with open("./results/" + self.fname + ".txt", "w") as f:
-                self.func = tvm.build(self.sch.mod, target=self.target, name="kernel")
                 self.pre_kernel(f, self.sch)
+
+                self.func = tvm.build(self.sch.mod, target=self.target, name="kernel")
                 if self.compile_only:
                     return
+                print("\n\n[UPMEM source]\n", file=f)
+                print(self.func.imported_modules[0].get_source(), file=f)
+
+                print("\n\n[LLVM Source]\n", file=f)
+                print(self.func.get_source(), file=f)
 
                 self.target_device.load_function(self.func)
                 times = []
@@ -312,17 +316,18 @@ class UPMEMWorkload:
                 flag = self.is_passed()
                 if flag:
                     self.hand_tuned.append([self.config.__repr__(), time_tuple[4]])
-                print(
-                    "\t".join([f"{x:.3f}" for x in time_tuple])
-                    + f"\t{flag}\t{self.config.__repr__()}"
-                )
                 # print(
-                #     f"{self.config['n_b']}\t{time_tuple[1]}\t{time_tuple[2]}\t{time_tuple[3]}\t{flag}"
+                #     "\t".join([f"{x:.3f}" for x in time_tuple])
+                #     + f"\t{flag}\t{self.config.__repr__()}"
                 # )
+                # print(f"{time_tuple[1]:.3f}" if flag else "WRONG")
                 self.post_kernel(f)
+                ret = f"{time_tuple[1]:.3f}" if flag else "WRONG"
+
 
         except Exception as e:
             with open("./errors/" + self.fname + ".txt", "w") as f:
                 print(traceback.format_exc(), file=f)
         finally:
             self.target_device.free()
+            return ret

@@ -38,7 +38,7 @@ def gemvRCTile(M, K, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=16, dtype="int32", **
     cb = sch.cache_read(block_crf, 1, "local")
     cc = sch.cache_write(block_crf, 0, "local")
     i, xb, k = sch.get_loops(block_crf)
-    yb, yo, yi, yc = sch.split(i, factors=[n_yb, n_yt, None, 2])
+    yb, yo, yi, yc = sch.split(i, factors=[n_yb, n_yt, None, 8 // np.dtype(dtype).itemsize])
     xo, xi = sch.split(k, factors=[None, n_cache])
     sch.reorder(xb, yb, yo, yi, yc, xo, xi)
     sch.compute_at(ca, xo)
@@ -135,10 +135,14 @@ def HBMStyleTile(dtype="int32", **kwargs):
 
 
 class GEMV(UPMEMWorkload):
-    def __init__(self, **kwargs):
+    def __init__(self, profile="gemv", **kwargs):
         required = dict(M=8192, K=8192, dtype="int32", n_xb=1, n_yb=1, n_cache=64, n_yt=16, n_rt=64)
         super().__init__(
-            profile="gemv", required=required, symbols=["A", "B", "C"], output_symbol="C", **kwargs
+            profile=profile,
+            required=required,
+            symbols=["A", "B", "C"],
+            output_symbol="C",
+            **kwargs
         )
 
     def fetch_data(self):
@@ -196,98 +200,40 @@ if __name__ == "__main__":
     if schedule is None:
         raise ValueError(f"Schedule {args.schedule} not found")
 
+    gemv.print_header()
+
     if not args.custom:
         config = gemv.extract_config(args)
         gemv.benchmark(**config)
         gemv.test(schedule, **config)
     else:  # custom test
-        # dims = [
-        #     # (12288, 4096),
-        #     # (4096, 4096),
-        #     # (16384, 4096),
-        #     # (4096, 16384),
-        #     # (15360, 5120),
-        #     # (5120, 5120),
-        #     # (20480, 5120),
-        #     # (5120, 20480),
-        #     # (21504, 7168),
-        #     # (7168, 7168),
-        #     (28672, 7168),
-        #     (7168, 28672),
-        #     # (36864, 12288),
-        #     # (12288, 12288),
-        #     # (49152, 12288),
-        #     # (12288, 49152),
-        # ]
-        # for m, k in dims:
-        #     print(m, k)
-        #     for xb, yb in (
-        #         (1, 2048),
-        #         (2, 1024),
-        #         (4, 512),
-        #         (8, 256),
-        #         (16, 128),
-        #         (32, 64),
-        #         (64, 32),
-        #         (128, 16),
-        #     ):
-        #         for c in (16, 32, 64):
-        #             if (k // xb) < c:
-        #                 continue
-        #             if xb == 1:
-        #                 gemv.test(gemvRTile, M=m, K=k, n_yb=yb, n_yt=16, n_rt=16, n_cache=c)
-        #             else:
-        #                 gemv.test(
-        #                     gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=16, n_rt=16, n_cache=c
-        #                 )
-        #     gemv.dump_handtune_max()
-        #     print()
 
         configs = [
-            # (8192, 1024, 1, 64, 16, 256, 1),
-            # (28672, 7168, 1, 2048, 16, 256, 16),
-            # (28672, 7168, 2, 1024, 16, 256, 16),
-            # (28672, 2048, 4, 512, 16, 256, 16), #
-            # (12288, 4096, 8, 128, 16, 256, 16),
-            # (49152, 12288, 1, 2048, 16, 256, 16),
-            # (4096, 4096, 2, 512, 16, 128, 16),
-            # (4096, 4092, 2, 32, 16, 128, 16),
-            # (49152, 12256, 2, 1024, 16, 32, 16),
-            # (49152, 12288, 4, 512, 16, 256, 16),
-            # (49152, 12288, 8, 256, 16, 256, 16),
-            # (49152, 12288, 16, 128, 16, 128, 16),
-            # (163840, 4096, 1, 2048, 16, 128, 16),
-            # (12288, 4096, 16, 128, 16, 128, 16),
-            # (4096, 4096, 16, 128, 16, 128, 16),
-            # (16384, 4096, 8, 256, 16, 128, 16),
-            # (4096, 16384, 32, 64, 16, 128, 16),
-            # (163840, 4096, 1, 2048, 16, 64, 16),
-            # (15360, 5120, 8, 256, 16, 64, 16),
-            # (5120, 5120, 32, 64, 16, 64, 16),
-            # (20480, 5120, 8, 256, 16, 64, 16),
-            # (5120, 20480, 64, 32, 16, 64, 16),
-            # (21504, 7168, 64, 32, 16, 64, 16),
-            # (7168, 7168, 8, 256, 16, 64, 16),
-            # (28672, 7168, 64, 32, 16, 64, 16),
-            # (7168, 28672, 128, 16, 16, 64, 16),
-            # (36864, 12288, 16, 128, 16, 64, 16),
-            # (12288, 12288, 16, 128, 16, 64, 16),
-            # (49152, 12288, 16, 128, 16, 64, 16),
-            (12288, 49152, 64, 32, 16, 64, 16),
-        ]
-
-        configs = [
-            (1024, 200, 1, 16, 8, 64, 16),
-            #(1024, 1000, 2, 16, 16, 256, 16)
+            (999, 999, 16, 16, 64, 16, 64, "int64"),
+            (999, 999, 16, 16, 64, 16, 16, "int64"),
+            (999, 999, 16, 16, 64, 16, 8, "int64"),
+            (999, 999, 16, 16, 64, 16, 4, "int64"),
+            (999, 999, 16, 32, 64, 16, 64, "int64"),
+            (999, 999, 16, 32, 64, 16, 16, "int64"),
+            (999, 999, 16, 32, 64, 16, 8, "int64"),
+            (999, 999, 16, 32, 64, 16, 4, "int64"),
+            (999, 999, 16, 64, 64, 16, 64, "int64"),
+            (999, 999, 16, 64, 64, 16, 16, "int64"),
+            (999, 999, 16, 64, 64, 16, 8, "int64"),
+            (999, 999, 16, 64, 64, 16, 4, "int64"),
+            (999, 999, 32, 64, 64, 16, 64, "int64"),
+            (999, 999, 32, 64, 64, 16, 16, "int64"),
+            (999, 999, 32, 64, 64, 16, 8, "int64"),
+            (999, 999, 32, 64, 64, 16, 4, "int64"),
         ]
 
         # for m, k, xb, yb, cache in configs:
         #     gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_cache=cache, n_yt=16, n_rt=16)
 
-        for m, k, xb, yb, yt, cache, rt in configs:
-            gemv.benchmark(M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache)
-        for m, k, xb, yb, yt, cache, rt in configs:
+        # for m, k, xb, yb, yt, cache, rt in configs:
+        #     gemv.benchmark(M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache)
+        for m, k, xb, yb, rt, yt, cache, dtype in configs:
             if xb == 1:
                 gemv.test(gemvRTile, M=m, K=k, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache)
             else:
-                gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache)
+                gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache, dtype=dtype)
