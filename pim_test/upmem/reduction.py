@@ -5,6 +5,31 @@ from tensor import host_array
 import numpy as np
 import math
 import argparse
+from tqdm import tqdm
+
+def upmem_dot_factory(M, dtype):
+    @tvm.script.ir_module
+    class DOTModule:
+        @T.prim_func
+        def main(a: T.handle, b: T.handle, c: T.handle):
+            T.func_attr(
+                {
+                    "global_symbol": "main",
+                    "tir.noalias": T.bool(True),
+                    "pragma_explicit_h2d": ["A", "B"],
+                }
+            )
+            A = T.match_buffer(a, (M,), dtype=dtype)
+            B = T.match_buffer(b, (M,), dtype=dtype)
+            C = T.match_buffer(c, (1,), dtype=dtype)
+            for i in T.grid(M):
+                with T.block("C"):
+                    with T.init():
+                        C[0] = 0
+                    v_i = T.axis.remap("R", [i])
+                    C[0] = C[0] + A[v_i] * B[v_i]
+
+    return DOTModule
 
 
 def red_prim_schedule(L, dtype):
@@ -30,25 +55,19 @@ def red_prim_schedule(L, dtype):
 
 
 def crossReduction(L, n_b, n_t, n_c, dtype):
-    sch = tvm.tir.Schedule(red_prim_schedule(L, dtype))
+    sch = tvm.tir.Schedule(upmem_dot_factory(L, dtype))
+    block = sch.get_block("C")
+    i = sch.get_loops(block)[0]
+    i, _ = sch.split(i, factors=[n_b, None])
+    rf = sch.rfactor(i, factor_axis=0)  # C_rf
 
-    br = sch.get_block("C")
-    i, _ = sch.get_loops(br)
-    ib, _, _ = sch.split(i, factors=[n_b, n_t, None])
-    brf = sch.rfactor(ib, factor_axis=0)  # C_rf
-    _, it, _, _ = sch.get_loops(brf)
-    trf = sch.rfactor(it, factor_axis=0, mem_scope="shared")  # C_rf_rf
-    ca = sch.cache_read(trf, 0, "local")
-    cc = sch.cache_write(trf, 0, "local")
-    tib, tit, tii, _ = sch.get_loops(trf)
-    tii, _ = sch.split(tii, factors=[None, n_c])
-    sch.compute_at(ca, tii)
-    sch.reverse_compute_at(cc, tii)
-    sch.reverse_compute_at(brf, tit)
-    sch.bind(tib, "blockIdx.x")
-    sch.bind(tit, "threadIdx.x")
-    # sch.annotate(sch.get_block("A_local"), "pragma_explicit_h2d", True)
-    sch.decompose_reduction(trf, tii)
+    _, k = sch.get_loops(rf)
+    t, k = sch.split(k, [16, None])
+    krf = sch.rfactor(t, factor_axis=0, mem_scope="shared")  # C_rf_rf
+    i, t, k = sch.get_loops(krf)
+    sch.reverse_compute_at(rf, t)
+    sch.bind(i, "blockIdx.x")
+    sch.bind(t, "threadIdx.x")
     return sch
 
 
@@ -57,27 +76,29 @@ class REDUCE(UPMEMWorkload):
         super().__init__(
             profile="reduction",
             required=dict(L=8388608, dtype="int64", n_b=1024, n_t=16, n_c=64),
-            symbols=["A", "B"],
-            output_symbol="B",
+            symbols=["A", "B", "C"],
+            output_symbol="C",
             **kwargs,
         )
 
     def fetch_data(self):
-        self.host.A = host_array((self.L, 1), self.dtype, new=True)
-        self.host.B = host_array((1,), self.dtype, new=True)
+        self.host.A = np.ones((L,), self.dtype)
+        self.host.B = np.ones((L,), self.dtype)
+        self.host.C = np.zeros((1,), self.dtype)
 
     def host_version(self):
-        self.host.B = np.sum(self.host.A)
+        self.host.C = np.dot(self.host.A, self.host.B)
 
     def h2d(self):
         self.dev.A = tvm.nd.array(self.host.A, self.target_device, symbol="A")
-        self.dev.B = tvm.nd.empty((1,), self.dtype, self.target_device)
+        self.dev.B = tvm.nd.array(self.host.B, self.target_device, symbol="B")
+        self.dev.C = tvm.nd.empty((1,), self.dtype, self.target_device)
 
     def benchmark_command(self, config):
         bl = int(math.log2(config["n_c"] * np.dtype(config["dtype"]).itemsize))
         pbtype = config["dtype"].upper()
         return f"make clean && NR_DPUS={config['n_b']} \
-            NR_TASKLETS={config['n_t']} TYPE={pbtype} BL={bl} VERSION=HANDSHAKE make && \
+            NR_TASKLETS={config['n_t']} TYPE={pbtype} BL={bl} VERSION=HANDSHAKE make >/dev/null 2>/dev/null && \
             ./bin/host_code -i {config['L']} -w {self.warmup} -e {self.repeat}"
 
 
@@ -114,21 +135,47 @@ if __name__ == "__main__":
         reduce.test(crossReduction, **config)
     else:  # custom test config
         #
-        configs = [
-            # (6553600, 1, 16, 128, "int64"),
-            # (6553600 * 4, 4, 16, 128, "int64"),
-            # (6553600 * 16, 16, 16, 128, "int64"),
-            # (6553600 * 64, 64, 16, 128, "int64"),
-            # (6500000, 1, 16, 128, "int64"),
-            # (6500000, 4, 16, 128, "int64"),
-            (6500000, 16, 16, 128, "int64"),
-            (6500000, 64, 16, 128, "int64"),
-            # (400000000, 256, 16, 128, "int64"),
-            # (400000000, 512, 16, 128, "int64"),
-            (400000000, 1024, 16, 128, "int64"),
-            (400000000, 2048, 16, 128, "int64"),
-        ]
-        for L, n_b, n_t, n_c, dtype in configs:
-            reduce.benchmark(L=L, n_b=n_b, n_t=n_t, n_c=n_c, dtype=dtype)
-        for L, n_b, n_t, n_c, dtype in configs:
-            reduce.test(crossReduction, L=L, n_b=n_b, n_t=n_t, n_c=n_c, dtype=dtype)
+        dpus = [512, 1024, 2048]
+        tasklets = [16, 20, 24]
+        cache_size = [8, 16, 32, 64, 128, 256]
+        configs = [(33554432, d, t, c, "int32") for d in dpus for t in tasklets for c in cache_size]
+        # configs = [
+        #     (33554432, 2048, 16, 64, "int32")
+        #     # (65536, 1, 16, 128, "int64"),
+        #     # (6553600, 1, 16, 128, "int64"),
+        #     # (6553600 * 4, 4, 16, 128, "int64"),
+        #     # (6553600 * 16, 16, 16, 128, "int64"),
+        #     # (6553600 * 64, 64, 16, 128, "int64"),
+        #     # (6500000, 1, 16, 128, "int64"),
+        #     # (6500000, 4, 16, 128, "int64"),
+        #     # (6500000, 16, 16, 128, "int64"),
+        #     # (6500000, 64, 16, 128, "int64"),
+        #     # (400000000, 256, 16, 128, "int64"),
+        #     # (400000000, 512, 16, 128, "int64"),
+        #     # (400000000, 1024, 16, 128, "int64"),
+        #     # (400000000, 2048, 16, 128, "int64"),
+        # ]
+
+        max_time = 1e9
+        with tqdm(total=len(configs), leave=True) as pbar:
+            for config in configs:
+                L, n_b, n_t, n_c, dtype = config
+                try:
+                    tuples = reduce.benchmark(L=L, n_b=n_b, n_t=n_t, n_c=n_c, dtype=dtype)
+                    total_time = tuples[1] + tuples[2]
+                    if total_time < max_time:
+                        max_time = total_time
+                        best_config = config
+                except ValueError as e:
+                    tuples = ("wrong", "", "")
+                except RuntimeError as e:
+                    tuples = ("fail", "", "")
+                except TimeoutError as e:
+                    tuples = ("timeout", "", "")
+                except Exception as e:
+                    tuples = ("exception", "", "")
+                    print(e)
+                tqdm.write("\t".join([str(x) for x in list(tuples) + list(config)]))
+                pbar.update(1)
+        # for L, n_b, n_t, n_c, dtype in configs:
+        #     reduce.be(crossReduction, L=L, n_b=n_b, n_t=n_t, n_c=n_c, dtype=dtype)
