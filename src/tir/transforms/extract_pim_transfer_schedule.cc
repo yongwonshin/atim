@@ -332,6 +332,12 @@ class ScheduleExtractor : public StmtExprVisitor {
     vmap.erase(op->loop_var);
   }
 
+  void VisitStmt_(const LetStmtNode* op) {
+    vmap.Set(op->var, op->value);
+    StmtExprVisitor::VisitStmt_(op);
+    vmap.erase(op->var);
+  }
+
   void VisitStmt_(const IfThenElseNode* op) {
     conds.push_back(Substitute(op->condition, vmap));
     StmtExprVisitor::VisitStmt_(op);
@@ -387,7 +393,14 @@ class ScheduleExtractor : public StmtExprVisitor {
             << "In local->global pattern, BufferStore global_indices should be size 1.";
         if (load->buffer->data.get() == target_buffer_->data.get()) {
           found = true;
-          host_index = Substitute(load->indices[0], vmap);
+          host_index = load->indices[0];
+          in_bank_index = op->global_indices[0];
+          for (int i = 0; i < 10 && !host_index.as<IntImmNode>(); i++) {
+            host_index = Substitute(host_index, vmap);
+          }
+          for (int i = 0; i < 10 && !in_bank_index.as<IntImmNode>(); i++) {
+            in_bank_index = Substitute(in_bank_index, vmap);
+          }
           in_bank_index = Substitute(op->global_indices[0], vmap);
           buffer = load->buffer;
           auto replaced_bank_index = Substitute(bank_index_, vmap);
@@ -402,8 +415,14 @@ class ScheduleExtractor : public StmtExprVisitor {
             << "In global->local pattern, BufferLoad global_indices should be size 1.";
         if (op->buffer->data.get() == target_buffer_->data.get()) {
           found = true;
-          host_index = Substitute(op->indices[0], vmap);
-          in_bank_index = Substitute(load->global_indices[0], vmap);
+          host_index = op->indices[0];
+          in_bank_index = load->global_indices[0];
+          for (int i = 0; i < 10 && !host_index.as<IntImmNode>(); i++) {
+            host_index = Substitute(host_index, vmap);
+          }
+          for (int i = 0; i < 10 && !in_bank_index.as<IntImmNode>(); i++) {
+            in_bank_index = Substitute(in_bank_index, vmap);
+          }
           buffer = op->buffer;
           auto replaced_bank_index = Substitute(bank_index_, vmap);
           res_stmt =
