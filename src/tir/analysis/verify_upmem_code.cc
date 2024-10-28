@@ -157,8 +157,7 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
               FactorMap host_fac(load->indices[0]), pim_fac(op->global_indices[0]);
               if (!(current_loop.defined() && host_fac.get_factor(current_loop) == 1 &&
                     pim_fac.get_factor(current_loop) == 1)) {
-                // [ywshin] 하려면 64 byte constraint를 제대로 반영해야 한다.
-                // noncontiguous_cache = true;
+                noncontiguous_cache = true;
               }
             }
           }
@@ -171,8 +170,7 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
               FactorMap host_fac(op->indices[0]), pim_fac(load->global_indices[0]);
               if (!(current_loop.defined() && host_fac.get_factor(current_loop) == 1 &&
                     pim_fac.get_factor(current_loop) == 1)) {
-                // [ywshin] 하려면 64 byte constraint를 제대로 반영해야 한다.
-                // noncontiguous_cache = true;
+                noncontiguous_cache = true;
               }
             }
           }

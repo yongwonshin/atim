@@ -14,15 +14,20 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""
-The tvm.meta_schedule.mutator package.
-Meta Schedule mutator that mutates the trace to explore the
-design space.
-"""
-from .mutator import Mutator, PyMutator
-from .mutate_compute_location import MutateComputeLocation
-from .mutate_tile_size import MutateTileSize
-from .mutate_thread_binding import MutateThreadBinding
-from .mutate_parallel import MutateParallel
-from .mutate_unroll import MutateUnroll
-from .mutate_optimization_level import MutateOptimizationLevel
+"""Mutator that mutates the optimization level"""
+from tvm._ffi.registry import register_object
+
+from .. import _ffi_api
+from .mutator import Mutator
+
+
+@register_object("meta_schedule.MutateOptimizationLevel")
+class MutateOptimizationLevel(Mutator):
+    """Mutator that mutates the optimization level"""
+
+    def __init__(self, max_level: int) -> None:
+        """Mutator that mutates the optimization level"""
+        self.__init_handle_by_constructor__(
+            _ffi_api.MutatorMutateOptimizationLevel,  # type: ignore # pylint: disable=no-member
+            max_level,
+        )

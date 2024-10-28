@@ -124,10 +124,10 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
     for (ScheduleRule sch_rule : sch_rules.value()) {
       for (const tir::Schedule& sch : result) {
         if (ScheduleRule::IsMultiLevelTilingHBMPIM(sch_rule) ||
-            ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule) ||
+            ScheduleRule::IsPrepareCrossThreadReduction(sch_rule) ||
             // ScheduleRule::IsMultiLevelTilingSpatialUPMEM(sch_rule) ||
             ScheduleRule::IsMultiLevelTilingReductionUPMEM(sch_rule) ||
-            ScheduleRule::IsPrepareCrossThreadReduction(sch_rule)) {
+            ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule)) {
           all_blocks = BlockCollector::Collect(sch, f_block_filter_);
         } else {
           all_blocks = org_all_blocks;
@@ -170,6 +170,12 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
           stack.emplace_back(sch, blocks);
           continue;
         }
+        if ((ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule) ||
+             ScheduleRule::IsMultiLevelTilingReductionUPMEM(sch_rule)) &&
+            (!rfactor_producer.defined() && !rfactor_consumer.defined())) {
+          stack.emplace_back(sch, blocks);
+          continue;
+        }
 
         Array<tir::Schedule> applied = sch_rule->Apply(sch, /*block=*/block_rv);
         for (const tir::Schedule& sch : applied) {
@@ -177,7 +183,13 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
         }
       }
     }
-    return result;
+    Array<tir::Schedule> filtered_result;
+    for (auto res : result) {
+      if (res->trace().defined() && !res->trace().value()->decisions.empty()) {
+        filtered_result.push_back(res);
+      }
+    }
+    return filtered_result;
   }
 
   SpaceGenerator Clone() const final {

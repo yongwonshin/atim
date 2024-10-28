@@ -135,20 +135,18 @@ std::vector<State> MultiLevelTilingUPMEMNode::HandleReductionBlockUPMEM(State st
     }
     if (fused.size() > 1) {
       fused = {sch->Fuse(fused)};
-    } else {
-      fused = loops;
     }
+    ICHECK(!fused.empty());
 
-    int n_binds = std::min(reduction_tile_binds.size(), fused.size());
-    for (int i = 0; i < n_binds; ++i) {
-      if (!all_reduction_iter_vars && !reduction_tile_binds[i].empty()) {
-        ICHECK_EQ(reduction_tile_binds[i], "parallel");
-        Array<tir::ExprRV> factors =
-            sch->SamplePerfectTile2(fused[i], 2, 1, std::thread::hardware_concurrency());
-        Array<tir::LoopRV> splits = sch->Split(/*loop=*/fused[i], {factors.begin(), factors.end()});
-        sch->Parallel(splits[0]);
-        // sch->Parallel(fused[i]);
-      }
+    if (!all_reduction_iter_vars) {
+      Array<tir::ExprRV> factors =
+          sch->SamplePerfectTile2(fused[0], 2, 1, std::thread::hardware_concurrency());
+      Array<tir::LoopRV> splits = sch->Split(/*loop=*/fused[0], {factors.begin(), factors.end()});
+      sch->Parallel(splits[0]);
+
+      // Prevent multi-level tiling
+      sch->Annotate(block_rv, tir::attr::meta_schedule_tiling_structure, String(""));
+      sch->Unannotate(block_rv, tir::attr::meta_schedule_rfactor_consumer_block);
     }
   }
 

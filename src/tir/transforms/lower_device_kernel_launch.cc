@@ -195,7 +195,8 @@ class DeviceKernelMutator : public StmtExprMutator {
       func = WithAttrs(std::move(func),
                        {{tvm::attr::kCallingConv, Integer(tvm::CallingConv::kDeviceKernelLaunch)},
                         {tvm::tir::attr::kKernelLaunchParams, info.launch_params},
-                        {tvm::attr::kGlobalSymbol, info.global_symbol}});
+                        {tvm::attr::kGlobalSymbol, info.global_symbol},
+                        {"optimization_level", func->GetAttr<Integer>("optimization_level")}});
     } else if (is_call_extern && !func->GetAttr<String>(tvm::attr::kGlobalSymbol)) {
       func = WithAttr(func, tvm::attr::kGlobalSymbol, gvar->name_hint);
     }

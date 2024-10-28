@@ -720,6 +720,11 @@ Optional<Array<MeasureCandidate>> EvolutionarySearchNode::State::GenerateMeasure
         << "Cannot sample enough initial population, evolutionary search failed.";
     return NullOpt;
   }
+  const auto& best = this->database_->GetTopK(this->token_, 1);
+  if (!best.empty()) {
+    TVM_PY_LOG(INFO, self->ctx_->logger)
+        << "Current best trace: " << best.front()->trace << std::endl;
+  }
   TVM_PY_LOG(INFO, self->ctx_->logger) << "Sampled " << unmeasured.size() << " candidate(s)";
   inits.insert(inits.end(), measured.begin(), measured.end());
   inits.insert(inits.end(), unmeasured.begin(), unmeasured.end());

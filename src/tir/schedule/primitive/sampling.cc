@@ -432,20 +432,8 @@ std::vector<int64_t> SamplePerfectTile(
     result[0] = len;
   } else {
     // Case 3. Use fresh new sampling result
-    if (false && std::string(loop->loop_var->name_hint.c_str()) == "i") {
-      // std::cerr << "MATCH 1" << std::endl;
-      result = SamplePerfectTile(rand_state, *extent / 2048, n_splits - 1, max_innermost_factor,
-                                 min_innermost_factor);
-      result.insert(result.begin(), 2048);
-    } else if (false && std::string(loop->loop_var->name_hint.c_str()) == "k_1") {
-      // std::cerr << "MATCH 2" << std::endl;
-      result = SamplePerfectTile(rand_state, *extent, n_splits - 1, max_innermost_factor,
-                                 min_innermost_factor);
-      result.insert(result.begin(), 1);
-    } else {
-      result = SamplePerfectTile(rand_state, *extent, n_splits, max_innermost_factor,
-                                 min_innermost_factor);
-    }
+    result = SamplePerfectTile(rand_state, *extent, n_splits, max_innermost_factor,
+                               min_innermost_factor);
     if (max_innermost_factor != -1) {
       ICHECK_LE(result.back(), max_innermost_factor);
     }
@@ -489,6 +477,12 @@ std::vector<int64_t> SamplePerfectTile2(
   } else {
     // Case 3. Use fresh new sampling result
     result = SamplePerfectTile2(rand_state, *extent, n_splits, min_n_splits, max_n_splits);
+    if (max_n_splits != -1) {
+      ICHECK_LE(result.front(), max_n_splits);
+    }
+    if (min_n_splits != -1) {
+      ICHECK_GE(result.front(), min_n_splits);
+    }
   }
   *decision = support::AsArray<int64_t, Integer>(result);
   return result;

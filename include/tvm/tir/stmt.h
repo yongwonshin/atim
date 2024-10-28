@@ -1623,6 +1623,8 @@ constexpr const char* meta_schedule_cross_thread_reduction_block =
 /*! \brief Mark auto-parallel setting on the block. */
 constexpr const char* meta_schedule_parallel = "meta_schedule.parallel";
 
+constexpr const char* meta_schedule_optimization_level = "meta_schedule.optimization_level";
+
 /*! \brief Mark auto-vectorize setting on the block. */
 constexpr const char* meta_schedule_vectorize = "meta_schedule.vectorize";
 

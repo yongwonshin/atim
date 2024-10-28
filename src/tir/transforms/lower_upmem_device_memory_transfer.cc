@@ -29,12 +29,16 @@
 #include <tvm/tir/transform.h>
 
 #include <algorithm>
+#include <fstream>
+#include <iostream>
 #include <numeric>
 #include <optional>
 #include <queue>
+#include <string>
 #include <unordered_set>
 
 #include "../../arith/conjunctive_normal_form.h"
+#include "../../meta_schedule/utils.h"
 #include "../analysis/var_use_def_analysis.h"
 #include "ir_utils.h"
 #include "remove_no_op.h"
@@ -159,7 +163,8 @@ class Hoist : public StmtExprMutator {
           return {IfThenElse(branch->condition, new_seq)};
         }
         if (const IfThenElseNode* candidate_branch = first_stmt.as<IfThenElseNode>()) {
-          auto new_seq = SeqStmt::Flatten(std::vector<Stmt>({candidate_branch->then_case, branch->then_case}));
+          auto new_seq =
+              SeqStmt::Flatten(std::vector<Stmt>({candidate_branch->then_case, branch->then_case}));
           return {IfThenElse(branch->condition, new_seq)};
         }
       }
@@ -337,8 +342,11 @@ Pass LowerUpmemDeviceMemoryTransfer() {
 
       m = MoveGlobalIndices()(std::move(m));  // required
 
-      int64_t opt_level =
-          ctx->GetConfig<Integer>("tir.UpmemKernelOptimize", Integer(3)).value().IntValue();
+      // int64_t opt_level =
+      //     ctx->GetConfig<Integer>("tir.UpmemKernelOptimize", Integer(4)).value().IntValue();
+      ICHECK(f->GetAttr<Integer>("optimization_level").defined());
+      int64_t opt_level = f->GetAttr<Integer>("optimization_level").value().IntValue();
+      // std::cerr << "OPT_LEVEL: " << opt_level << std::endl;
       if (opt_level >= 1) {
         m = LowerMemoryTransfer()(std::move(m));
       }

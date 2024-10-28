@@ -90,6 +90,7 @@ class HostDeviceSplitter : public StmtMutator {
     if (device_target->GetTargetDeviceType() == kDLUPMEM && upmem_symbol_map.defined()) {
       attrs.Set("upmem_symbol_map", upmem_symbol_map.value());
     }
+    attrs.Set("optimization_level", optimization_level_);
 
     device_func = WithAttrs(std::move(device_func), attrs);
 
@@ -103,11 +104,15 @@ class HostDeviceSplitter : public StmtMutator {
   IRModule* device_mod_;
   // Generate new GlobalVar for the kernel
   std::function<GlobalVar()> var_supply_;
+
+ public:
+  Optional<ObjectRef> optimization_level_;
 };
 
 PrimFunc SplitHostDevice(PrimFunc func, IRModule* device_mod,
                          std::function<GlobalVar()> var_supply) {
   HostDeviceSplitter splitter(device_mod, var_supply);
+  splitter.optimization_level_ = func->GetAttr<Integer>("optimization_level");
 
   if (auto body = splitter(func->body); !body.same_as(func->body)) {
     func.CopyOnWrite()->body = body;

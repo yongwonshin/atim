@@ -90,6 +90,7 @@ Array<tir::Schedule> AddUPMEMRFactorNode::Apply(const tir::Schedule& sch,
   ReorderAndFuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
 
   // Split the fused reduction loop.
+  if (num_spatial_loops == 0) max_n_splits = 2048;
   Array<tir::ExprRV> factors =
       sch->SamplePerfectTile2(fused_reduce_loop, 2, min_n_splits, max_n_splits);
   Array<tir::LoopRV> split_loops = sch->Split(fused_reduce_loop, {factors.begin(), factors.end()});

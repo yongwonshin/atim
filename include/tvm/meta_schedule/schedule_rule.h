@@ -240,6 +240,7 @@ class ScheduleRule : public runtime::ObjectRef {
   TVM_DLL static ScheduleRule AddUPMEMRFactor(int min_n_splits, int max_n_splits,
                                               const String& mem_scope = "global");
   TVM_DLL static ScheduleRule PrepareCrossThreadReduction();
+  TVM_DLL static ScheduleRule SetOptimizationLevel(int level);
   TVM_DLL static bool IsAddUPMEMRFactor(const ScheduleRule& rule);
   TVM_DLL static bool IsPrepareCrossThreadReduction(const ScheduleRule& rule);
   TVM_DLL static ScheduleRule MultiLevelTilingHBMPIM(

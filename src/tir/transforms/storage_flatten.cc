@@ -36,6 +36,7 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
+#include <iostream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -51,6 +52,41 @@ using arith::IRVisitorWithAnalyzer;
 using runtime::StorageRank;
 using runtime::StorageScope;
 using runtime::ThreadScope;
+
+namespace {
+/*! \brief Collecting all the blocks */
+class OptimizationLevelExtractor : public tir::StmtVisitor {
+ public:
+  static int Extract(const tir::PrimFunc& func,
+                     const runtime::PackedFunc f_block_filter = nullptr) {  //
+    return OptimizationLevelExtractor(func).Run();
+  }
+
+ private:
+  /*! \brief Entry point */
+  int Run() {
+    const auto* f = func_.get();
+    VisitStmt(f->body);
+    return optimization_level_;
+  }
+  /*! \brief Constructor */
+  explicit OptimizationLevelExtractor(const tir::PrimFunc& func) : func_(func) {}
+  /*! \brief Override the Stmt visiting behaviour */
+  void VisitStmt_(const tir::BlockNode* block) override {
+    StmtVisitor::VisitStmt_(block);
+    for (const auto& ann : block->annotations) {
+      if (ann.first == tir::attr::meta_schedule_optimization_level)
+        if (const auto* imm = ann.second.as<tir::IntImmNode>()) {
+          optimization_level_ = imm->value;
+        }
+    }
+  }
+
+  /*! \brief The schedule to be collected */
+  const tir::PrimFunc& func_;
+  int optimization_level_ = 4;
+};
+}  // namespace
 
 /* Make buffer realize extents and buffer shapes consistent
  *
@@ -1922,6 +1958,8 @@ TVM_REGISTER_GLOBAL("tir.transform.ApplyLayoutTransforms")
 // TODO(tvm-team): consolidate configs to the PassContext
 Pass StorageFlatten(int cache_line_size, bool create_bound_attributes) {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
+    int64_t opt_level = OptimizationLevelExtractor::Extract(f);
+    f = WithAttr(std::move(f), "optimization_level", Integer(opt_level));
     return StorageFlatten(std::move(f), cache_line_size, create_bound_attributes);
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.StorageFlatten", {});

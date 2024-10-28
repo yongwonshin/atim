@@ -74,7 +74,8 @@ Map<Mutator, FloatImm> Mutator::DefaultUPMEM() {
       {Mutator::MutateTileSize(), FloatImm(DataType::Float(64), 0.9)},
       {Mutator::MutateComputeLocation(), FloatImm(DataType::Float(64), 0.05)},
       {Mutator::MutateUnroll(), FloatImm(DataType::Float(64), 0.03)},
-      {Mutator::MutateParallel(/*max_jobs_per_core=*/256), FloatImm(DataType::Float(64), 0.02)}};
+      {Mutator::MutateParallel(/*max_jobs_per_core=*/256), FloatImm(DataType::Float(64), 0.02)},
+      {Mutator::MutateOptimizationLevel(/*max_level=*/5), FloatImm(DataType::Float(64), 0)}};
 }
 
 Map<Mutator, FloatImm> Mutator::DefaultCUDA() {

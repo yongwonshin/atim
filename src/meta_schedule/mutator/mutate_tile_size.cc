@@ -196,30 +196,57 @@ struct FactorMemo {
 
 Optional<Trace> MutateSampleTileSize(const Trace& trace, Instruction inst,
                                      std::vector<int64_t> tiles, TRandState* rand_state) {
+  static const InstructionKind& inst_sample_perfect_tile =
+      InstructionKind::Get("SamplePerfectTile");
+  static const InstructionKind& inst_sample_perfect_tile2 =
+      InstructionKind::Get("SamplePerfectTile2");
   int n_splits = tiles.size();
   // Step 1. Choose two loops, `x` and `y`
   int x, y;
   // select source
   while (true) {
     x = tir::SampleInt(rand_state, 0, n_splits);
-    if (tiles[x] <= 1) {
+    if (inst->kind.same_as(inst_sample_perfect_tile) && tiles[x] <= 1) {
       continue;
     }
     y = tir::SampleInt(rand_state, 0, n_splits - 1);
     if (y >= x) {
       ++y;
     }
+    if (inst->kind.same_as(inst_sample_perfect_tile2) && tiles[y] <= 1) {
+      continue;
+    }
+
     std::vector<int> factors = FactorMemo::Factorize(tiles[x]);
+    if (inst->kind.same_as(inst_sample_perfect_tile2)) {
+      factors = FactorMemo::Factorize(tiles[y]);
+    }
+
     // Step 2. Choose the divide factor
     int64_t divide_factor;
-    if (y != n_splits - 1) {
+    if (inst->kind.same_as(inst_sample_perfect_tile) && y != n_splits - 1 && x != n_splits - 1) {
+      divide_factor = factors[tir::SampleInt(rand_state, 1, factors.size())];
+    } else if (inst->kind.same_as(inst_sample_perfect_tile2) && x != 0 && y != 0) {
       divide_factor = factors[tir::SampleInt(rand_state, 1, factors.size())];
     } else {
-      int64_t limit = Downcast<Integer>(inst->attrs[1])->value;
+      int64_t upper_limit = Downcast<Integer>(inst->attrs[1])->value;
+      int64_t lower_limit = Downcast<Integer>(inst->attrs[2])->value;
+      if (inst->kind.same_as(inst_sample_perfect_tile2)) {
+        upper_limit = Downcast<Integer>(inst->attrs[2])->value;
+        lower_limit = Downcast<Integer>(inst->attrs[1])->value;
+      }
       int max_factor_index = static_cast<int>(factors.size()) - 1;
       for (; max_factor_index >= 1; max_factor_index--) {
-        if (factors[max_factor_index] * tiles[y] <= limit) {
-          break;
+        if (inst->kind.same_as(inst_sample_perfect_tile)) {
+          if (y == n_splits - 1 && factors[max_factor_index] * tiles[y] <= upper_limit ||
+              x == n_splits - 1 && tiles[x] / factors[max_factor_index] >= lower_limit) {
+            break;
+          }
+        } else if (inst->kind.same_as(inst_sample_perfect_tile2)) {
+          if (x == 0 && factors[max_factor_index] * tiles[x] <= upper_limit ||
+              y == 0 && tiles[y] / factors[max_factor_index] >= lower_limit) {
+            break;
+          }
         }
       }
       if (max_factor_index == 0) {
@@ -231,8 +258,13 @@ Optional<Trace> MutateSampleTileSize(const Trace& trace, Instruction inst,
       }
       divide_factor = factors[tir::SampleInt(rand_state, 1, max_factor_index + 1)];
     }
-    tiles[x] /= divide_factor;
-    tiles[y] *= divide_factor;
+    if (inst->kind.same_as(inst_sample_perfect_tile)) {
+      tiles[x] /= divide_factor;
+      tiles[y] *= divide_factor;
+    } else if (inst->kind.same_as(inst_sample_perfect_tile2)) {
+      tiles[x] *= divide_factor;
+      tiles[y] /= divide_factor;
+    }
     return trace->WithDecision(inst, support::AsArray<int64_t, ObjectRef>(tiles),
                                /*remove_postproc=*/true);
   }

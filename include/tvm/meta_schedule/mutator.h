@@ -104,6 +104,7 @@ class Mutator : public runtime::ObjectRef {
    * \return The created mutator.
    */
   TVM_DLL static Mutator MutateParallel(int64_t max_jobs_per_core);
+  TVM_DLL static Mutator MutateOptimizationLevel(int64_t max_level);
   /*!
    * \brief Create a Mutator that mutates auto unroll step
    * \return The mutator created
