@@ -287,6 +287,12 @@ pim_test/data/*.bin
 pim_test/upmem/baseline
 pim_test/upmem/temp
 pim_test/upmem/autotuner_result/*
+pim_test/upmem/autotuner_result*/*
+pim_test/upmem/result*/
+pim_test/upmem/opt_results/
+pim_test/upmem/logs/
+pim_test/upmem/recent_logs/
+pim_test/sandbox/*
 
 temp
 temp-*

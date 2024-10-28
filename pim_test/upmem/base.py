@@ -12,7 +12,7 @@ import tvm
 from tvm.tir.transform import *
 from tvm.target import Target
 import numpy as np
-
+import signal
 
 class SymbolSpace:
     def __init__(self, symbols, output_symbol):
@@ -78,29 +78,64 @@ class UPMEMWorkload:
         verbose=0,
         symbols=[],
         output_symbol="",
+        use_dummy=False,
+        opt_level=-1,
+        timeout=None,
+        perform_h2d=True,
+        perform_free=True,
+        automatic_set_fname=True,
+        record_schedule=True,
+        record_lower=True,
+        record_splitted_ir=True,
+        record_upmem_c=True,
+        record_host_llvm=True,
+        max_correctness_indices=32,
     ):
         self.profile = profile
-        self.repeat = repeat
-        self.warmup = warmup
-        self.required = required
-        self.compile_only = compile_only
-        self.bench = bench
-        self.verbose = verbose
+        self.scheduler = None
+        self.config = {}
         self.symbols = symbols
         self.output_symbol = output_symbol
+        self.required = required
+        self.opt_level = opt_level
+        self.use_dummy = use_dummy
+        self.repeat = repeat
+        self.warmup = warmup
+        self.compile_only = compile_only
+        self.bench = bench
+        self.timeout = timeout
+        self.verbose = verbose
+        self.perform_h2d = perform_h2d
+        self.perform_free = perform_free
+        self.automatic_set_fname = automatic_set_fname
+        self.record_schedule = record_schedule
+        self.record_lower = record_lower
+        self.record_splitted_ir = record_splitted_ir
+        self.record_upmem_c = record_upmem_c
+        self.record_host_llvm = record_host_llvm
+        self.max_correctness_indices = max_correctness_indices
 
+        # Fixed
+        self.target = tvm.target.Target(target="upmem", host="llvm")
+        self.target_device = tvm.device("upmem", 0)
+
+        # Internal
+        self.fname = ""
+        self.sch = None
+        self.host = SymbolSpace(symbols, output_symbol)
+        self.dev = SymbolSpace(symbols, output_symbol)
         self.benchmark_results = []
         self.results = []
         self.hand_tuned = []
-
         self.index = 0
-        self.sch = None
-        self.fname = ""
-        self.target = tvm.target.Target(target="upmem", host="llvm")
-        self.target_device = tvm.device("upmem", 0)
-        self.config = {}
-        self.host = SymbolSpace(symbols, output_symbol)
-        self.dev = SymbolSpace(symbols, output_symbol)
+
+        self.log_dir = f"./logs/results_{time.strftime('%m_%d_%H_%M_%S')}"
+        os.makedirs(self.log_dir, exist_ok=True)
+
+        recent_logs_symlink = "./recent_logs"
+        if os.path.islink(recent_logs_symlink) or os.path.exists(recent_logs_symlink):
+            os.remove(recent_logs_symlink)
+        os.symlink(self.log_dir, recent_logs_symlink)
 
     def __getattr__(self, attr):
         if attr in self.__dict__:
@@ -114,60 +149,72 @@ class UPMEMWorkload:
     def extract_config(self, args):
         return {k: vars(args)[k] for k in self.required.keys()}
 
-    def pre_kernel(self, file, sch):
-        l = tvm.lower(sch.mod)
+    def pre_kernel(self, sch):
+        conf = { "tir.UpmemUseDummyKernel": self.use_dummy }
+        if self.opt_level >= 0:
+            conf["tir.UpmemKernelOptimize"] = self.opt_level
+        with tvm.transform.PassContext(config=conf):
+            if self.record_schedule:
+                with open(f"./{self.log_dir}/{self.fname}/schedule.py", "w") as f:
+                    print("from tvm.script import ir as I", file=f)
+                    print("from tvm.script import tir as T", file=f)
+                    print(sch.mod, file=f)
+                    print()
+                    print(sch.trace, file=f)
 
-        print("[LOWER]", file=file)
-        print(l, file=file)
-        mp, _ = Target.canon_target_map_and_host({self.target: l}, "llvm")
-        m = mp[self.target]
-        m = BindTarget(self.target)(m)
-        m = VerifyMemory()(m)
-        m = AnnotateEntryFunc()(m)
-        m = ThreadSync("global")(m)
-        m = ThreadSync("shared")(m)
-        m = ThreadSync("shared.dyn")(m)
-        m = MergeDynamicSharedMemoryAllocations()(m)
-        m = ThreadSync("warp")(m)
-        m = InferFragment()(m)
-        m = LowerThreadAllreduce()(m)
-        m = AnnotateDeviceRegions()(m)
-        m = ExtractPimTransferSchedule()(m)
-        m = SplitHostDevice()(m)
-        m = SplitPimTransfer()(m)
-        # m = MakePackedAPI()(m)
-        # m = FP8StorageLegalize()(m)
-        # m = BF16StorageLegalize()(m)
-        # m = LowerDeviceKernelLaunch()(m)
-        print("[TIR with PIM data copy]\n", m, file=file)
+            if self.record_lower:
+                with open(f"./{self.log_dir}/{self.fname}/lower.py", "w") as f:
+                    l = tvm.lower(sch.mod)
+                    print("from tvm.script import ir as I", file=f)
+                    print("from tvm.script import tir as T", file=f)
+                    print(l, file=f)
 
-        print("\n\n[UPMEM source]\n", file=file)
-        print(self.func.imported_modules[0].get_source(), file=file)
+            if self.record_splitted_ir:
+                with open(f"./{self.log_dir}/{self.fname}/split.py", "w") as f:
+                    mp, _ = Target.canon_target_map_and_host({self.target: l}, "llvm")
+                    m = mp[self.target]
+                    m = BindTarget(self.target)(m)
+                    m = VerifyMemory()(m)
+                    m = AnnotateEntryFunc()(m)
+                    m = ThreadSync("global")(m)
+                    m = ThreadSync("shared")(m)
+                    m = ThreadSync("shared.dyn")(m)
+                    m = MergeDynamicSharedMemoryAllocations()(m)
+                    m = ThreadSync("warp")(m)
+                    m = InferFragment()(m)
+                    m = LowerThreadAllreduce()(m)
+                    m = AnnotateDeviceRegions()(m)
+                    m = ExtractPimTransferSchedule()(m)
+                    m = SplitHostDevice()(m)
+                    m = SplitPimTransfer()(m)
+                    print("from tvm.script import ir as I", file=f)
+                    print("from tvm.script import tir as T", file=f)
+                    print(m, file=f)
 
-        print("\n\n[LLVM Source]\n", file=file)
-        print(self.func.get_source(), file=file)
+            self.func = tvm.build(self.sch.mod, target=self.target, name="kernel")
 
-    def post_kernel(self, file):
-        host_flatten = self.host.output.flatten()
-        dev_flatten = self.dev.output.asnumpy().flatten()
-        print("[Correctness Test]", file=file)
-        print("Host: ", host_flatten[-32:], file=file)
-        print("Device: ", dev_flatten[-32:], file=file)
-        print(
-            "Maximum Difference: ",
-            np.max(np.abs(dev_flatten - host_flatten)),
-            file=file,
-        )
+            if self.record_upmem_c:
+                with open(f"./{self.log_dir}/{self.fname}/upmem.c", "w") as f:
+                    print(self.func.imported_modules[0].get_source(), file=f)
 
-        different_indices = np.where(host_flatten != dev_flatten)[0]
-        print(f"Number of different indices: {different_indices.size}", file=file)
-        # if different_indices.size > 100:
-        #     different_indices = np.concatenate([different_indices[:50], different_indices[-50:]])
-        for idx in different_indices:
-            print(
-                f"Index: {idx}, Host: {host_flatten[idx]}, Device: {dev_flatten[idx]}",
-                file=file,
-            )
+            if self.record_host_llvm:
+                with open(f"./{self.log_dir}/{self.fname}/host.ll", "w") as f:
+                    print("; LLVM Source\n", file=f)
+                    print(self.func.get_source(), file=f)
+
+    def post_kernel(self):
+        if self.max_correctness_indices > 0:
+            host_flatten = self.host.output.flatten()
+            dev_flatten = self.dev.output.asnumpy().flatten()
+            different_indices = np.where(host_flatten != dev_flatten)[0]
+            if len(different_indices) > 0:
+                with open(f"./{self.log_dir}/{self.fname}/wrong.txt", "w") as file:
+                    print(f"Number of different indices: {different_indices.size}", file=file)
+                    for idx in different_indices[:self.max_correctness_indices]:
+                        print(
+                            f"Index: {idx}, Host: {host_flatten[idx]}, Device: {dev_flatten[idx]}",
+                            file=file,
+                        )
 
     @abstractmethod
     def fetch_data(self):
@@ -181,43 +228,72 @@ class UPMEMWorkload:
         return ""
 
     def benchmark(self, **kwargs):
-        if not self.bench:
-            return
         config = {**self.required, **kwargs}
         cmd = self.benchmark_command(config)
         if not cmd or os.path.exists(f"baseline/{self.profile}") is False:
             return 0, 0, 0
-        result = subprocess.check_output(
-            f"cd baseline/{self.profile} && {cmd}",
-            shell=True,
-            stderr=subprocess.DEVNULL,
-        )
-        result = result.decode("utf-8")
+        try:
+            process = subprocess.Popen(
+                f"cd baseline/{self.profile} && {cmd}",
+                preexec_fn=os.setpgrp,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            result, error = process.communicate(timeout=self.timeout)
+        except subprocess.CalledProcessError as e:
+            result = result.decode("utf-8")
+            if "iffer" in result:
+                raise ValueError("Wrong")
+            raise RuntimeError(f"Failed: {error.decode('utf-8')}")
+        except subprocess.TimeoutExpired as e:
+            for _ in range(5):
+                try:
+                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                except ProcessLookupError:
+                    raise TimeoutError("Benchmark command timed out and process was killed")
+                time.sleep(1)
+                if process.poll() is not None:
+                    print("Process terminated successfully")
+                    raise TimeoutError("Benchmark command timed out and process was killed")
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                process.wait()  # 종료될 때까지 대기
+            except ProcessLookupError:
+                raise TimeoutError("Benchmark command timed out and process was killed")
+            raise TimeoutError("Benchmark command timed out and process was killed")
 
-        partial_cpudpu = re.findall("Elapsed Time\(1\) \(ms\): (\d+\.*\d*)", result)
-        partial_kernel = re.findall("Elapsed Time\(2\) \(ms\): (\d+\.*\d*)", result)
-        partial_dpucpu = re.findall("Elapsed Time\(3\) \(ms\): (\d+\.*\d*)", result)
-        if self.verbose >= 1:
-            print("iter\tBK\tK\tAK")
-            print("------------------------------")
-            for j, (c, k, d) in enumerate(zip(partial_cpudpu, partial_kernel, partial_dpucpu)):
-                time_tuple = (float(c), float(k), float(d))
-                print(str(j) + "\t" + "\t".join([f"{float(x):.3f}" for x in time_tuple]))
-            print("------------------------------")
+        try:
+            result = result.decode("utf-8")
+            if "iffer" in result:
+                raise ValueError("Wrong")
+            partial_cpudpu = re.findall("Elapsed Time\(1\) \(ms\): (\d+\.*\d*)", result)
+            partial_kernel = re.findall("Elapsed Time\(2\) \(ms\): (\d+\.*\d*)", result)
+            partial_dpucpu = re.findall("Elapsed Time\(3\) \(ms\): (\d+\.*\d*)", result)
+            if self.verbose >= 1:
+                print("iter\tBK\tK\tAK")
+                print("------------------------------")
+                for j, (c, k, d) in enumerate(zip(partial_cpudpu, partial_kernel, partial_dpucpu)):
+                    time_tuple = (float(c), float(k), float(d))
+                    print(str(j) + "\t" + "\t".join([f"{float(x):.3f}" for x in time_tuple]))
+                print("------------------------------")
 
-        bench_before_kernel_time = re.search("CPU-DPU Time \(ms\): (\d+\.\d+)", result)
-        bench_before_kernel_time = float(bench_before_kernel_time.group(1))
-        bench_kernel_time = re.search("DPU Kernel Time \(ms\): (\d+\.\d+)", result)
-        bench_kernel_time = float(bench_kernel_time.group(1))
-        bench_after_kernel_time = re.search("DPU-CPU Time \(ms\): (\d+\.\d+)", result)
-        bench_after_kernel_time = float(bench_after_kernel_time.group(1))
-        time_tuple = (
-            bench_before_kernel_time,
-            bench_kernel_time,
-            bench_after_kernel_time,
-        )
+            bench_before_kernel_time = re.search("CPU-DPU Time \(ms\): (\d+\.\d+)", result)
+            bench_before_kernel_time = float(bench_before_kernel_time.group(1))
+            bench_kernel_time = re.search("DPU Kernel Time \(ms\): (\d+\.\d+)", result)
+            bench_kernel_time = float(bench_kernel_time.group(1))
+            bench_after_kernel_time = re.search("DPU-CPU Time \(ms\): (\d+\.\d+)", result)
+            bench_after_kernel_time = float(bench_after_kernel_time.group(1))
+            time_tuple = (
+                bench_before_kernel_time,
+                bench_kernel_time,
+                bench_after_kernel_time,
+            )
+        except AttributeError as e:
+            raise RuntimeError(f"Error parsing benchmark results: {error.decode('utf-8')}")
         self.benchmark_results.append(time_tuple)
-        print("\t".join(map(str, time_tuple)))
+        #print("\t".join(map(str, time_tuple)))
+        return time_tuple
 
     def is_passed(self):
         if self.dtype[:5] == "float":
@@ -242,8 +318,9 @@ class UPMEMWorkload:
         if self.output_symbol:
             self.dev.output = tvm.nd.empty(self.host.output.shape, self.dtype, self.target_device)
 
-    def file_suffix(self):
-        return ""
+
+    def print_header(self):
+        print("BK\tK\tAK\tD2H\tTOT\tPASS\tCONF")
 
     def dump_handtune_max(self):
         if len(self.hand_tuned) == 0:
@@ -253,12 +330,13 @@ class UPMEMWorkload:
         self.hand_tuned = []
 
     def test(self, scheduler, **kwargs):
+        ret = "ERROR"
         self.config = {**self.required, **kwargs}
+        self.scheduler = scheduler
         self.sch = scheduler(**self.config)
-        suffix = self.file_suffix()
-        if len(suffix) > 0:
-            suffix = "_" + suffix
-        self.fname = f"{self.profile}_{format(self.index, '02')}_{scheduler.__name__}{suffix}.txt"
+        if self.automatic_set_fname or not self.fname:
+            self.fname = f"{scheduler.__name__}_{self.index}"
+        os.makedirs(self.log_dir + "/" + self.fname, exist_ok=True)
         self.index += 1
 
         self.fetch_data()
@@ -268,61 +346,63 @@ class UPMEMWorkload:
         elapsed_time = tvm._ffi.get_global_func("device_api.upmem.elapsed_time")
 
         try:
-            with open("./results/" + self.fname + ".txt", "w") as f:
-                self.func = tvm.build(self.sch.mod, target=self.target, name="kernel")
-                self.pre_kernel(f, self.sch)
-                if self.compile_only:
-                    return
+            #with open(f"./{self.log_dir}/{self.fname}.txt", "w") as f:
+            self.pre_kernel(self.sch)
+            if self.compile_only:
+                return
 
-                self.target_device.load_function(self.func)
-                times = []
+            self.target_device.load_function(self.func)
+            times = []
 
-                if self.verbose >= 1:
-                    print("iter\tBK\tK\tAK\tD2H\tTOT")
-                    print("------------------------------")
+            if self.verbose >= 1:
+                print("iter\tBK\tK\tAK\tD2H\tTOT")
+                print("------------------------------")
+            if self.perform_h2d:
                 self.h2d()
-                for j in range(self.repeat + self.warmup):
-                    self.target_device.sync()
-                    total_start = time.time()
 
-                    timestamp("start")
-                    self.kernel()
-                    timestamp("end")
-                    total_end = time.time()
+            for j in range(self.repeat + self.warmup):
+                self.target_device.sync()
+                total_start = time.time()
+                timestamp("start")
+                self.kernel()
+                timestamp("end")
+                total_end = time.time()
 
-                    if j >= self.warmup:
-                        before_kernel_time = elapsed_time("before_kernel") / 1e6
-                        kernel_time = elapsed_time("kernel") / 1e6
-                        after_kernel_time = elapsed_time("d2h") / 1e6
-                        d2h_time = elapsed_time("after_d2h") / 1e6
-                        total_time = (total_end - total_start) * 1e3
-                        time_tuple = (
-                            before_kernel_time,
-                            kernel_time,
-                            after_kernel_time,
-                            d2h_time,
-                            total_time,
-                        )
-                        times.append(time_tuple)
-                        if self.verbose >= 1:
-                            print(str(j) + "\t" + "\t".join([f"{x:.3f}" for x in time_tuple]))
-                if self.verbose >= 1:
-                    print("------------------------------")
-                time_tuple = np.mean(times, axis=0)
-                flag = self.is_passed()
-                if flag:
-                    self.hand_tuned.append([self.config.__repr__(), time_tuple[4]])
+                if j >= self.warmup:
+                    before_kernel_time = elapsed_time("before_kernel") / 1e6
+                    kernel_time = elapsed_time("kernel") / 1e6
+                    after_kernel_time = elapsed_time("d2h") / 1e6
+                    d2h_time = elapsed_time("after_d2h") / 1e6
+                    total_time = (total_end - total_start) * 1e3
+                    time_tuple = (
+                        before_kernel_time,
+                        kernel_time,
+                        after_kernel_time,
+                        d2h_time,
+                        total_time,
+                    )
+                    times.append(time_tuple)
+                    if self.verbose >= 1:
+                        print(str(j) + "\t" + "\t".join([f"{x:.3f}" for x in time_tuple]))
+            if self.verbose >= 1:
+                print("------------------------------")
+            time_tuple = np.mean(times, axis=0)
+            self.recent_time_tuple = time_tuple
+            flag = self.is_passed()
+            if flag:
+                self.hand_tuned.append([self.config.__repr__(), time_tuple[4]])
+            if self.verbose >= 0:
                 print(
                     "\t".join([f"{x:.3f}" for x in time_tuple])
                     + f"\t{flag}\t{self.config.__repr__()}"
                 )
-                # print(
-                #     f"{self.config['n_b']}\t{time_tuple[1]}\t{time_tuple[2]}\t{time_tuple[3]}\t{flag}"
-                # )
-                self.post_kernel(f)
-
+            self.post_kernel()
+            ret = f"{time_tuple[1]:.3f}" if flag else "WRONG"
         except Exception as e:
-            with open("./errors/" + self.fname + ".txt", "w") as f:
+            with open(f"./{self.log_dir}/{self.fname}/error.txt", "w") as f:
                 print(traceback.format_exc(), file=f)
+                ret = "ERROR"
         finally:
-            self.target_device.free()
+            if self.perform_free:
+                self.target_device.free()
+            return ret

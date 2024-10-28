@@ -5,6 +5,7 @@ from tensor import host_array
 import numpy as np
 import math
 import argparse
+from tqdm import tqdm
 
 
 def upmem_gemv_factory(M, K, dtype):
@@ -38,7 +39,8 @@ def gemvRCTile(M, K, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=16, dtype="int32", **
     cb = sch.cache_read(block_crf, 1, "local")
     cc = sch.cache_write(block_crf, 0, "local")
     i, xb, k = sch.get_loops(block_crf)
-    yb, yo, yi, yc = sch.split(i, factors=[n_yb, n_yt, None, 2])
+    yb, yo = sch.split(i, factors=[n_yb, None])
+    yo, yi, yc = sch.split(yo, factors=[n_yt, None, 8 // np.dtype(dtype).itemsize])
     xo, xi = sch.split(k, factors=[None, n_cache])
     sch.reorder(xb, yb, yo, yi, yc, xo, xi)
     sch.compute_at(ca, xo)
@@ -55,6 +57,33 @@ def gemvRCTile(M, K, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=16, dtype="int32", **
     sch.parallel(it)
     return sch
 
+def mtvRCTile(M, K, n_xb, n_yb, n_yt=16, n_cache=256, n_rt=1, dtype="int32", **kwargs):
+    sch = tvm.tir.Schedule(upmem_gemv_factory(M, K, dtype))
+    block_c = sch.get_block("C")
+    _, k = sch.get_loops(block_c)
+    xb, xo = sch.split(k, factors=[n_xb, None])
+    block_crf = sch.rfactor(xb, factor_axis=0)
+    ca = sch.cache_read(block_crf, 0, "local")
+    cb = sch.cache_read(block_crf, 1, "local")
+    cc = sch.cache_write(block_crf, 0, "local")
+    i, xb, k = sch.get_loops(block_crf)
+    yb, yo, yi, yc = sch.split(i, factors=[n_yb, n_yt, None, 2])
+    xo, xi = sch.split(k, factors=[None, n_cache])
+    sch.reorder(xb, yb, yo, yi, yc, xo, xi)
+    sch.compute_at(ca, xo)
+    sch.compute_at(cb, xo)
+    sch.reverse_compute_at(cc, yi)
+    sch.bind(xb, "blockIdx.x")
+    sch.bind(yb, "blockIdx.y")
+    sch.bind(yo, "threadIdx.x")
+    sch.annotate(xb, "bank", True)
+    sch.annotate(yb, "bank", True)
+    sch.decompose_reduction(block_crf, xo)
+    i, _ = sch.get_loops(block_c)
+    it, ii = sch.split(i, factors=[n_rt, None])
+    sch.parallel(it)
+    sch.annotate(block_c, "meta_schedule.optimization_level", 0)
+    return sch
 
 def gemvRTile(M, K, n_yb, n_cache=64, n_yt=16, dtype="int32", **kwargs):
     sch = tvm.tir.Schedule(upmem_gemv_factory(M, K, dtype))
@@ -135,10 +164,14 @@ def HBMStyleTile(dtype="int32", **kwargs):
 
 
 class GEMV(UPMEMWorkload):
-    def __init__(self, **kwargs):
+    def __init__(self, profile="gemv", **kwargs):
         required = dict(M=8192, K=8192, dtype="int32", n_xb=1, n_yb=1, n_cache=64, n_yt=16, n_rt=64)
         super().__init__(
-            profile="gemv", required=required, symbols=["A", "B", "C"], output_symbol="C", **kwargs
+            profile=profile,
+            required=required,
+            symbols=["A", "B", "C"],
+            output_symbol="C",
+            **kwargs
         )
 
     def fetch_data(self):
@@ -177,7 +210,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    cleanup()
     gemv = GEMV(
         repeat=args.repeat,
         warmup=args.warmup,
@@ -196,98 +228,62 @@ if __name__ == "__main__":
     if schedule is None:
         raise ValueError(f"Schedule {args.schedule} not found")
 
+    gemv.print_header()
+
     if not args.custom:
         config = gemv.extract_config(args)
-        gemv.benchmark(**config)
+        if args.bench:
+            gemv.benchmark(**config)
         gemv.test(schedule, **config)
+
     else:  # custom test
-        # dims = [
-        #     # (12288, 4096),
-        #     # (4096, 4096),
-        #     # (16384, 4096),
-        #     # (4096, 16384),
-        #     # (15360, 5120),
-        #     # (5120, 5120),
-        #     # (20480, 5120),
-        #     # (5120, 20480),
-        #     # (21504, 7168),
-        #     # (7168, 7168),
-        #     (28672, 7168),
-        #     (7168, 28672),
-        #     # (36864, 12288),
-        #     # (12288, 12288),
-        #     # (49152, 12288),
-        #     # (12288, 49152),
-        # ]
-        # for m, k in dims:
-        #     print(m, k)
-        #     for xb, yb in (
-        #         (1, 2048),
-        #         (2, 1024),
-        #         (4, 512),
-        #         (8, 256),
-        #         (16, 128),
-        #         (32, 64),
-        #         (64, 32),
-        #         (128, 16),
-        #     ):
-        #         for c in (16, 32, 64):
-        #             if (k // xb) < c:
-        #                 continue
-        #             if xb == 1:
-        #                 gemv.test(gemvRTile, M=m, K=k, n_yb=yb, n_yt=16, n_rt=16, n_cache=c)
-        #             else:
-        #                 gemv.test(
-        #                     gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=16, n_rt=16, n_cache=c
-        #                 )
-        #     gemv.dump_handtune_max()
-        #     print()
-
-        configs = [
-            # (8192, 1024, 1, 64, 16, 256, 1),
-            # (28672, 7168, 1, 2048, 16, 256, 16),
-            # (28672, 7168, 2, 1024, 16, 256, 16),
-            # (28672, 2048, 4, 512, 16, 256, 16), #
-            # (12288, 4096, 8, 128, 16, 256, 16),
-            # (49152, 12288, 1, 2048, 16, 256, 16),
-            # (4096, 4096, 2, 512, 16, 128, 16),
-            # (4096, 4092, 2, 32, 16, 128, 16),
-            # (49152, 12256, 2, 1024, 16, 32, 16),
-            # (49152, 12288, 4, 512, 16, 256, 16),
-            # (49152, 12288, 8, 256, 16, 256, 16),
-            # (49152, 12288, 16, 128, 16, 128, 16),
-            # (163840, 4096, 1, 2048, 16, 128, 16),
-            # (12288, 4096, 16, 128, 16, 128, 16),
-            # (4096, 4096, 16, 128, 16, 128, 16),
-            # (16384, 4096, 8, 256, 16, 128, 16),
-            # (4096, 16384, 32, 64, 16, 128, 16),
-            # (163840, 4096, 1, 2048, 16, 64, 16),
-            # (15360, 5120, 8, 256, 16, 64, 16),
-            # (5120, 5120, 32, 64, 16, 64, 16),
-            # (20480, 5120, 8, 256, 16, 64, 16),
-            # (5120, 20480, 64, 32, 16, 64, 16),
-            # (21504, 7168, 64, 32, 16, 64, 16),
-            # (7168, 7168, 8, 256, 16, 64, 16),
-            # (28672, 7168, 64, 32, 16, 64, 16),
-            # (7168, 28672, 128, 16, 16, 64, 16),
-            # (36864, 12288, 16, 128, 16, 64, 16),
-            # (12288, 12288, 16, 128, 16, 64, 16),
-            # (49152, 12288, 16, 128, 16, 64, 16),
-            (12288, 49152, 64, 32, 16, 64, 16),
+        config = [
+            (32,400, 2, 1, 16, 16, 16, "int32"),
+            (32,407, 2, 1, 16, 16, 16, "int32"),
         ]
+        gemv.use_dummy=False
+        gemv.opt_level = 4
 
-        configs = [
-            (1024, 200, 1, 16, 8, 64, 16),
-            #(1024, 1000, 2, 16, 16, 256, 16)
-        ]
+        for m, k, xb, yb, yt, cache, rt, dtype in config:
+            gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache, dtype=dtype)
+
+        if args.bench == True:
+            for m, k in [(8192, 8192), (12288, 4096), (4096, 4096), (16384, 4096), (4096, 16384)]:
+                print(m, k)
+                configs = [
+                    (m, k, 1, d, t, c, 1, "int32")
+                        for d in [256, 512, 1024, 1536, 2048]
+                        for t in [16, 20, 24]
+                        for c in [8, 16, 32, 64, 128, 256]
+                ]
+
+                max_time = 1e9
+                with tqdm(total=len(configs), leave=True) as pbar:
+                    for m, k, xb, yb, yt, cache, rt, dtype in configs:
+                        try:
+                            tuples = gemv.benchmark(M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache, dtype=dtype)
+                            total_time = tuples[0] + tuples[1] + tuples[2]
+                            if total_time < max_time:
+                                max_time = total_time
+                                best_config = (m, k, xb, yb, yt, cache, rt, dtype)
+                        except ValueError as e:
+                            tuples = ("wrong", "", "")
+                        except RuntimeError as e:
+                            tuples = ("fail", "", "")
+                        except TimeoutError as e:
+                            tuples = ("timeout", "", "")
+                        tqdm.write("\t".join([str(x) for x in tuples] + [str(m), str(k), str(yb), str(yt), str(cache), dtype]))
+                        pbar.update(1)
+
+                print(f"Best config: {best_config} with {max_time} ms")
+                print()
 
         # for m, k, xb, yb, cache in configs:
         #     gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_cache=cache, n_yt=16, n_rt=16)
 
-        for m, k, xb, yb, yt, cache, rt in configs:
-            gemv.benchmark(M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache)
-        for m, k, xb, yb, yt, cache, rt in configs:
-            if xb == 1:
-                gemv.test(gemvRTile, M=m, K=k, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache)
-            else:
-                gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache)
+        # for m, k, xb, yb, yt, rt, cache, dtype in configs:
+        #     # if xb == 1:
+        #     #     gemv.test(gemvRTile, M=m, K=k, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache)
+        #     # else:
+        #     with tvm.transform.PassContext(config={"tir.UpmemKernelOptimize": 4 }):
+        #         gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache, dtype=dtype)

@@ -294,6 +294,7 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
 
   ICHECK(mod->functions.size() == 1) << "Only one function supported for now.";
   int tasklet_num = 1;
+  bool use_dummy_kernel = false;
   for (auto kv : mod->functions) {
     auto f = Downcast<PrimFunc>(kv.second);
     TaskletNumFinder tnf;
@@ -309,6 +310,7 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
     code << fsource;
 
     auto global_symbol = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
+    use_dummy_kernel = use_dummy_kernel || f->GetAttr<Bool>("upmem_use_dummy_kernel", Bool(false)).value();
     padded_buffer_size = cg.padded_size();
   }
   VLOG(2) << code.str();
@@ -316,7 +318,7 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
   // return runtime::Module();
 
   ICHECK(!mod->uuid.empty());
-  DPUClangCompile(code.str(), tasklet_num, mod->uuid, false);
+  DPUClangCompile(code.str(), tasklet_num, mod->uuid, use_dummy_kernel);
 
   return UPMEMModuleCreate(code.str(), "upmem", ExtractFuncInfo(mod), code.str(),
                            padded_buffer_size);

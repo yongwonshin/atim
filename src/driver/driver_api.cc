@@ -150,9 +150,9 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
       pass_ctx->GetConfig<Bool>("tir.disable_storage_rewrite", Bool(false)).value();
   bool instrument_bound_checkers =
       pass_ctx->GetConfig<Bool>("tir.instrument_bound_checkers", Bool(false)).value();
-  bool disable_cse_tir = pass_ctx->GetConfig<Bool>("tir.disable_cse_tir", Bool(false)).value();
-  bool enable_equiv_terms_in_cse_tir =
-      pass_ctx->GetConfig<Bool>("tir.enable_equiv_terms_in_cse_tir", Bool(false)).value();
+  // bool disable_cse_tir = pass_ctx->GetConfig<Bool>("tir.disable_cse_tir", Bool(false)).value();
+  // bool enable_equiv_terms_in_cse_tir =
+  //     pass_ctx->GetConfig<Bool>("tir.enable_equiv_terms_in_cse_tir", Bool(false)).value();
 
   bool ptx_ldg32 = pass_ctx->GetConfig<Bool>("tir.ptx_ldg32", Bool(false)).value();
   bool is_hbmpim = pass_ctx->GetConfig<Bool>("tir.hbmpim", Bool(false)).value();
@@ -268,9 +268,6 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   if (is_hbmpim) {
     pass_list.push_back(tir::transform::InjectHBMPIMParams());
   }
-
-  pass_list.push_back(
-      tir::transform::CommonSubexprElimTIR(!disable_cse_tir, enable_equiv_terms_in_cse_tir));
 
   // This pass instruments the loops with the profile builtin calls to capture the runtime
   // performance data (only enabled for Hexagon at the moment). To ensure that no other
@@ -606,6 +603,12 @@ transform::Sequential MixedModulePassManager(IRModule mixed_mod, Target target) 
   mixed_pass_list.push_back(tir::transform::ExtractPimTransferSchedule());
   mixed_pass_list.push_back(tir::transform::SplitHostDevice());
   mixed_pass_list.push_back(tir::transform::SplitPimTransfer());
+
+  bool disable_cse_tir = pass_ctx->GetConfig<Bool>("tir.disable_cse_tir", Bool(false)).value();
+  bool enable_equiv_terms_in_cse_tir =
+      pass_ctx->GetConfig<Bool>("tir.enable_equiv_terms_in_cse_tir", Bool(false)).value();
+  mixed_pass_list.push_back(
+    tir::transform::CommonSubexprElimTIR(!disable_cse_tir, enable_equiv_terms_in_cse_tir));
 
   bool unpacked_api = mixed_mod->GetAttr<relay::Executor>(tvm::attr::kExecutor)
                           .value_or(relay::Executor::Create("graph", {}))

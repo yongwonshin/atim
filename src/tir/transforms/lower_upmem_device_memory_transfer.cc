@@ -327,12 +327,17 @@ class LowerMemoryTransfer : public StmtExprMutator {
 namespace transform {
 
 TVM_REGISTER_PASS_CONFIG_OPTION("tir.UpmemKernelOptimize", Integer);
+TVM_REGISTER_PASS_CONFIG_OPTION("tir.UpmemUseDummyKernel", Bool);
 
 Pass LowerUpmemDeviceMemoryTransfer() {
   auto pre_pass_func = [](PrimFunc f, IRModule m, PassContext ctx) {
     auto* n = f.CopyOnWrite();
     auto target = f->GetAttr<Target>(tvm::attr::kTarget);
     if (target.value()->kind->name == "upmem") {
+      bool use_dummy_kernel = ctx->GetConfig<Bool>("tir.UpmemUseDummyKernel", Bool(false)).value();
+      if (use_dummy_kernel) {
+        f = WithAttr(std::move(f), "upmem_use_dummy_kernel", Bool(1));
+      }
       auto m = f->body;
 
       arith::Analyzer ana;
@@ -351,12 +356,13 @@ Pass LowerUpmemDeviceMemoryTransfer() {
         m = LowerMemoryTransfer()(std::move(m));
       }
       // 0: NO OPT
-      // 1: CLIP
-      // 2: CLIP -> HOIST (WEAK)
-      // 3: CLIP -> HOIST (STRONG)
-      // 4: CLIP -> HOIST (STRONG) -> CLIP
-      // 5: HOIST (STRONG)
-      // 6: HOIST (STRONG) -> CLIP
+      // 1: MRAM_READ
+      // 2: CLIP
+      // 3: CLIP -> HOIST (WEAK)
+      // 4: CLIP -> HOIST (STRONG)
+      // 5: CLIP -> HOIST (WEAK) -> CLIP
+      // 6: CLIP -> HOIST (STRONG) -> CLIP
+      // 7: HOIST (STRONG) -> CLIP
       switch (opt_level) {
         case 2:
           m = EliminateBranch(&ana)(std::move(m));
@@ -371,16 +377,21 @@ Pass LowerUpmemDeviceMemoryTransfer() {
           break;
         case 5:
           m = EliminateBranch(&ana)(std::move(m));
-          m = Hoist(&ana, true)(std::move(m));
+          m = Hoist(&ana, false)(std::move(m));
           m = EliminateBranch(&ana)(std::move(m));
           break;
         case 6:
-          m = Hoist(&ana, true)(std::move(m));
-          break;
-        case 7:
+          m = EliminateBranch(&ana)(std::move(m));
           m = Hoist(&ana, true)(std::move(m));
           m = EliminateBranch(&ana)(std::move(m));
           break;
+        // case 6:
+        //   m = Hoist(&ana, true)(std::move(m));
+        //   break;
+        // case 7:
+        //   m = Hoist(&ana, true)(std::move(m));
+        //   m = EliminateBranch(&ana)(std::move(m));
+        //   break;
         default:
           break;
       }

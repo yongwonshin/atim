@@ -2318,21 +2318,21 @@ class params6B_batch1_token512:
 
 
 tuples = {
-    # "params6B_batch1_token64": (params6B_batch1_token64, 16, 64, 256),
-    # "params6B_batch1_token128": (params6B_batch1_token128, 16, 128, 256),
-    # "params6B_batch1_token256": (params6B_batch1_token256, 16, 256, 256),
-    # "params6B_batch1_token512": (params6B_batch1_token512, 16, 512, 256),
-    # "params6B_batch16_token64": (params6B_batch16_token64, 256, 64, 256),
-    # "params6B_batch16_token128": (params6B_batch16_token128, 256, 128, 256),
-    # "params6B_batch16_token256": (params6B_batch16_token256, 256, 256, 256),
-    # "params6B_batch16_token512": (params6B_batch16_token512, 256, 512, 256),
-    # "params175B_batch1_token64": (params175B_batch1_token64, 48, 64, 256),
-    # "params175B_batch1_token128": (params175B_batch1_token128, 48, 128, 256),
-    # "params175B_batch1_token256": (params175B_batch1_token256, 48, 256, 256),
-    # "params175B_batch1_token512": (params175B_batch1_token512, 48, 512, 256),
-    # "params175B_batch16_token64": (params175B_batch16_token64, 768, 64, 256),
-    # "params175B_batch16_token128": (params175B_batch16_token128, 768, 128, 256),
-    # "params175B_batch16_token256": (params175B_batch16_token256, 768, 256, 256),
+    "params6B_batch1_token64": (params6B_batch1_token64, 16, 64, 256),
+    "params6B_batch1_token128": (params6B_batch1_token128, 16, 128, 256),
+    "params6B_batch1_token256": (params6B_batch1_token256, 16, 256, 256),
+    "params6B_batch1_token512": (params6B_batch1_token512, 16, 512, 256),
+    "params6B_batch16_token64": (params6B_batch16_token64, 256, 64, 256),
+    "params6B_batch16_token128": (params6B_batch16_token128, 256, 128, 256),
+    "params6B_batch16_token256": (params6B_batch16_token256, 256, 256, 256),
+    "params6B_batch16_token512": (params6B_batch16_token512, 256, 512, 256),
+    "params175B_batch1_token64": (params175B_batch1_token64, 48, 64, 256),
+    "params175B_batch1_token128": (params175B_batch1_token128, 48, 128, 256),
+    "params175B_batch1_token256": (params175B_batch1_token256, 48, 256, 256),
+    "params175B_batch1_token512": (params175B_batch1_token512, 48, 512, 256),
+    "params175B_batch16_token64": (params175B_batch16_token64, 768, 64, 256),
+    "params175B_batch16_token128": (params175B_batch16_token128, 768, 128, 256),
+    "params175B_batch16_token256": (params175B_batch16_token256, 768, 256, 256),
     "params175B_batch16_token512": (params175B_batch16_token512, 768, 512, 256),
 }
 
@@ -2379,16 +2379,25 @@ def lower_to_div(mod):
     return m
 
 
+import numpy as np
+
+print()
+
 for conf, (cl, n, m, k) in tuples.items():
+    print("##########################", cl, n, m, k)
     func = tvm.build(cl, target="upmem", name="gemv")
     dev.load_function(func)
-    ha = host_array((n, m, k), "int32")
-    hb = host_array((n, k), "int32")
+    ha = np.ones((n, m, k)).astype("int32")
+    hb = np.ones((n, k)).astype("int32")
+
+    hc = np.einsum("nmk,nk->nm", ha, hb)
     # print("load", conf)
     a = tvm.nd.array(ha, device=dev, symbol="A")
     # print("INJECTED A")
     b = tvm.nd.array(hb, device=dev, symbol="B")
     # print("INJECTED B")
+
+
     c = tvm.nd.array(
         np.zeros(
             (
@@ -2404,6 +2413,28 @@ for conf, (cl, n, m, k) in tuples.items():
     elapsed_time = tvm._ffi.get_global_func("device_api.upmem.elapsed_time")
     func(a, b, c)
     # print("LAUNCHED")
+
+    # Compare hc and c, and print differences
+    correct_count = 0
+    incorrect_count = 0
+    differences = []
+    for i in range(n):
+        for j in range(m):
+            if hc[i, j] != c.asnumpy()[i, j]:
+                incorrect_count += 1
+                differences.append((i, j, hc[i, j], c.asnumpy()[i, j]))
+            else:
+                correct_count += 1
+
+    print(f"Correct count: {correct_count}")
+    print(f"Incorrect count: {incorrect_count}")
+
+    if differences:
+        print("Differences found (up to 1000):")
+        for diff in differences:
+            print(f"Index {diff[0], diff[1]}: Expected {diff[2]}, Got {diff[3]}")
+    else:
+        print("No differences found.")
 
     bs, ks, ass, ds, total = [], [], [], [], []
     for i in range(100):
