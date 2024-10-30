@@ -300,20 +300,23 @@ class LowerMemoryTransfer : public StmtExprMutator {
               int div = size_imm->value / 2048;
               int mod = size_imm->value % 2048;
 
-              Array<PrimExpr> div_args({load->buffer->data, GetIndexStrided(load->indices[0]),
-                                        store->buffer->data, GetIndexStrided(store->indices[0]),
-                                        2048});
-              Array<PrimExpr> mod_args({load->buffer->data, GetIndexStrided(load->indices[0]),
-                                        store->buffer->data, GetIndexStrided(store->indices[0]),
-                                        mod});
-              Stmt ret = Evaluate(Call(DataType::Int(32), new_op, mod_args));
-              if (div >= 1) {
-                Stmt bulk_stmt = Evaluate(Call(DataType::Int(32), new_op, div_args));
-                if (div > 1) {
-                  bulk_stmt = For(op->loop_var, 0, div, ForKind::kUnrolled, bulk_stmt);
-                }
-                return SeqStmt({bulk_stmt, ret});
+              std::vector<Stmt> vec;
+
+              for (int64_t i = 0; i < div; i++) {
+                PrimExpr offset = static_cast<int>(2048 / load->buffer->dtype.bytes() * i);
+                vec.push_back(Evaluate(Call(DataType::Handle(), new_op,
+                                   {load->buffer->data, GetIndexStrided(load->indices[0]) + offset,
+                                    store->buffer->data, GetIndexStrided(store->indices[0]) + offset, 2048})));
               }
+
+              if (mod > 0) {
+                PrimExpr offset = static_cast<int>(2048 / load->buffer->dtype.bytes() * div);
+                vec.push_back(Evaluate(Call(DataType::Handle(), new_op,
+                                   {load->buffer->data, GetIndexStrided(load->indices[0]) + offset,
+                                    store->buffer->data, GetIndexStrided(store->indices[0]) + offset, mod})));
+              }
+
+              Stmt ret = SeqStmt::Flatten(vec);
               return ret;
             }
           }
