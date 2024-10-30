@@ -516,11 +516,27 @@ class KernelReplacer : public StmtExprMutator {
   }
 };
 
-class EliminateAttr : public StmtExprMutator {
+class EliminateAttr : public StmtMutator {
  public:
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == tir::attr::pragma_explicit_h2d) {
       return VisitStmt(op->body);
+    }
+    return StmtMutator::VisitStmt_(op);
+  }
+};
+
+class HostBufferPadder: public StmtExprMutator {
+public:
+  PimKernelFinder& finder;
+  HostBufferPadder(PimKernelFinder& finder) : finder(finder) {}
+
+  Stmt VisitStmt_(const AllocateNode* op) final {
+    if (std::find(finder.allocated_before_buffer.begin(), finder.allocated_before_buffer.end(),
+      op->buffer_var.get()) != finder.allocated_before_buffer.end()) {
+      auto symbol_arr = finder.symbol_map[op->buffer_var->name_hint];
+      PrimExpr size = symbol_arr[3];
+      return Allocate(op->buffer_var, op->dtype, {size}, op->condition, op->body);
     }
     return StmtExprMutator::VisitStmt_(op);
   }
@@ -577,6 +593,7 @@ Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map
                             SeqStmt::Flatten(prologue), SeqStmt::Flatten(epilogue))(stmt);
 
   res = EliminateAttr()(res);
+  res = HostBufferPadder(finder)(res);
   // TODO[ywshin]: maybe trans_size = 32 for HBMPIM
   if (IsUPMEMDevice(target)) {
     res = OptimizePimTransferSchedule(res, target);

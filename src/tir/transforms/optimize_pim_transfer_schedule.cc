@@ -123,7 +123,9 @@ class BulkPimCopy : public StmtExprMutator {
     bool is_affine = true;
     PrimExpr factor = 1;
 
-    FactorMap(PrimExpr expr) { VisitExpr(expr); }
+    FactorMap(PrimExpr expr) {
+      VisitExpr(expr);
+    }
 
     void VisitExpr_(const VarNode* op) final {
       if (m.count(GetRef<Var>(op)) == 0) {
@@ -131,6 +133,7 @@ class BulkPimCopy : public StmtExprMutator {
       } else {
         m[GetRef<Var>(op)] = 0;
       }
+      ExprVisitor::VisitExpr_(op);
     }
 
     void VisitExpr_(const MulNode* op) final {
@@ -141,6 +144,20 @@ class BulkPimCopy : public StmtExprMutator {
       }
       ExprVisitor::VisitExpr_(op);
       factor = 1;
+    }
+
+    void VisitExpr_(const FloorDivNode* op) final {
+      if (op->a.as<VarNode>()) {
+        m[Downcast<Var>(op->a)] = 0;
+      }
+      ExprVisitor::VisitExpr_(op);
+    }
+
+    void VisitExpr_(const FloorModNode* op) final {
+      if (op->a.as<VarNode>()) {
+        m[Downcast<Var>(op->a)] = 0;
+      }
+      ExprVisitor::VisitExpr_(op);
     }
 
     int get_factor(Var v) {
@@ -339,7 +356,7 @@ class UpmemParallelTransfer : public StmtExprMutator {
 Stmt OptimizePimTransferSchedule(Stmt stmt, Target target) {
   Stmt res = AllocateFreeOnce()(std::move(stmt));
   res = EliminateTransferBranch()(std::move(res));
-  res = BulkPimCopy().rewrite(std::move(res));
+  res = BulkPimCopy()(std::move(res));
 
   if (target->HasKey("upmem")) res = UpmemParallelTransfer()(std::move(res));
   return res;

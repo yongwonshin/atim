@@ -96,7 +96,7 @@ for m, k in [(12288, 4096), (4096, 4096), (16384, 4096), (4096, 16384)]:
     cache_size = [8, 16, 32, 64, 128]
     configs = [(m, k, 1, d, t, 1, c, "int32") for d, t, c in product(dpus, tasklets, cache_size)]
     config_label = ["M", "K", "n_xb", "n_yb", "n_yt", "n_rt", "n_cache", "dtype"]
-    run(gemv, configs, config_label, reducer=get_total_time_gemv)
+    # run(gemv, configs, config_label, reducer=get_total_time_gemv)
 
 class BatchedGEMVBenchmark(GEMV):
     def __init__(self, **kwargs):
@@ -138,13 +138,14 @@ ytile = [1, 2, 4, 8, 16, 32, 64, 128, 256]
 tasklets = [1, 2, 4, 8, 16]
 caches = [8, 16, 32, 64, 128]
 
-for (B, M, N) in [(256, 512, 512), (64, 64, 256), (64, 128, 256), (64, 256, 256), (64, 512, 256)]:
+#for (B, M, N) in [(256, 512, 512), (64, 64, 256), (64, 128, 256), (64, 256, 256), (64, 512, 256)]:
+for (B, M, N) in [(256, 512, 512)]:
     configs = []
     for b, y, t, c in product([B], ytile, tasklets, caches):
         if (B * y <= 2048 and
             32 <= B * y and
-            y * t * 2 <= M):
+            y * t * 2 <= M and b * y >= 32):
             configs.append((B, M, N, b, y, t, c, "int32"))
     configs_label = ["B", "M", "N", "n_bb", "n_yb", "n_yt", "n_cache", "dtype"]
 
-    #run(bgemv, configs, configs_label, reducer=get_total_time_gemv)
+    run(bgemv, configs, configs_label, reducer=get_total_time_gemv)

@@ -9,9 +9,12 @@ from pathlib import Path
 
 
 @lru_cache(maxsize=4)
-def host_array(dim, dtype, intdist=50, index=0, new=False):
+def host_array(dim, dtype, intdist=50, index=0, new=False, ones=False):
     if isinstance(dim, int):
         dim = (dim,)
+
+    if ones:
+        return np.ones(dim, dtype=dtype)
 
     if len(dim) == 1 and dim[0] <= 403200000 and dtype == "int64":
         long_int64_arr = np.fromfile("../data/int64_403200000.bin", dtype="int64").reshape(

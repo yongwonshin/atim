@@ -347,11 +347,17 @@ Pass LowerUpmemDeviceMemoryTransfer() {
 
       m = MoveGlobalIndices()(std::move(m));  // required
 
-      // int64_t opt_level =
-      //     ctx->GetConfig<Integer>("tir.UpmemKernelOptimize", Integer(4)).value().IntValue();
-      ICHECK(f->GetAttr<Integer>("optimization_level").defined());
-      int64_t opt_level = f->GetAttr<Integer>("optimization_level").value().IntValue();
+      int64_t opt_level =
+          ctx->GetConfig<Integer>("tir.UpmemKernelOptimize", Integer(4)).value().IntValue();
+      // ICHECK(f->GetAttr<Integer>("optimization_level").defined());
+      if (f->GetAttr<Integer>("optimization_level").defined()) {
+        opt_level = f->GetAttr<Integer>("optimization_level").value().IntValue();
+      }
       // std::cerr << "OPT_LEVEL: " << opt_level << std::endl;
+
+      if (opt_level == -1)
+        opt_level = 4;
+
       if (opt_level >= 1) {
         m = LowerMemoryTransfer()(std::move(m));
       }

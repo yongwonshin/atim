@@ -213,6 +213,14 @@ void CodeGenUpmem::PrintStorageSync(const CallNode* op) {
   }
 }
 
+void CodeGenUpmem::VisitStmt_(const ForNode* op) {
+    if (op->kind == tir::ForKind::kUnrolled) {
+    PrintIndent();
+    stream << "#pragma unroll\n";
+  }
+  CodeGenC::VisitStmt_(op);
+}
+
 void CodeGenUpmem::VisitExpr_(const CallNode* op, std::ostream& os) {
   if (op->op.same_as(builtin::dpu_mram_read())) {
     ICHECK(is_const_int(op->args[4])) << "mram transfer size must be constant";

@@ -150,10 +150,18 @@ class UPMEMWorkload:
         return {k: vars(args)[k] for k in self.required.keys()}
 
     def pre_kernel(self, sch):
-        conf = { "tir.UpmemUseDummyKernel": self.use_dummy }
-        if self.opt_level >= 0:
-            conf["tir.UpmemKernelOptimize"] = self.opt_level
-        with tvm.transform.PassContext(config=conf):
+        curr_pass_ctx = tvm.ir.transform.PassContext.current()
+        curr_cfg = dict()
+        for key, value in curr_pass_ctx.config.items():
+            curr_cfg[key] = value
+        tir_compiler_cfg = {
+            "tir.UnrollLoop": {"explicit_unroll": False},
+            "tir.UpmemUseDummyKernel": self.use_dummy,
+            "tir.UpmemKernelOptimize": self.opt_level,
+        }
+        # Merge two configs
+        curr_cfg = {**curr_cfg, **tir_compiler_cfg}
+        with tvm.transform.PassContext(config=curr_cfg):
             if self.record_schedule:
                 with open(f"./{self.log_dir}/{self.fname}/schedule.py", "w") as f:
                     print("from tvm.script import ir as I", file=f)
@@ -351,6 +359,8 @@ class UPMEMWorkload:
             if self.compile_only:
                 return
 
+            print("prekernel done")
+
             self.target_device.load_function(self.func)
             times = []
 
@@ -359,6 +369,8 @@ class UPMEMWorkload:
                 print("------------------------------")
             if self.perform_h2d:
                 self.h2d()
+
+            print("h2d")
 
             for j in range(self.repeat + self.warmup):
                 self.target_device.sync()
@@ -371,8 +383,8 @@ class UPMEMWorkload:
                 if j >= self.warmup:
                     before_kernel_time = elapsed_time("before_kernel") / 1e6
                     kernel_time = elapsed_time("kernel") / 1e6
-                    after_kernel_time = elapsed_time("d2h") / 1e6
-                    d2h_time = elapsed_time("after_d2h") / 1e6
+                    after_kernel_time = elapsed_time("after_kernel") / 1e6
+                    d2h_time = elapsed_time("d2h") / 1e6
                     total_time = (total_end - total_start) * 1e3
                     time_tuple = (
                         before_kernel_time,
@@ -384,6 +396,7 @@ class UPMEMWorkload:
                     times.append(time_tuple)
                     if self.verbose >= 1:
                         print(str(j) + "\t" + "\t".join([f"{x:.3f}" for x in time_tuple]))
+            print("run")
             if self.verbose >= 1:
                 print("------------------------------")
             time_tuple = np.mean(times, axis=0)
