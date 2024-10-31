@@ -164,6 +164,11 @@ std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
   if (config.req == ReuseType::kNoReuse) {
     return {std::move(state)};
   }
+  Optional<Integer> rfactor_producer = tir::GetAnn<Integer>(
+      state->sch->GetSRef(state->block_rv), tir::attr::meta_schedule_rfactor_producer_block);
+  Optional<Integer> rfactor_consumer = tir::GetAnn<Integer>(
+      state->sch->GetSRef(state->block_rv), tir::attr::meta_schedule_rfactor_consumer_block);
+  bool is_rfactored = rfactor_producer.defined() || rfactor_consumer.defined();
   std::vector<int> levels = config.levels;
   ReuseType req = config.req;
   if (Optional<Array<Integer>> ann = tir::GetAnn<Array<Integer>>(
@@ -179,6 +184,7 @@ std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
     Array<BlockRV> consumer_rvs = state->sch->GetConsumers(state->block_rv);
     if (consumer_rvs.size() == 1 && IsWriteCache(state->sch->GetSRef(consumer_rvs[0]))) {
       for (int level : levels) {
+        level += is_rfactored;
         State new_state = state->Copy();
         const LoopRV& loop_rv = new_state->tiles[level - 1].back();
         new_state->sch->ReverseComputeAt(consumer_rvs[0], loop_rv, true);
@@ -200,6 +206,7 @@ std::vector<State> MultiLevelTilingNode::AddWriteReuse(State state) const {
                              /*storage_scope=*/config.scope);
   state->write_reuse.emplace(0, write_cache);
   for (int level : levels) {
+    level += is_rfactored;
     State new_state = state->Copy();
     const LoopRV& loop_rv = new_state->tiles[level - 1].back();
     new_state->sch->ReverseComputeAt(write_cache, loop_rv, true);
@@ -246,6 +253,11 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   tile_factors.resize(tiles.size());
   int s = 0, r = 0;
   Array<LoopRV> hoisted_loops;
+  Optional<Integer> rfactor_producer =
+      tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_producer_block);
+  Optional<Integer> rfactor_consumer =
+      tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_consumer_block);
+  bool is_rfactored = rfactor_producer.defined() || rfactor_consumer.defined();
   int num_spatial_loops = 0;
   for (int i = 0, n = loops.size(); i < n; ++i) {
     if (iter_types[i] == IterVarType::kDataPar) {
@@ -254,7 +266,7 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
   }
   for (int i = 0, n = loops.size(); i < n; ++i) {
     LoopRV loop = loops[i];
-    if (this->hoist_rfactor_loop && i == num_spatial_loops - 1) {
+    if (is_rfactored && this->hoist_rfactor_loop && i == num_spatial_loops - 1) {
       hoisted_loops.push_back(loop);
       continue;
     }
@@ -308,11 +320,7 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
       }
     }
   }
-  Optional<Integer> rfactor_producer =
-      tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_producer_block);
-  Optional<Integer> rfactor_consumer =
-      tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_consumer_block);
-  if (!hoisted_loops.empty() && (rfactor_producer.defined() || rfactor_consumer.defined())) {
+  if (is_rfactored && !hoisted_loops.empty()) {
     ICHECK_EQ(hoisted_loops.size(), 1);
     LoopRV loop = hoisted_loops[0];
     tiles.insert(tiles.begin(), {loop});
@@ -333,60 +341,68 @@ std::vector<State> MultiLevelTilingNode::TileLoopNest(State state) const {
       break;
     }
   }
-  if (is_high_dim) {
+  int reverse_index = 2;
+  if (is_rfactored && is_high_dim) {
     new_tile_binds = Array<String>{"blockIdx.x", "blockIdx.y", "blockIdx.z", "threadIdx.x"};
     new_annotations = Array<Map<String, ObjectRef>>{
         {{"bank", Integer(1)}},
         {{"bank", Integer(1)}},
         {{"bank", Integer(1)}},
     };
+    reverse_index = 3;
   }
 
   int n_binds = std::min(new_tile_binds.size(), tiles.size());
   for (int i = 0, t = 0; t < n_binds; ++i) {
-    if (!tiles[i].empty()) {
-      for (int n = 0; n < tiles[i].size(); n++) {
-        sch->Bind(tiles[i][n], new_tile_binds[t]);
-        t++;
-        if (t >= n_binds) {
-          break;
-        }
+    if (t >= reverse_index) {
+      Array<LoopRV> reordered_tile;
+      for (int j = 0; j < tiles[i].size(); j++) {
+        reordered_tile.push_back(tiles[i][tiles[i].size() - j - 1]);
       }
-      // LoopRV fused = tiles[i][0];
-      // if (tiles[i].size() > 1) {
-      //   fused = sch->Fuse(tiles[i]);
-      // }
-      // sch->Bind(fused, tile_binds[i]);
-      // tiles[i] = {fused};
+      sch->Reorder(reordered_tile);
     }
+    for (int n = 0; n < tiles[i].size(); n++) {
+      if (t >= reverse_index) {
+        n = tiles[i].size() - n - 1;
+      }
+      sch->Bind(tiles[i][n], new_tile_binds[t]);
+      t++;
+      if (t >= n_binds) {
+        break;
+      }
+    }
+    // LoopRV fused = tiles[i][0];
+    // if (tiles[i].size() > 1) {
+    //   fused = sch->Fuse(tiles[i]);
+    // }
+    // sch->Bind(fused, tile_binds[i]);
+    // tiles[i] = {fused};
   }
   int n_annotations = std::min(new_annotations.size(), tiles.size());
   for (int i = 0, t = 0; t < n_annotations; ++i) {
-    if (!tiles[i].empty()) {
-      for (int n = 0; n < tiles[i].size(); n++) {
-        auto annotation = new_annotations[t];
-        for (auto ann : annotation) {
-          if (!ann.first.empty()) {
-            sch->Annotate(tiles[i][n], ann.first, ann.second);
-          }
-        }
-        t++;
-        if (t >= n_binds) {
-          break;
+    for (int n = 0; n < tiles[i].size(); n++) {
+      auto annotation = new_annotations[t];
+      for (auto ann : annotation) {
+        if (!ann.first.empty()) {
+          sch->Annotate(tiles[i][n], ann.first, ann.second);
         }
       }
-      // LoopRV fused = tiles[i][0];
-      // if (tiles[i].size() > 1) {
-      //   fused = sch->Fuse(tiles[i]);
-      // }
-      // auto annotation_for_fused = annotations[i];
-      // for (auto annotation : annotation_for_fused) {
-      //   if (!annotation.first.empty()) {
-      //     sch->Annotate(fused, annotation.first, annotation.second);
-      //   }
-      // }
-      // tiles[i] = {fused};
+      t++;
+      if (t >= n_binds) {
+        break;
+      }
     }
+    // LoopRV fused = tiles[i][0];
+    // if (tiles[i].size() > 1) {
+    //   fused = sch->Fuse(tiles[i]);
+    // }
+    // auto annotation_for_fused = new_annotations[i];
+    // for (auto annotation : annotation_for_fused) {
+    //   if (!annotation.first.empty()) {
+    //     sch->Annotate(fused, annotation.first, annotation.second);
+    //   }
+    // }
+    // tiles[i] = {fused};
   }
   state->tiles = Array<Array<LoopRV>>{tiles.begin(), tiles.end()};
   if (this->thread_warp_size_ != -1) {
@@ -408,6 +424,11 @@ std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
   if (config.req == ReuseType::kNoReuse) {
     return {std::move(state)};
   }
+  Optional<Integer> rfactor_producer = tir::GetAnn<Integer>(
+      state->sch->GetSRef(state->block_rv), tir::attr::meta_schedule_rfactor_producer_block);
+  Optional<Integer> rfactor_consumer = tir::GetAnn<Integer>(
+      state->sch->GetSRef(state->block_rv), tir::attr::meta_schedule_rfactor_consumer_block);
+  bool is_rfactored = rfactor_producer.defined() || rfactor_consumer.defined();
   ICHECK(config.req != ReuseType::kMayReuse);
   const BlockRV& block_rv = state->block_rv;
   std::vector<State> results;
@@ -418,6 +439,7 @@ std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
       auto n_tile = state->tiles.size();
       level = n_tile + level;
     }
+    level += is_rfactored;
     State new_state = state->Copy();
     Schedule& sch = new_state->sch;
     // if (!config.sep) {
@@ -440,8 +462,9 @@ std::vector<State> MultiLevelTilingNode::AddReadReuse(State state) const {
       sch->ComputeAt(cache_read_block, loop_rv, true);
       // Fuse the iterators of the cache_read
       Array<LoopRV> buffer_loops = sch->GetLoops(cache_read_block);
-      sch->Fuse(Array<LoopRV>{buffer_loops.end() - buffer_ndim,  //
-                              buffer_loops.end()});
+      // [ywshin]: bug in optimize pim transfer when fusing
+      // sch->Fuse(Array<LoopRV>{buffer_loops.end() - buffer_ndim,  //
+      //                         buffer_loops.end()});
       AnnotateCooperativeFetching(&sch, cache_read_block);
       // if (!config.sep) {
       new_state->read_reuse.emplace(j, cache_read_block);
@@ -484,13 +507,14 @@ std::vector<State> MultiLevelTilingNode::AddAsyncPipeline(State state) const {
   ret.push_back(state);
   for (int stage : this->stages) {
     State new_state = state->Copy();
-    LoopRV r_loop_fused = new_state->sch->Fuse(new_state->tiles[r_indices_[0]]);
-    new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_stage,
-                             Array<Integer>{0, 0, stage - 2});
-    new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_order,
-                             Array<Integer>{0, 1, 2});
-    new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_async_stages,
-                             Array<Integer>{0});
+    // [ywshin]: bug in optimize pim transfer when fusing
+    // LoopRV r_loop_fused = new_state->sch->Fuse(new_state->tiles[r_indices_[0]]);
+    // new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_stage,
+    //                          Array<Integer>{0, 0, stage - 2});
+    // new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_order,
+    //                          Array<Integer>{0, 1, 2});
+    // new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_async_stages,
+    //                          Array<Integer>{0});
     ret.push_back(std::move(new_state));
   }
   return ret;

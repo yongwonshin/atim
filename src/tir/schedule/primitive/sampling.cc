@@ -384,6 +384,10 @@ std::vector<int64_t> SamplePerfectTile(support::LinearCongruentialEngine::TRandS
   CHECK_GE(n_splits, 2) << "ValueError: Cannot tile a loop into " << n_splits << " splits";
   while (true) {
     std::vector<int64_t> result = SamplePerfectTile(rand_state, extent, n_splits);
+    if (extent < min_innermost_factor) {
+      // invalid result
+      return result;
+    }
     if (result.back() <= max_innermost_factor && result.back() >= min_innermost_factor) {
       return result;
     }
@@ -393,9 +397,16 @@ std::vector<int64_t> SamplePerfectTile(support::LinearCongruentialEngine::TRandS
 std::vector<int64_t> SamplePerfectTile2(support::LinearCongruentialEngine::TRandState* rand_state,
                                         int32_t extent, int32_t n_splits, int32_t min_n_splits,
                                         int32_t max_n_splits) {
+  if (max_n_splits == -1 && min_n_splits == -1) {
+    return SamplePerfectTile2(rand_state, extent, n_splits);
+  }
   CHECK_GE(n_splits, 2) << "ValueError: Cannot tile a loop into " << n_splits << " splits";
   while (true) {
     std::vector<int64_t> result = SamplePerfectTile2(rand_state, extent, n_splits);
+    if (extent < min_n_splits) {
+      // invalid result
+      return result;
+    }
     if (result.front() <= max_n_splits && result.front() >= min_n_splits) {
       return result;
     }
@@ -434,10 +445,10 @@ std::vector<int64_t> SamplePerfectTile(
     // Case 3. Use fresh new sampling result
     result = SamplePerfectTile(rand_state, *extent, n_splits, max_innermost_factor,
                                min_innermost_factor);
-    if (max_innermost_factor != -1) {
+    if (max_innermost_factor != -1 && *extent <= max_innermost_factor) {
       ICHECK_LE(result.back(), max_innermost_factor);
     }
-    if (min_innermost_factor != -1) {
+    if (min_innermost_factor != -1 && *extent >= min_innermost_factor) {
       ICHECK_GE(result.back(), min_innermost_factor);
     }
   }
@@ -477,10 +488,10 @@ std::vector<int64_t> SamplePerfectTile2(
   } else {
     // Case 3. Use fresh new sampling result
     result = SamplePerfectTile2(rand_state, *extent, n_splits, min_n_splits, max_n_splits);
-    if (max_n_splits != -1) {
+    if (max_n_splits != -1 && *extent <= max_n_splits) {
       ICHECK_LE(result.front(), max_n_splits);
     }
-    if (min_n_splits != -1) {
+    if (min_n_splits != -1 && *extent >= min_n_splits) {
       ICHECK_GE(result.front(), min_n_splits);
     }
   }

@@ -205,6 +205,20 @@ Optional<Trace> MutateSampleTileSize(const Trace& trace, Instruction inst,
   int x, y;
   // select source
   while (true) {
+    {
+      bool all_ones = true;
+      for (int i = 0; i < tiles.size() - 1; i++) {
+        if (tiles[i] != 1) {
+          all_ones = false;
+          break;
+        }
+      }
+      if (all_ones) {
+        // no possible mutation; early exit to preventing infinite loop
+        return trace->WithDecision(inst, support::AsArray<int64_t, ObjectRef>(tiles),
+                                   /*remove_postproc=*/true);
+      }
+    }
     x = tir::SampleInt(rand_state, 0, n_splits);
     if (inst->kind.same_as(inst_sample_perfect_tile) && tiles[x] <= 1) {
       continue;

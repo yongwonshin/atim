@@ -170,8 +170,9 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
           stack.emplace_back(sch, blocks);
           continue;
         }
-        if ((ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule) ||
-             ScheduleRule::IsMultiLevelTilingReductionUPMEM(sch_rule)) &&
+        if ((
+                //  ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule) ||
+                ScheduleRule::IsMultiLevelTilingReductionUPMEM(sch_rule)) &&
             (!rfactor_producer.defined() && !rfactor_consumer.defined())) {
           stack.emplace_back(sch, blocks);
           continue;

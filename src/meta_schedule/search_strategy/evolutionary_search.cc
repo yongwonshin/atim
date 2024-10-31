@@ -27,6 +27,8 @@
 namespace tvm {
 namespace meta_schedule {
 
+using tir::InstructionKind;
+
 using tir::Schedule;
 
 /**************** Data Structure ****************/
@@ -472,8 +474,11 @@ class EvolutionarySearchNode : public SearchStrategyNode {
 };
 
 std::vector<Schedule> EvolutionarySearchNode::State::PickBestFromDatabase(int num) {
+  static const InstructionKind& inst_factor = InstructionKind::Get("RFactor");
   auto _ = Profiler::TimedScope("EvoSearch/PickBestFromDatabase");
   std::vector<tir::Trace> measured_traces;
+  int org_num = num;
+  num = max_trials;
   measured_traces.reserve(num);
   Array<TuningRecord> top_records = this->database_->GetTopK(this->token_, num);
   for (TuningRecord record : top_records) {
@@ -482,12 +487,18 @@ std::vector<Schedule> EvolutionarySearchNode::State::PickBestFromDatabase(int nu
   int actual_num = measured_traces.size();
   ThreadedTraceApply pp(self->postprocs_);
   std::vector<Schedule> results(actual_num, Schedule{nullptr});
-  auto f_proc_measured = [this, &measured_traces, &results, &pp](int thread_id,
-                                                                 int trace_id) -> void {
+  std::vector<bool> rfactors(actual_num, bool{false});
+  auto f_proc_measured = [this, &measured_traces, &results, &rfactors, &pp](int thread_id,
+                                                                            int trace_id) -> void {
     PerThreadData& data = this->per_thread_data_.at(thread_id);
     TRandState* rand_state = &data.rand_state;
     const IRModule& mod = data.mod;
     tir::Trace trace = measured_traces.at(trace_id);
+    for (auto inst : trace->insts) {
+      if (inst->kind.same_as(inst_factor)) {
+        rfactors[trace_id] = true;
+      }
+    }
     Schedule& result = results.at(trace_id);
     ICHECK(!result.defined());
     if (Optional<Schedule> sch = pp.Apply(mod, trace, rand_state)) {
@@ -498,7 +509,32 @@ std::vector<Schedule> EvolutionarySearchNode::State::PickBestFromDatabase(int nu
     }
   };
   support::parallel_for_dynamic(0, actual_num, self->ctx_->num_threads, f_proc_measured);
-  return results;
+  if (st < max_trials * 0.3) {
+    std::vector<Schedule> rfactor_results;
+    std::vector<Schedule> other_results;
+    for (int i = 0; i < actual_num; i++) {
+      if (rfactors[i]) {
+        rfactor_results.push_back(results[i]);
+      } else {
+        other_results.push_back(results[i]);
+      }
+    }
+    std::vector<Schedule> new_results;
+    while (new_results.size() < org_num && !rfactor_results.empty() && !other_results.empty()) {
+      new_results.push_back(rfactor_results.back());
+      new_results.push_back(other_results.back());
+      rfactor_results.pop_back();
+      other_results.pop_back();
+    }
+    return new_results;
+  } else {
+    std::vector<Schedule> new_results;
+    for (int i = 0; i < std::min(org_num, num); i++) {
+      new_results.push_back(results[i]);
+    }
+    return new_results;
+  }
+  // return results;
 }
 
 std::vector<Schedule> EvolutionarySearchNode::State::SampleInitPopulation(int num) {
@@ -655,7 +691,12 @@ std::vector<Schedule> EvolutionarySearchNode::State::EvolveWithCostModel(
 std::vector<Schedule> EvolutionarySearchNode::State::PickWithEpsGreedy(
     const std::vector<Schedule>& unmeasured, const std::vector<Schedule>& bests, int num) {
   auto _ = Profiler::TimedScope("EvoSearch/PickWithEpsGreedy");
-  int num_rands = num * self->eps_greedy;
+  double eps_greedy = self->eps_greedy;
+  if (self->eps_greedy < 0.5) {
+    eps_greedy =
+        std::max(0.5 - (0.5 - self->eps_greedy) * st / (max_trials * 0.4), self->eps_greedy);
+  }
+  int num_rands = num * eps_greedy;
   int num_bests = num - num_rands;
   std::vector<int> rands =
       tir::SampleWithoutReplacement(&self->rand_state_, unmeasured.size(), unmeasured.size());

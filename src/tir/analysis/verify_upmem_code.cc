@@ -216,7 +216,6 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
       global_memory_per_block_ += Downcast<IntImm>(kv.second)->value;
     }
 
-    // TODO[ywshin]: Add support of detecting UPMEM Misaligned Address error
     this->VisitStmt(stmt);
 
     return errors_;
@@ -234,6 +233,13 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
     } else if (storage_scope.rank == runtime::StorageRank::kShared) {
       size_t size = static_cast<size_t>(op->ConstantAllocationSize());
       shared_memory_per_block_ += size * op->dtype.bytes() * op->dtype.lanes();
+    }
+
+    // [ywshin]: wram read/write must be 8-byte aligned
+    size_t allocated_size_in_bytes =
+        op->ConstantAllocationSize() * op->dtype.bytes() * op->dtype.lanes();
+    if (allocated_size_in_bytes % 8 != 0) {
+      errors_.push_back("Mis-aligned buffer access is not allowed.");
     }
   }
 

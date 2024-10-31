@@ -229,15 +229,15 @@ Array<ScheduleRule> ScheduleRule::DefaultUPMEM() {
               /*vector_load_lens=*/Array<Integer>{1},
               /*reuse_read=*/
               Map<String, ObjectRef>{{"req", String("must")},
-                                     {"levels", Array<Integer>{6, 8}},  //
+                                     {"levels", Array<Integer>{4, 6}},  //
                                      {"scope", String("local")},
                                      {"sep", Bool(false)}},
               /*reuse_write=*/
               Map<String, ObjectRef>{{"req", String("must")},
-                                     {"levels", Array<Integer>{6, 8}},  //
+                                     {"levels", Array<Integer>{3, 5}},  //
                                      {"scope", String("local")},
                                      {"sep", Bool(false)}},
-              /*min_innermost_factor=*/Integer(2),
+              /*min_innermost_factor=*/Integer(1),
               /*reordering=*/NullOpt,
               /*s_split_factors=*/NullOpt,
               /*r_split_factors=*/NullOpt,
@@ -257,15 +257,15 @@ Array<ScheduleRule> ScheduleRule::DefaultUPMEM() {
               /*vector_load_lens=*/Array<Integer>{1},
               /*reuse_read=*/
               Map<String, ObjectRef>{{"req", String("must")},
-                                     {"levels", Array<Integer>{4, 5}},  //
+                                     {"levels", Array<Integer>{4}},  //
                                      {"scope", String("local")},
                                      {"sep", Bool(false)}},
               /*reuse_write=*/
               Map<String, ObjectRef>{{"req", String("must")},
-                                     {"levels", Array<Integer>{4, 5}},  //
+                                     {"levels", Array<Integer>{3, 4}},  //
                                      {"scope", String("local")},
                                      {"sep", Bool(false)}},
-              /*min_innermost_factor=*/Integer(2),
+              /*min_innermost_factor=*/Integer(1),
               /*reordering=*/NullOpt,
               /*s_split_factors=*/NullOpt,
               /*r_split_factors=*/NullOpt,
@@ -285,12 +285,12 @@ Array<ScheduleRule> ScheduleRule::DefaultUPMEM() {
               /*vector_load_lens=*/Array<Integer>{1},
               /*reuse_read=*/
               Map<String, ObjectRef>{{"req", String("must")},
-                                     {"levels", Array<Integer>{3, 4}},  //
+                                     {"levels", Array<Integer>{3}},  //
                                      {"scope", String("local")},
                                      {"sep", Bool(false)}},
               /*reuse_write=*/
               Map<String, ObjectRef>{{"req", String("must")},
-                                     {"levels", Array<Integer>{3, 4}},  //
+                                     {"levels", Array<Integer>{2, 3}},  //
                                      {"scope", String("local")},
                                      {"sep", Bool(false)}},
               /*min_innermost_factor=*/Integer(1),
@@ -308,7 +308,7 @@ Array<ScheduleRule> ScheduleRule::DefaultUPMEM() {
               /*max_jobs_per_core=*/-1,
               /*max_vectorize_extent=*/-1,
               /*unroll_max_steps=*/Array<Integer>{0, 16, 64, 512},
-              /*unroll_explicit=*/true),
+              /*unroll_explicit=*/false),
           ScheduleRule::SetOptimizationLevel(4)};
 }
 

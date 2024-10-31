@@ -214,9 +214,9 @@ void CodeGenUpmem::PrintStorageSync(const CallNode* op) {
 }
 
 void CodeGenUpmem::VisitStmt_(const ForNode* op) {
-    if (op->kind == tir::ForKind::kUnrolled) {
+  if (op->kind == tir::ForKind::kUnrolled) {
     PrintIndent();
-    stream << "#pragma unroll\n";
+    stream << "#pragma clang loop unroll(full)\n";
   }
   CodeGenC::VisitStmt_(op);
 }
@@ -318,7 +318,8 @@ runtime::Module BuildUpmem(IRModule mod, Target target) {
     code << fsource;
 
     auto global_symbol = f->GetAttr<String>(tvm::attr::kGlobalSymbol);
-    use_dummy_kernel = use_dummy_kernel || f->GetAttr<Bool>("upmem_use_dummy_kernel", Bool(false)).value();
+    use_dummy_kernel =
+        use_dummy_kernel || f->GetAttr<Bool>("upmem_use_dummy_kernel", Bool(false)).value();
     padded_buffer_size = cg.padded_size();
   }
   VLOG(2) << code.str();
