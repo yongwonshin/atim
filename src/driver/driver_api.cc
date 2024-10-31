@@ -242,7 +242,7 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   if (use_async_copy) {
     pass_list.push_back(tir::transform::LowerAsyncDMA());
   }
- //pass_list.push_back(tir::transform::UnrollLoop());
+  // pass_list.push_back(tir::transform::UnrollLoop());
 
   // Add user-defined phase-2 passes
   pass_list.insert(pass_list.end(), user_lower_phase2.begin(), user_lower_phase2.end());
@@ -604,13 +604,6 @@ transform::Sequential MixedModulePassManager(IRModule mixed_mod, Target target) 
   mixed_pass_list.push_back(tir::transform::SplitHostDevice());
   mixed_pass_list.push_back(tir::transform::SplitPimTransfer());
 
-  mixed_pass_list.push_back(tir::transform::UnrollLoop());
-  bool disable_cse_tir = pass_ctx->GetConfig<Bool>("tir.disable_cse_tir", Bool(false)).value();
-  bool enable_equiv_terms_in_cse_tir =
-      pass_ctx->GetConfig<Bool>("tir.enable_equiv_terms_in_cse_tir", Bool(false)).value();
-  mixed_pass_list.push_back(
-    tir::transform::CommonSubexprElimTIR(!disable_cse_tir, enable_equiv_terms_in_cse_tir));
-
   bool unpacked_api = mixed_mod->GetAttr<relay::Executor>(tvm::attr::kExecutor)
                           .value_or(relay::Executor::Create("graph", {}))
                           ->GetAttr<Bool>("unpacked-api")
@@ -649,6 +642,13 @@ transform::Sequential HostModulePassManager(IRModule mixed_mod, Target target_ho
 
   host_pass_list.push_back(tir::transform::BindTarget(target_host));
 
+  bool disable_cse_tir = pass_ctx->GetConfig<Bool>("tir.disable_cse_tir", Bool(false)).value();
+  bool enable_equiv_terms_in_cse_tir =
+      pass_ctx->GetConfig<Bool>("tir.enable_equiv_terms_in_cse_tir", Bool(false)).value();
+  host_pass_list.push_back(
+      tir::transform::CommonSubexprElimTIR(!disable_cse_tir, enable_equiv_terms_in_cse_tir));
+  host_pass_list.push_back(tir::transform::UnrollLoop());
+
   host_pass_list.push_back(tir::transform::LowerTVMBuiltin());
   host_pass_list.push_back(tir::transform::LowerCustomDatatypes());
   host_pass_list.push_back(tir::transform::LowerIntrin());
@@ -679,6 +679,15 @@ transform::Sequential DeviceModulePassManager(IRModule mixed_mod, Target target)
 
   device_pass_list.push_back(tir::transform::LowerWarpMemory());
   device_pass_list.push_back(tir::transform::LowerUpmemDeviceMemoryTransfer());
+
+  auto pass_ctx = transform::PassContext::Current();
+  bool disable_cse_tir = pass_ctx->GetConfig<Bool>("tir.disable_cse_tir", Bool(false)).value();
+  bool enable_equiv_terms_in_cse_tir =
+      pass_ctx->GetConfig<Bool>("tir.enable_equiv_terms_in_cse_tir", Bool(false)).value();
+  device_pass_list.push_back(
+      tir::transform::CommonSubexprElimTIR(!disable_cse_tir, enable_equiv_terms_in_cse_tir));
+  device_pass_list.push_back(tir::transform::UnrollLoop());
+
   device_pass_list.push_back(tir::transform::LowerCustomDatatypes());
   device_pass_list.push_back(tir::transform::LowerDeviceStorageAccessInfo());
   device_pass_list.push_back(tir::transform::LowerIntrin());

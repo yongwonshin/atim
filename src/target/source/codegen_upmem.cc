@@ -214,9 +214,14 @@ void CodeGenUpmem::PrintStorageSync(const CallNode* op) {
 }
 
 void CodeGenUpmem::VisitStmt_(const ForNode* op) {
-    if (op->kind == tir::ForKind::kUnrolled) {
+  if (op->kind == tir::ForKind::kUnrolled) {
+    auto auto_max_step = Downcast<IntImm>(op->annotations.Get("auto_max_step").value_or(make_const(DataType::Int(32), 0)))->value;
     PrintIndent();
-    stream << "#pragma unroll\n";
+    if (auto_max_step > 0) {
+      stream << "#pragma unroll(" << auto_max_step << ")\n";
+    } else {
+      stream << "#pragma unroll\n";
+    }
   }
   CodeGenC::VisitStmt_(op);
 }

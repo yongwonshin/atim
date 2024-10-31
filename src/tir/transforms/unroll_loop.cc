@@ -152,10 +152,10 @@ class LoopUnroller : public StmtExprMutator {
       return Unroll(op);
     } else {
       if (auto_unroll) {
-        if (op->kind != ForKind::kUnrolled) {
-          return For(op->loop_var, op->min, op->extent, ForKind::kUnrolled, op->body,
-                     op->thread_binding, op->annotations);
-        }
+        auto ann = op->annotations;
+        ann.Set("auto_max_step", make_const(DataType::Int(32), auto_max_step_));
+        return For(op->loop_var, op->min, op->extent, ForKind::kUnrolled, op->body,
+                     op->thread_binding, std::move(ann));
       }
       return stmt;
     }
