@@ -90,6 +90,8 @@ class VarLocalAccessMarker : public ExprVisitor {
 // the local memory access can be turned into register access.
 class LoopUnroller : public StmtExprMutator {
  public:
+  bool inside_kernel = false;
+
   explicit LoopUnroller(int auto_max_step, int auto_max_depth, int auto_max_extent,
                         bool explicit_unroll, bool unroll_local_access)
       : auto_max_step_(auto_max_step),
@@ -111,7 +113,15 @@ class LoopUnroller : public StmtExprMutator {
       Stmt ret = this->VisitStmt(op->body);
       std::swap(explicit_unroll, explicit_unroll_);
       return ret;
-    } else {
+    } else if (op->attr_key == attr::thread_extent) {
+      bool inside_kernel_ = true;
+      std::swap(inside_kernel_, inside_kernel);
+      Stmt stmt = StmtExprMutator::VisitStmt_(op);
+      std::swap(inside_kernel_, inside_kernel);
+      return stmt;
+    }
+
+    else {
       return StmtExprMutator::VisitStmt_(op);
     }
   }
@@ -146,7 +156,7 @@ class LoopUnroller : public StmtExprMutator {
       normal_loop_depth_ += 1;
     }
 
-    if ((auto_unroll && explicit_unroll_) ||
+    if ((auto_unroll && (explicit_unroll_ || !inside_kernel)) ||
         // unroll loops with extent = 1, no matter how many steps in body
         (0 <= value && value <= auto_max_extent_ && auto_max_extent_ == 1)) {
       return Unroll(op);

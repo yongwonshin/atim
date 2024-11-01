@@ -603,6 +603,7 @@ transform::Sequential MixedModulePassManager(IRModule mixed_mod, Target target) 
   mixed_pass_list.push_back(tir::transform::ExtractPimTransferSchedule());
   mixed_pass_list.push_back(tir::transform::SplitHostDevice());
   mixed_pass_list.push_back(tir::transform::SplitPimTransfer());
+  mixed_pass_list.push_back(tir::transform::UnrollLoop());
 
   bool unpacked_api = mixed_mod->GetAttr<relay::Executor>(tvm::attr::kExecutor)
                           .value_or(relay::Executor::Create("graph", {}))
@@ -647,7 +648,6 @@ transform::Sequential HostModulePassManager(IRModule mixed_mod, Target target_ho
       pass_ctx->GetConfig<Bool>("tir.enable_equiv_terms_in_cse_tir", Bool(false)).value();
   host_pass_list.push_back(
       tir::transform::CommonSubexprElimTIR(!disable_cse_tir, enable_equiv_terms_in_cse_tir));
-  host_pass_list.push_back(tir::transform::UnrollLoop());
 
   host_pass_list.push_back(tir::transform::LowerTVMBuiltin());
   host_pass_list.push_back(tir::transform::LowerCustomDatatypes());
@@ -686,7 +686,6 @@ transform::Sequential DeviceModulePassManager(IRModule mixed_mod, Target target)
       pass_ctx->GetConfig<Bool>("tir.enable_equiv_terms_in_cse_tir", Bool(false)).value();
   device_pass_list.push_back(
       tir::transform::CommonSubexprElimTIR(!disable_cse_tir, enable_equiv_terms_in_cse_tir));
-  device_pass_list.push_back(tir::transform::UnrollLoop());
 
   device_pass_list.push_back(tir::transform::LowerCustomDatatypes());
   device_pass_list.push_back(tir::transform::LowerDeviceStorageAccessInfo());
