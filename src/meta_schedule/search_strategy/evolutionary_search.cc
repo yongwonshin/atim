@@ -694,7 +694,7 @@ std::vector<Schedule> EvolutionarySearchNode::State::PickWithEpsGreedy(
   double eps_greedy = self->eps_greedy;
   if (self->eps_greedy < 0.5) {
     eps_greedy =
-        std::max(0.5 - (0.5 - self->eps_greedy) * st / (max_trials * 0.4), self->eps_greedy);
+        std::max(0.5 - (0.5 - self->eps_greedy) * st / (max_trials * 0.3), self->eps_greedy);
   }
   int num_rands = num * eps_greedy;
   int num_bests = num - num_rands;

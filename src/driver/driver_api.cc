@@ -242,7 +242,7 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   if (use_async_copy) {
     pass_list.push_back(tir::transform::LowerAsyncDMA());
   }
-  // pass_list.push_back(tir::transform::UnrollLoop());
+  pass_list.push_back(tir::transform::UnrollLoop());
 
   // Add user-defined phase-2 passes
   pass_list.insert(pass_list.end(), user_lower_phase2.begin(), user_lower_phase2.end());
