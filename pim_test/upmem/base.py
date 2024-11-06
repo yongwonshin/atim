@@ -13,6 +13,9 @@ from tvm.tir.transform import *
 from tvm.target import Target
 import numpy as np
 import signal
+from typing import Any, Callable, Dict, List
+import itertools
+
 
 class SymbolSpace:
     def __init__(self, symbols, output_symbol):
@@ -155,7 +158,7 @@ class UPMEMWorkload:
         for key, value in curr_pass_ctx.config.items():
             curr_cfg[key] = value
         tir_compiler_cfg = {
-            "tir.UnrollLoop": {"explicit_unroll": False},
+            # "tir.UnrollLoop": {"explicit_unroll": False},
             "tir.UpmemUseDummyKernel": self.use_dummy,
             "tir.UpmemKernelOptimize": self.opt_level,
         }
@@ -218,7 +221,7 @@ class UPMEMWorkload:
             if len(different_indices) > 0:
                 with open(f"./{self.log_dir}/{self.fname}/wrong.txt", "w") as file:
                     print(f"Number of different indices: {different_indices.size}", file=file)
-                    for idx in different_indices[:self.max_correctness_indices]:
+                    for idx in different_indices[: self.max_correctness_indices]:
                         print(
                             f"Index: {idx}, Host: {host_flatten[idx]}, Device: {dev_flatten[idx]}",
                             file=file,
@@ -246,7 +249,7 @@ class UPMEMWorkload:
                 preexec_fn=os.setpgrp,
                 shell=True,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
             )
             result, error = process.communicate(timeout=self.timeout)
         except subprocess.CalledProcessError as e:
@@ -300,7 +303,7 @@ class UPMEMWorkload:
         except AttributeError as e:
             raise RuntimeError(f"Error parsing benchmark results: {error.decode('utf-8')}")
         self.benchmark_results.append(time_tuple)
-        #print("\t".join(map(str, time_tuple)))
+        # print("\t".join(map(str, time_tuple)))
         return time_tuple
 
     def is_passed(self):
@@ -309,8 +312,18 @@ class UPMEMWorkload:
         else:
             return np.max(np.abs(self.dev.output.asnumpy() - self.host.output)) == 0
 
-    def kernel(self):
-        self.func(*self.dev)
+    def kernel(self, use_time_evaluator=False):
+        if use_time_evaluator:
+            evaluator = self.func.time_evaluator(
+                self.func.entry_name, dev=self.target_device, number=10, repeat=100
+            )
+            repeated_costs: List[List[float]] = []
+            profile_result = evaluator(*self.dev)
+            repeated_costs.append(profile_result.results)
+            costs = [float(cost) for cost in itertools.chain.from_iterable(repeated_costs)]
+            return costs
+        else:
+            self.func(*self.dev)
 
     def h2d(self):
         for symbol in self.symbols:
@@ -325,7 +338,6 @@ class UPMEMWorkload:
                 )
         if self.output_symbol:
             self.dev.output = tvm.nd.empty(self.host.output.shape, self.dtype, self.target_device)
-
 
     def print_header(self):
         print("BK\tK\tAK\tD2H\tTOT\tPASS\tCONF")
@@ -354,7 +366,7 @@ class UPMEMWorkload:
         elapsed_time = tvm._ffi.get_global_func("device_api.upmem.elapsed_time")
 
         try:
-            #with open(f"./{self.log_dir}/{self.fname}.txt", "w") as f:
+            # with open(f"./{self.log_dir}/{self.fname}.txt", "w") as f:
             self.pre_kernel(self.sch)
             if self.compile_only:
                 return
@@ -410,6 +422,9 @@ class UPMEMWorkload:
                     + f"\t{flag}\t{self.config.__repr__()}"
                 )
             self.post_kernel()
+            self.target_device.sync()
+            costs = self.kernel(use_time_evaluator=True)
+            print("TIME EVALUATOR:", np.mean(costs, axis=0) * 1e3)
             ret = f"{time_tuple[1]:.3f}" if flag else "WRONG"
         except Exception as e:
             with open(f"./{self.log_dir}/{self.fname}/error.txt", "w") as f:

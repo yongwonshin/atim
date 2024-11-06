@@ -57,6 +57,30 @@ def upmem_dot_factory(M, dtype):
     return DOTModule
 
 
+def upmem_red_factory(M, dtype):
+    @tvm.script.ir_module
+    class REDModule:
+        @T.prim_func
+        def main(a: T.handle, b: T.handle):
+            T.func_attr(
+                {
+                    "global_symbol": "main",
+                    "tir.noalias": T.bool(True),
+                    "pragma_explicit_h2d": ["A"],
+                }
+            )
+            A = T.match_buffer(a, (M,), dtype=dtype)
+            B = T.match_buffer(b, (1,), dtype=dtype)
+            for i in T.grid(M):
+                with T.block("C"):
+                    with T.init():
+                        B[0] = 0
+                    v_i = T.axis.remap("R", [i])
+                    B[0] = B[0] + A[v_i]
+
+    return REDModule
+
+
 def upmem_mtv_factory(M, K, dtype):
     @tvm.script.ir_module
     class MTVModule:
@@ -158,7 +182,7 @@ def upmem_mmtv_factory(M, N, K, dtype):
                 {
                     "global_symbol": "main",
                     "tir.noalias": T.bool(True),
-                    "pragma_explicit_h2d": ["A", "B"],
+                    "pragma_explicit_h2d": ["A"],
                 }
             )
             A = T.match_buffer(a, (M, N, K), dtype=dtype)
@@ -238,7 +262,11 @@ def upmem_poly_mixed_factory(M, N, dtype):
         @T.prim_func
         def main(c: T.handle, u1: T.handle, v1: T.handle, u2: T.handle, v2: T.handle):
             T.func_attr(
-                {"global_symbol": "main", "tir.noalias": T.bool(True), "pragma_explicit_h2d": ["C"]}
+                {
+                    "global_symbol": "main",
+                    "tir.noalias": T.bool(True),
+                    "pragma_explicit_h2d": ["C", "U1", "V1", "U2", "V2"],
+                }
             )
             C = T.match_buffer(c, (M, N), dtype=dtype)
             U1 = T.match_buffer(u1, (M,), dtype=dtype)

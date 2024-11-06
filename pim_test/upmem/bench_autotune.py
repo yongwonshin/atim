@@ -21,8 +21,13 @@ from bench import *
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-t", "--op_type", required=True, type=str)
+parser.add_argument("--op_type", required=True, type=str)
+parser.add_argument("--M", required=True, type=int)
+parser.add_argument("--N", required=True, type=int)
+parser.add_argument("--K", required=True, type=int)
+parser.add_argument("--workdir", default="bench_autotuner_result", type=str)
 args = parser.parse_args()
+
 
 # GOT-J 175B, 30B, 13B, 6B
 tuple_mv = {
@@ -92,7 +97,7 @@ tuple_bmv = {
     # "params175B_batch16_token512": (768, 512, 256),
 }
 
-tuple_bench = {"default": (16, 4096, 4096)}
+tuple_bench = {"default": (args.M, args.N, args.K)}
 target = Target("upmem --num-cores=96")
 
 
@@ -103,8 +108,8 @@ def get_module(M, N, K, dtype):
         return upmem_ttv_factory(M, N, K, dtype)
     elif args.op_type == "polygemv1":
         return upmem_poly_gemv1_factory(M, K, dtype)
-    elif args.op_type == "polygemv2":
-        return upmem_poly_gemv2_factory(M, K, dtype)
+    # elif args.op_type == "polygemv2":
+    #     return upmem_poly_gemv2_factory(M, K, dtype)
     elif args.op_type == "va":
         return upmem_va_factory(M, dtype)
     elif args.op_type == "ta":
@@ -116,6 +121,9 @@ def get_module(M, N, K, dtype):
     elif args.op_type == "dot":
         dtype = "int64"
         return upmem_dot_factory(M, dtype)
+    elif args.op_type == "red":
+        dtype = "int64"
+        return upmem_red_factory(M, dtype)
     elif args.op_type == "innerprod":
         dtype = "int64"
         return upmem_innerprod_factory(M, N, K, dtype)
@@ -125,18 +133,18 @@ def get_module(M, N, K, dtype):
         raise Exception(f"Unknown operator type: {args.type}")
 
 
-os.system("mkdir -p ./bench_autotuner_result")
+os.system(f"mkdir -p ./{args.workdir}")
 for name, (M, N, K) in tuple_bench.items():
     start = time.time()
-    with open(f"./bench_autotuner_result/{name}.txt", "w") as f:
+    with open(f"./{args.workdir}/{name}.txt", "w") as f:
         original_stdout = sys.stdout
         sys.stdout = f
         mod = get_module(M, N, K, dtype="int32")
         database = ms.tir_integration.tune_tir(
             mod=mod,
             target=target,
-            work_dir="./bench_autotuner_result",
-            max_trials_global=200,
+            work_dir=f"./{args.workdir}",
+            max_trials_global=1000,
             num_trials_per_iter=64,
             num_tuning_cores=1,  # to prevent dpu allocation error
         )

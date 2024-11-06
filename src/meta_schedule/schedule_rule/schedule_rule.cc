@@ -257,7 +257,7 @@ Array<ScheduleRule> ScheduleRule::DefaultUPMEM() {
               /*vector_load_lens=*/Array<Integer>{1},
               /*reuse_read=*/
               Map<String, ObjectRef>{{"req", String("must")},
-                                     {"levels", Array<Integer>{4}},  //
+                                     {"levels", Array<Integer>{3, 4}},  //
                                      {"scope", String("local")},
                                      {"sep", Bool(false)}},
               /*reuse_write=*/
@@ -285,7 +285,7 @@ Array<ScheduleRule> ScheduleRule::DefaultUPMEM() {
               /*vector_load_lens=*/Array<Integer>{1},
               /*reuse_read=*/
               Map<String, ObjectRef>{{"req", String("must")},
-                                     {"levels", Array<Integer>{3}},  //
+                                     {"levels", Array<Integer>{2, 3}},  //
                                      {"scope", String("local")},
                                      {"sep", Bool(false)}},
               /*reuse_write=*/

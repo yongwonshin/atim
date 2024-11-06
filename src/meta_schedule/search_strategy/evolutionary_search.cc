@@ -509,7 +509,7 @@ std::vector<Schedule> EvolutionarySearchNode::State::PickBestFromDatabase(int nu
     }
   };
   support::parallel_for_dynamic(0, actual_num, self->ctx_->num_threads, f_proc_measured);
-  if (st < max_trials * 0.3) {
+  if (st < max_trials * 0.4) {
     std::vector<Schedule> rfactor_results;
     std::vector<Schedule> other_results;
     for (int i = 0; i < actual_num; i++) {
@@ -694,7 +694,7 @@ std::vector<Schedule> EvolutionarySearchNode::State::PickWithEpsGreedy(
   double eps_greedy = self->eps_greedy;
   if (self->eps_greedy < 0.5) {
     eps_greedy =
-        std::max(0.5 - (0.5 - self->eps_greedy) * st / (max_trials * 0.3), self->eps_greedy);
+        std::max(0.5 - (0.5 - self->eps_greedy) * st / (max_trials * 0.4), self->eps_greedy);
   }
   int num_rands = num * eps_greedy;
   int num_bests = num - num_rands;
