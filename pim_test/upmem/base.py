@@ -167,7 +167,6 @@ class UPMEMWorkload:
                     print("from tvm.script import ir as I", file=f)
                     print("from tvm.script import tir as T", file=f)
                     print(sch.mod, file=f)
-                    print()
                     print(sch.trace, file=f)
 
             if self.record_lower:
@@ -359,8 +358,6 @@ class UPMEMWorkload:
             if self.compile_only:
                 return
 
-            print("prekernel done")
-
             self.target_device.load_function(self.func)
             times = []
 
@@ -369,8 +366,6 @@ class UPMEMWorkload:
                 print("------------------------------")
             if self.perform_h2d:
                 self.h2d()
-
-            print("h2d")
 
             for j in range(self.repeat + self.warmup):
                 self.target_device.sync()
@@ -396,7 +391,6 @@ class UPMEMWorkload:
                     times.append(time_tuple)
                     if self.verbose >= 1:
                         print(str(j) + "\t" + "\t".join([f"{x:.3f}" for x in time_tuple]))
-            print("run")
             if self.verbose >= 1:
                 print("------------------------------")
             time_tuple = np.mean(times, axis=0)

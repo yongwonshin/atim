@@ -1,0 +1,109 @@
+#include <assert.h>
+#include <dpu.h>
+#include <dpu_log.h>
+#include <getopt.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "../support/common.h"
+#include "../support/params.h"
+#include "../support/timer.h"
+
+#ifndef DPU_BINARY
+#define DPU_BINARY "./bin/dpu_code"
+#endif
+
+#if ENERGY
+#include <dpu_probe.h>
+#endif
+
+static T* A;
+static T* B;
+static T* C;
+static T* C2;
+
+static void read_input(T* A, T* B, unsigned int nr_elements) {
+    FILE* file = fopen("../../../data/int32_163840_4096.bin", "rb");
+    if (file == NULL) {
+        exit(1);
+    }
+    fread(A, 4, nr_elements, file);
+    fclose(file);
+    file = fopen("../../../data/int32_163840_4096.bin", "rb");
+    if (file == NULL) {
+        exit(1);
+    }
+    fread(B, 4, nr_elements, file);
+}
+
+static void vector_addition_host(T* C, T* A, T* B, unsigned int nr_elements) {
+    for (unsigned int i = 0; i < nr_elements; i++) {
+        C[i] = A[i] + B[i];
+    }
+}
+
+int main(int argc, char** argv) {
+    struct Params p = input_params(argc, argv);
+
+    struct dpu_set_t dpu_set, dpu;
+    uint32_t nr_of_dpus;
+
+    DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpu_set));
+    DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
+    DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
+
+    unsigned int i = 0;
+
+    const unsigned int input_size = p.exp == 0 ? p.input_size * nr_of_dpus : p.input_size;
+    const unsigned int elems_per_dpu = roundup(divceil(input_size, nr_of_dpus), 8);
+    const unsigned int bytes_per_dpu = elems_per_dpu * sizeof(T);
+
+    A = malloc(nr_of_dpus * bytes_per_dpu);
+    B = malloc(nr_of_dpus * bytes_per_dpu);
+    C = malloc(nr_of_dpus * bytes_per_dpu);
+    // A...
+
+    dpu_arguments_t input_arguments[NR_DPUS];
+    DPU_FOREACH(dpu_set, dpu, i) {
+        input_arguments[i].size = (i == nr_of_dpus - 1) ? (roundup(input_size, 8) - elems_per_dpu * (nr_of_dpus - 1)) * sizeof(T) : bytes_per_dpu;
+        input_arguments[i].transfer_size = bytes_per_dpu;
+    }
+
+    i = 0;
+    DPU_FOREACH(dpu_set, dpu, i) dpu_prepare_xfer(dpu, &input_arguments[i]);
+    dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(input_arguments[0]), DPU_XFER_DEFAULT);
+
+    DPU_FOREACH(dpu_set, dpu, i) dpu_prepare_xfer(dpu, A + elems_per_dpu * i);
+    dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, bytes_per_dpu, DPU_XFER_DEFAULT);
+
+    DPU_FOREACH(dpu_set, dpu, i) dpu_prepare_xfer(dpu, B + elems_per_dpu * i);
+    dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, bytes_per_dpu, bytes_per_dpu, DPU_XFER_DEFAULT);
+
+    DPU_ASSERT(dpu_launch(dpu_set, DPU_SYNCHRONOUS));
+
+    i = 0;
+    DPU_FOREACH(dpu_set, dpu, i) dpu_prepare_xfer(dpu, C + elems_per_dpu * i);
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME, bytes_per_dpu * 2, bytes_per_dpu, DPU_XFER_DEFAULT));
+
+
+
+
+
+    bool status = true;
+    for (i = 0; i < input_size; i++) {
+        if (C[i] != bufferC[i]) {
+            status = false;
+        }
+    }
+
+    free(A);
+    free(B);
+    free(C);
+    free(C2);
+    DPU_ASSERT(dpu_free(dpu_set));
+
+    return status ? 0 : -1;
+}

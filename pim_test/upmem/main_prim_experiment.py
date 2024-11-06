@@ -34,6 +34,7 @@ def run(instance, configs, config_label, reducer=get_total_time_reduce, collect_
             except ValueError as e:
                 tuples = ("wrong", "", "")
             except RuntimeError as e:
+                print(e)
                 tuples = ("fail", "", "")
             except TimeoutError as e:
                 tuples = ("timeout", "", "")
@@ -57,7 +58,7 @@ cache_grid = [8, 16, 32, 64, 128]
 configs = [(67108864, *p, "int32") for p in product(dpu_grid, tasklets_grid, cache_grid)]
 config_label = ["L", "n_b", "n_t", "n_c", "dtype"]
 va.profile = "va"
-# run(va, configs, config_label)
+run(va, configs, config_label)
 
 # reduction
 dpus = [512, 1024, 2048]
@@ -85,18 +86,18 @@ tasklets = [16, 20, 24] # 20: correctness issue
 cache_size = [8, 16, 32, 64, 128]
 configs = [(8192, 8192, 1, d, t, 1, c, "int32") for d, t, c in product(dpus, tasklets, cache_size)]
 config_label = ["M", "K", "n_xb", "n_yb", "n_yt", "n_rt", "n_cache", "dtype"]
-#run(gemv, configs, config_label, reducer=get_total_time_gemv)
+# run(gemv, configs, config_label, reducer=get_total_time_gemv)
 
 
 ## TTV
-for m, k in [(12288, 4096), (4096, 4096), (16384, 4096), (4096, 16384)]:
+for m, k in [(21504, 7168), (7168, 7168), (28672, 7168), (7168, 28672)]:
     gemv.profile = "gemv"
-    dpus = [256, 512, 1024, 1536, 2048]
-    tasklets = [16, 20, 24] # 20: correctness issue
-    cache_size = [8, 16, 32, 64, 128]
+    dpus = [1024, 1536, 2048]
+    tasklets = [16, 24] # 20: correctness issue
+    cache_size = [16, 32, 64, 128]
     configs = [(m, k, 1, d, t, 1, c, "int32") for d, t, c in product(dpus, tasklets, cache_size)]
     config_label = ["M", "K", "n_xb", "n_yb", "n_yt", "n_rt", "n_cache", "dtype"]
-    # run(gemv, configs, config_label, reducer=get_total_time_gemv)
+    #run(gemv, configs, config_label, reducer=get_total_time_gemv)
 
 class BatchedGEMVBenchmark(GEMV):
     def __init__(self, **kwargs):
@@ -136,10 +137,29 @@ bgemv = BatchedGEMVBenchmark(bench=True, warmup=warmup, repeat=rep, compile_only
 btile = [1, 2, 4, 8, 16, 32, 64, 128, 256]
 ytile = [1, 2, 4, 8, 16, 32, 64, 128, 256]
 tasklets = [1, 2, 4, 8, 16]
-caches = [8, 16, 32, 64, 128]
+caches = [16, 32, 64, 128]
 
-#for (B, M, N) in [(256, 512, 512), (64, 64, 256), (64, 128, 256), (64, 256, 256), (64, 512, 256)]:
-for (B, M, N) in [(256, 512, 512)]:
+for (B, M, N) in [(16, 64, 256),
+    (16, 128, 256),
+    (16, 256, 256),
+    (16, 512, 256),
+    (256, 64, 256),
+    (256, 128, 256),
+    (256, 256, 256),
+    (256, 512, 256),
+    (28, 64, 256),
+    (28, 128, 256),
+    (28, 256, 256),
+    (28, 512, 256),
+    (112, 64, 256),
+    (112, 128, 256),
+    (112, 256, 256),
+    (112, 512, 256),
+    (448, 64, 256),
+    (448, 128, 256),
+    (448, 256, 256),
+    (448, 512, 256)]:
+# for (B, M, N) in [(256, 512, 512)]:
     configs = []
     for b, y, t, c in product([B], ytile, tasklets, caches):
         if (B * y <= 2048 and
@@ -148,4 +168,4 @@ for (B, M, N) in [(256, 512, 512)]:
             configs.append((B, M, N, b, y, t, c, "int32"))
     configs_label = ["B", "M", "N", "n_bb", "n_yb", "n_yt", "n_cache", "dtype"]
 
-    run(bgemv, configs, configs_label, reducer=get_total_time_gemv)
+    #run(bgemv, configs, configs_label, reducer=get_total_time_gemv)
