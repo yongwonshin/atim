@@ -163,9 +163,13 @@ class Hoist : public StmtExprMutator {
           return {IfThenElse(branch->condition, new_seq)};
         }
         if (const IfThenElseNode* candidate_branch = first_stmt.as<IfThenElseNode>()) {
-          auto new_seq =
-              SeqStmt::Flatten(std::vector<Stmt>({candidate_branch->then_case, branch->then_case}));
-          return {IfThenElse(branch->condition, new_seq)};
+          if (!candidate_branch->else_case.defined()
+            and !branch->else_case.defined()
+            and ana->CanProve(branch->condition || !candidate_branch->condition)) {
+            auto new_seq =
+                SeqStmt::Flatten(std::vector<Stmt>({candidate_branch->then_case, branch->then_case}));
+            return {IfThenElse(branch->condition, new_seq)};
+          }
         }
       }
     }

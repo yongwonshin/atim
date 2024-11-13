@@ -474,7 +474,7 @@ std::vector<int64_t> SamplePerfectTile2(
     int n = result.size();
     ICHECK_GE(n, 2);
     int64_t len = *extent;
-    for (int i = n - 1; i > 0; --i) {
+    for (int i = 0; i < n - 1; i++) {
       int64_t& l = result[i];
       // A previous decision could become invalid because of the change of outer tiles
       // To handle this case properly, we check if the tiling strategy is still perfect.
@@ -484,7 +484,7 @@ std::vector<int64_t> SamplePerfectTile2(
       }
       len /= l;
     }
-    result[0] = len;
+    result[n - 1] = len;
   } else {
     // Case 3. Use fresh new sampling result
     result = SamplePerfectTile2(rand_state, *extent, n_splits, min_n_splits, max_n_splits);

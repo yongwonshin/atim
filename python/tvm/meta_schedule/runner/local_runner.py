@@ -20,6 +20,8 @@ from typing import Callable, List, Optional, Union
 import subprocess
 
 import tvm
+import io
+import sys
 
 from ...contrib.popen_pool import PopenPoolExecutor
 from ...runtime import Device, Module
@@ -281,7 +283,7 @@ class LocalRunner(PyRunner):
             max_workers=1,  # one local worker
             timeout=timeout_sec,
             initializer=initializer,
-            stderr=subprocess.DEVNULL,  # suppress the stderr output
+            stderr=subprocess.PIPE,  # suppress the stderr output
         )
         self._sanity_check()
 
@@ -300,7 +302,7 @@ class LocalRunner(PyRunner):
                 tuple(arg_info.as_json() for arg_info in runner_input.args_info),
             )
             try:
-                result: List[float] = future.result()
+                result = future.result()
                 error_message: str = None
             except TimeoutError:
                 result = None

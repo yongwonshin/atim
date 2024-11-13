@@ -392,7 +392,8 @@ void RewriteVectorize(const Schedule& sch, size_t n, Array<LoopRV>* loop_rvs) {
 void RewriteUnroll(const Schedule& sch, int unroll_explicit, int max_step, const BlockRV& block,
                    const LoopRV& loop) {
   // Do not unroll for pure spatial block.
-  if (max_step <= 0 || IsSpatial(sch->GetSRef(block))) {
+  // if (max_step <= 0 || IsSpatial(sch->GetSRef(block))) {
+  if (max_step <= 0) {
     return;
   }
 

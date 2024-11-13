@@ -278,32 +278,77 @@ std::vector<State> MultiLevelTilingSpatialNode::TileLoopNest(State state) const 
   // Step 3. Reorder to organize the tiles
   sch->Reorder(support::ConcatArrayList<LoopRV>(tiles.begin(), tiles.end()));
   // Step 4. Bind the tiles to threads
-  int n_binds = std::min(tile_binds.size(), tiles.size());
-  for (int i = 0; i < n_binds; ++i) {
-    if (!tiles[i].empty()) {
-      LoopRV fused = tiles[i][0];
-      if (tiles[i].size() > 1) {
-        fused = sch->Fuse(tiles[i]);
-      }
-      sch->Bind(fused, tile_binds[i]);
-      tiles[i] = {fused};
+  // [ywshin]: 임시로 대응해둔다.
+  Array<String> new_tile_binds = tile_binds;
+  Array<Map<String, ObjectRef>> new_annotations = annotations;
+  bool is_high_dim = false;
+  for (int i = 0; i < tiles.size(); i++) {
+    if (tiles[i].size() > 1) {
+      is_high_dim = true;
+      break;
     }
   }
-  int n_annotations = std::min(annotations.size(), tiles.size());
-  for (int i = 0; i < n_annotations; ++i) {
-    if (!tiles[i].empty()) {
-      LoopRV fused = tiles[i][0];
-      if (tiles[i].size() > 1) {
-        fused = sch->Fuse(tiles[i]);
+  int reverse_index = INT32_MAX;
+  if (is_high_dim) {
+    new_tile_binds = Array<String>{"blockIdx.x", "blockIdx.y", "threadIdx.x"};
+    new_annotations = Array<Map<String, ObjectRef>>{
+        {{"bank", Integer(1)}},
+        {{"bank", Integer(1)}},
+    };
+    reverse_index = 2;
+  }
+
+  int n_binds = std::min(new_tile_binds.size(), tiles.size());
+  for (int i = 0, t = 0; t < n_binds; ++i) {
+    if (t >= reverse_index) {
+      Array<LoopRV> reordered_tile;
+      for (int j = 0; j < tiles[i].size(); j++) {
+        reordered_tile.push_back(tiles[i][tiles[i].size() - j - 1]);
       }
-      auto annotation_for_fused = annotations[i];
-      for (auto annotation : annotation_for_fused) {
-        if (!annotation.first.empty()) {
-          sch->Annotate(fused, annotation.first, annotation.second);
+      sch->Reorder(reordered_tile);
+    }
+    for (int n = 0; n < tiles[i].size(); n++) {
+      if (i > 0 && t >= reverse_index) {
+        n = tiles[i].size() - n - 1;
+      }
+      sch->Bind(tiles[i][n], new_tile_binds[t]);
+      t++;
+      if (t >= n_binds) {
+        break;
+      }
+    }
+    // LoopRV fused = tiles[i][0];
+    // if (tiles[i].size() > 1) {
+    //   fused = sch->Fuse(tiles[i]);
+    // }
+    // sch->Bind(fused, tile_binds[i]);
+    // tiles[i] = {fused};
+  }
+  int n_annotations = std::min(new_annotations.size(), tiles.size());
+  for (int i = 0, t = 0; t < n_annotations; ++i) {
+    for (int n = 0; n < tiles[i].size(); n++) {
+      auto annotation = new_annotations[t];
+      for (auto ann : annotation) {
+        if (!ann.first.empty()) {
+          sch->Annotate(tiles[i][n], ann.first, ann.second);
         }
       }
-      tiles[i] = {fused};
+      t++;
+      if (t >= n_annotations) {
+        break;
+      }
     }
+    // LoopRV fused = tiles[i][0];
+    // if (tiles[i].size() > 1) {
+    //   fused = sch->Fuse(tiles[i]);
+    // }
+    // auto annotation_for_fused = new_annotations[i];
+    // for (auto annotation : annotation_for_fused) {
+    //   if (!annotation.first.empty()) {
+    //     sch->Annotate(fused, annotation.first, annotation.second);
+    //   }
+    // }
+    // tiles[i] = {fused};
   }
   state->tiles = Array<Array<LoopRV>>{tiles.begin(), tiles.end()};
   if (this->thread_warp_size_ != -1) {
@@ -357,8 +402,9 @@ std::vector<State> MultiLevelTilingSpatialNode::AddReadReuse(State state) const 
       sch->ComputeAt(cache_read_block, loop_rv, true);
       // Fuse the iterators of the cache_read
       Array<LoopRV> buffer_loops = sch->GetLoops(cache_read_block);
-      sch->Fuse(Array<LoopRV>{buffer_loops.end() - buffer_ndim,  //
-                              buffer_loops.end()});
+      // [ywshin]: bug in optimize pim transfer when fusing
+      // sch->Fuse(Array<LoopRV>{buffer_loops.end() - buffer_ndim,  //
+      //                         buffer_loops.end()});
       AnnotateCooperativeFetching(&sch, cache_read_block);
       // if (!config.sep) {
       new_state->read_reuse.emplace(j, cache_read_block);

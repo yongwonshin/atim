@@ -316,6 +316,7 @@ class ScheduleRule : public runtime::ObjectRef {
                                                          int max_vectorize_extent,         //
                                                          Array<Integer> unroll_max_steps,  //
                                                          bool unroll_explicit);
+  TVM_DLL static bool IsParallelizeVectorizeUnroll(const ScheduleRule& rule);
   /*!
    * \brief Auto bind loops around the block to BlockIdx and ThreadIdx
    * \param max_threadblocks The maximum number of threadblock on GPU

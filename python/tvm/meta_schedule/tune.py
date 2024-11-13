@@ -135,4 +135,5 @@ def tune_tasks(
         database=database,
         cost_model=cost_model,
     )
+    cost_model.save(f"{work_dir}.tar")
     return database

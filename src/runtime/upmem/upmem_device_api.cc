@@ -202,6 +202,42 @@ int UPMEMDeviceAPI::TransferDeviceToHost(void* handle, uint64_t host_addr, uint6
   return 0;
 }
 
+void UPMEMDeviceAPI::Timestamp(std::string type) {
+  // std::cerr << "One or more DPUs are in fault" << std::endl;
+  if (type == "start") {
+    this->entire_start = std::chrono::high_resolution_clock::now();
+  } else if (type == "end") {
+    this->entire_end = std::chrono::high_resolution_clock::now();
+  } else {
+    LOG(FATAL) << "Invalid type: " << type;
+  }
+}
+
+size_t UPMEMDeviceAPI::ElapsedTime(std::string type) {
+  std::chrono::high_resolution_clock::time_point start, end;
+  if (type == "entire") {
+    end = this->entire_end;
+    start = this->entire_start;
+  } else if (type == "kernel") {
+    end = this->kernel_end;
+    start = this->kernel_start;
+  } else if (type == "after_kernel") {
+    end = this->entire_end;
+    start = this->kernel_end;
+  } else if (type == "before_kernel") {
+    end = this->kernel_start;
+    start = this->entire_start;
+  } else if (type == "d2h") {
+    return static_cast<double>(this->d2h_time);
+  } else if (type == "after_d2h") {
+    end = this->entire_end;
+    start = this->last_d2h_end;
+  } else {
+    LOG(FATAL) << "Invalid type: " << type;
+  }
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+}
+
 int UPMEMDeviceAPI::Broadcast(void* handle, uint64_t host_addr, int size) {
   VLOG(3) << "dpu_broadcast_to(dpu_set, " << GetSymbolName(handle) << ", " << host_addr << ", "
           << size << " * " << GetBytes(handle) << ", DPU_XFER_DEFAULT)";
@@ -245,11 +281,14 @@ int UPMEMDeviceAPI::BindXfer(int bank_index, uint64_t host_addr, uint64_t size) 
 int UPMEMDeviceAPI::PushXfer() {
   auto api = UPMEMDeviceAPI::Global();
   if (xfer_direction == DPU_XFER_FROM_DPU) {
+    api->last_d2h_start = std::chrono::high_resolution_clock::now();
+    auto t = api->last_d2h_start - kernel_end;
+    before_d2h_time = std::chrono::duration_cast<std::chrono::nanoseconds>(t).count();
     UPMEM_CALL(dpu_push_xfer(dpu_set, xfer_direction, GetSymbolName(xfer_handle).c_str(),
                              static_cast<uint32_t>(xfer_offset) * GetBytes(xfer_handle),
                              xfer_bulk_size * GetBytes(xfer_handle), DPU_XFER_DEFAULT));
     api->last_d2h_end = std::chrono::high_resolution_clock::now();
-    auto t = api->last_d2h_end - UPMEMDeviceAPI::Global()->kernel_end;
+    auto t = api->last_d2h_end - api->last_d2h_start;
     api->d2h_time = std::chrono::duration_cast<std::chrono::nanoseconds>(t).count();
   } else {
     UPMEM_CALL(dpu_push_xfer(dpu_set, xfer_direction, GetSymbolName(xfer_handle).c_str(),

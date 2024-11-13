@@ -509,8 +509,9 @@ std::vector<State> MultiLevelTilingReductionNode::AddReadReuse(State state) cons
       sch->ComputeAt(cache_read_block, loop_rv, true);
       // Fuse the iterators of the cache_read
       Array<LoopRV> buffer_loops = sch->GetLoops(cache_read_block);
-      sch->Fuse(Array<LoopRV>{buffer_loops.end() - buffer_ndim,  //
-                              buffer_loops.end()});
+      // [ywshin]: bug in optimize pim transfer when fusing
+      // sch->Fuse(Array<LoopRV>{buffer_loops.end() - buffer_ndim,  //
+      //                         buffer_loops.end()});
       // AnnotateCooperativeFetching(&sch, cache_read_block);
       // if (!config.sep) {
       new_state->read_reuse.emplace(j, cache_read_block);
@@ -553,13 +554,14 @@ std::vector<State> MultiLevelTilingReductionNode::AddAsyncPipeline(State state) 
   ret.push_back(state);
   for (int stage : this->stages) {
     State new_state = state->Copy();
-    LoopRV r_loop_fused = new_state->sch->Fuse(new_state->tiles[r_indices_[0]]);
-    new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_stage,
-                             Array<Integer>{0, 0, stage - 2});
-    new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_order,
-                             Array<Integer>{0, 1, 2});
-    new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_async_stages,
-                             Array<Integer>{0});
+    // [ywshin]: bug in optimize pim transfer when fusing
+    // LoopRV r_loop_fused = new_state->sch->Fuse(new_state->tiles[r_indices_[0]]);
+    // new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_stage,
+    //                          Array<Integer>{0, 0, stage - 2});
+    // new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_order,
+    //                          Array<Integer>{0, 1, 2});
+    // new_state->sch->Annotate(r_loop_fused, tir::attr::software_pipeline_async_stages,
+    //                          Array<Integer>{0});
     ret.push_back(std::move(new_state));
   }
   return ret;

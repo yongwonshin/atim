@@ -65,7 +65,8 @@ class ParallelizeVectorizeUnrollNode : public ScheduleRuleNode {
       sch->Annotate(root_rv, tir::attr::meta_schedule_vectorize, Integer(max_vectorize_extent));
     }
     // Unroll
-    if (!unroll_max_steps.empty() && !tir::CheckSpatialPrimFunc(sch, root_rv)) {
+    // if (!unroll_max_steps.empty() && !tir::CheckSpatialPrimFunc(sch, root_rv)) {
+    if (!unroll_max_steps.empty()) {
       int n = unroll_max_steps.size();
       double prob = 1.0 / n;
       Array<FloatImm> probs(n, FloatImm(DataType::Float(64), prob));
@@ -131,6 +132,10 @@ ScheduleRule ScheduleRule::ParallelizeVectorizeUnroll(int max_jobs_per_core,
   n->unroll_explicit = unroll_explicit;
   n->max_parallel_extent_ = -1;
   return ScheduleRule(n);
+}
+
+bool ScheduleRule::IsParallelizeVectorizeUnroll(const ScheduleRule& rule) {
+  return rule->IsInstance<ParallelizeVectorizeUnrollNode>();
 }
 
 TVM_REGISTER_NODE_TYPE(ParallelizeVectorizeUnrollNode);

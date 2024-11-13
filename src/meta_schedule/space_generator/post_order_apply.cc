@@ -163,7 +163,7 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
             sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_consumer_block);
         if ((ScheduleRule::IsMultiLevelTilingHBMPIM(sch_rule) ||
              ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule) ||
-             //  ScheduleRule::IsMultiLevelTilingSpatialUPMEM(sch_rule) ||
+             ScheduleRule::IsMultiLevelTilingSpatialUPMEM(sch_rule) ||
              ScheduleRule::IsMultiLevelTilingReductionUPMEM(sch_rule) ||
              ScheduleRule::IsPrepareCrossThreadReduction(sch_rule)) &&
             rfactor_consumer.defined()) {
@@ -176,6 +176,13 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
             (!rfactor_producer.defined() && !rfactor_consumer.defined())) {
           stack.emplace_back(sch, blocks);
           continue;
+        }
+
+        if (ScheduleRule::IsParallelizeVectorizeUnroll(sch_rule)) {
+          if (sch->trace().defined() && sch->trace().value()->decisions.empty()) {
+            stack.emplace_back(sch, blocks);
+            continue;
+          }
         }
 
         Array<tir::Schedule> applied = sch_rule->Apply(sch, /*block=*/block_rv);

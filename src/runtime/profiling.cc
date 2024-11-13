@@ -37,6 +37,8 @@
 #include <numeric>
 #include <thread>
 
+#include "upmem/upmem_common.h"
+
 namespace tvm {
 namespace runtime {
 
@@ -861,7 +863,7 @@ TVM_REGISTER_GLOBAL("runtime.profiling.ProfileFunction")
 
 PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, int min_repeat_ms,
                              int limit_zero_time_iterations, int cooldown_interval_ms,
-                             int repeats_to_cooldown, PackedFunc f_preproc) {
+                             int repeats_to_cooldown, PackedFunc f_preproc, bool bench) {
   ICHECK(pf != nullptr);
 
   if (static_cast<int>(dev.device_type) == static_cast<int>(kDLMicroDev)) {
@@ -871,12 +873,18 @@ PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, 
   }
 
   auto ftimer = [pf, dev, number, repeat, min_repeat_ms, limit_zero_time_iterations,
-                 cooldown_interval_ms, repeats_to_cooldown,
-                 f_preproc](TVMArgs args, TVMRetValue* rv) mutable {
+                 cooldown_interval_ms, repeats_to_cooldown, f_preproc,
+                 bench](TVMArgs args, TVMRetValue* rv) mutable {
     TVMRetValue temp;
     std::ostringstream os;
     // skip first time call, to activate lazy compilation components.
-    pf.CallPacked(args, &temp);
+    if (bench) {
+      for (int i = 0; i < 100; i++) {
+        pf.CallPacked(args, &temp);
+      }
+    } else {
+      pf.CallPacked(args, &temp);
+    }
 
     DeviceAPI::Get(dev)->StreamSync(dev, nullptr);
 
@@ -886,6 +894,9 @@ PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, 
       }
       double duration_ms = 0.0;
       int absolute_zero_times = 0;
+      double before_kernel_time = 0.0;
+      double kernel_time = 0.0;
+      double after_kernel_time = 0.0;
       do {
         if (duration_ms > 0.0) {
           const double golden_ratio = 1.618;
@@ -895,17 +906,56 @@ PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, 
 
         // start timing
         Timer t = Timer::Start(dev);
-        for (int j = 0; j < number; ++j) {
-          pf.CallPacked(args, &temp);
+        double* abs = new double[number];
+        double* d2h = new double[number];
+        double* before_d2h = new double[number];
+        double* after_d2h = new double[number];
+        if (bench) {
+          for (int j = 0; j < number; ++j) {
+            UPMEMDeviceAPI::Global()->Timestamp("start");
+            pf.CallPacked(args, &temp);
+            UPMEMDeviceAPI::Global()->Timestamp("end");
+            before_kernel_time += UPMEMDeviceAPI::Global()->ElapsedTime("before_kernel") / 1e6;
+            kernel_time += UPMEMDeviceAPI::Global()->ElapsedTime("kernel") / 1e6;
+
+            abs[j] = UPMEMDeviceAPI::Global()->ElapsedTime("after_kernel") / 1e6;
+            before_d2h[j] = UPMEMDeviceAPI::Global()->before_d2h_time / 1e6;
+            d2h[j] = UPMEMDeviceAPI::Global()->ElapsedTime("d2h") / 1e6;
+            auto t = UPMEMDeviceAPI::Global()->entire_end - UPMEMDeviceAPI::Global()->last_d2h_end;
+            after_d2h[j] = std::chrono::duration_cast<std::chrono::nanoseconds>(t).count() / 1e6;
+            after_kernel_time += abs[j];
+          }
+          for (int j = 0; j < number; ++j) {
+            // std::cerr << before_d2h[j] << std::endl;
+            // std::cerr << before_d2h[j] << "\t" << d2h[j] << "\t" << after_d2h[j] << "\t" << abs[j] << std::endl;
+          }
+        } else {
+          for (int j = 0; j < number; ++j) {
+            pf.CallPacked(args, &temp);
+          }
         }
+        delete[] abs;
+        delete[] d2h;
+        delete[] before_d2h;
+        delete[] after_d2h;
+
         t->Stop();
         int64_t t_nanos = t->SyncAndGetElapsedNanos();
         if (t_nanos == 0) absolute_zero_times++;
         duration_ms = t_nanos / 1e6;
       } while (duration_ms < min_repeat_ms && absolute_zero_times < limit_zero_time_iterations);
 
-      double speed = duration_ms / 1e3 / number;
-      os.write(reinterpret_cast<char*>(&speed), sizeof(speed));
+      if (bench) {
+        double speed1 = before_kernel_time / 1e3 / number;
+        os.write(reinterpret_cast<char*>(&speed1), sizeof(speed1));
+        double speed2 = kernel_time / 1e3 / number;
+        os.write(reinterpret_cast<char*>(&speed2), sizeof(speed2));
+        double speed3 = after_kernel_time / 1e3 / number;
+        os.write(reinterpret_cast<char*>(&speed3), sizeof(speed3));
+      } else {
+        double speed = duration_ms / 1e3 / number;
+        os.write(reinterpret_cast<char*>(&speed), sizeof(speed));
+      }
 
       if (cooldown_interval_ms > 0 && (i % repeats_to_cooldown) == 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(cooldown_interval_ms));

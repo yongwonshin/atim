@@ -519,6 +519,9 @@ std::vector<Schedule> EvolutionarySearchNode::State::PickBestFromDatabase(int nu
         other_results.push_back(results[i]);
       }
     }
+    if (rfactor_results.empty() || other_results.empty()) {
+      return results;
+    }
     std::vector<Schedule> new_results;
     while (new_results.size() < org_num && !rfactor_results.empty() && !other_results.empty()) {
       new_results.push_back(rfactor_results.back());
@@ -529,7 +532,7 @@ std::vector<Schedule> EvolutionarySearchNode::State::PickBestFromDatabase(int nu
     return new_results;
   } else {
     std::vector<Schedule> new_results;
-    for (int i = 0; i < std::min(org_num, num); i++) {
+    for (int i = 0; i < std::min(org_num, actual_num); i++) {
       new_results.push_back(results[i]);
     }
     return new_results;

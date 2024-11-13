@@ -373,7 +373,7 @@ TVM_REGISTER_GLOBAL("runtime.RPCTimeEvaluator")
     .set_body_typed([](Optional<Module> opt_mod, std::string name, int device_type, int device_id,
                        int number, int repeat, int min_repeat_ms, int limit_zero_time_iterations,
                        int cooldown_interval_ms, int repeats_to_cooldown,
-                       std::string f_preproc_name) {
+                       std::string f_preproc_name, bool bench) {
       Device dev;
       dev.device_type = static_cast<DLDeviceType>(device_type);
       dev.device_id = device_id;
@@ -397,7 +397,7 @@ TVM_REGISTER_GLOBAL("runtime.RPCTimeEvaluator")
           CHECK(pf != nullptr) << "Cannot find " << name << " in the global registry";
           return profiling::WrapTimeEvaluator(pf, dev, number, repeat, min_repeat_ms,
                                               limit_zero_time_iterations, cooldown_interval_ms,
-                                              repeats_to_cooldown, f_preproc);
+                                              repeats_to_cooldown, f_preproc, bench);
         }
       } else {
         auto* pf = runtime::Registry::Get(name);
@@ -411,7 +411,7 @@ TVM_REGISTER_GLOBAL("runtime.RPCTimeEvaluator")
         }
         return profiling::WrapTimeEvaluator(*pf, dev, number, repeat, min_repeat_ms,
                                             limit_zero_time_iterations, cooldown_interval_ms,
-                                            repeats_to_cooldown, f_preproc);
+                                            repeats_to_cooldown, f_preproc, bench);
       }
     });
 

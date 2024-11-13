@@ -119,7 +119,7 @@ class UPMEMWorkload:
         self.max_correctness_indices = max_correctness_indices
 
         # Fixed
-        self.target = tvm.target.Target(target="upmem", host="llvm")
+        self.target = tvm.target.Target(target="upmem --num-cores=96", host="llvm")
         self.target_device = tvm.device("upmem", 0)
 
         # Internal
@@ -300,7 +300,7 @@ class UPMEMWorkload:
                 bench_after_kernel_time,
             )
         except AttributeError as e:
-            raise RuntimeError(f"Error parsing benchmark results: {error.decode('utf-8')}")
+            raise RuntimeError(f"Error parsing benchmark results: {result}")
         self.benchmark_results.append(time_tuple)
         # print("\t".join(map(str, time_tuple)))
         return time_tuple
@@ -314,7 +314,11 @@ class UPMEMWorkload:
     def kernel(self, use_time_evaluator=False):
         if use_time_evaluator:
             evaluator = self.func.time_evaluator(
-                self.func.entry_name, dev=self.target_device, number=10, repeat=100
+                self.func.entry_name,
+                dev=self.target_device,
+                number=10,
+                repeat=100,
+                bench=True,
             )
             repeated_costs: List[List[float]] = []
             profile_result = evaluator(*self.dev)
@@ -379,6 +383,22 @@ class UPMEMWorkload:
             if self.perform_h2d:
                 self.h2d()
 
+            self.target_device.sync()
+            costs = self.kernel(use_time_evaluator=True)
+            before_kernel = []
+            kernel = []
+            after_kernel = []
+            for i in range(100):
+                before_kernel.append(costs[3 * i])
+                kernel.append(costs[3 * i + 1])
+                after_kernel.append(costs[3 * i + 2])
+            mean_before_kernel = np.mean(before_kernel) * 1e3
+            mean_kernel = np.mean(kernel) * 1e3
+            mean_after_kernel = np.mean(after_kernel) * 1e3
+            print(
+                f"TIME EVALUATOR: {mean_before_kernel:.3f}\t{mean_kernel:.3f}\t{mean_after_kernel:.3f}\t{(mean_before_kernel + mean_kernel + mean_after_kernel):.3f}"
+            )
+
             for j in range(self.repeat + self.warmup):
                 self.target_device.sync()
                 total_start = time.time()
@@ -416,9 +436,6 @@ class UPMEMWorkload:
                     + f"\t{flag}\t{self.config.__repr__()}"
                 )
             self.post_kernel()
-            self.target_device.sync()
-            costs = self.kernel(use_time_evaluator=True)
-            print("TIME EVALUATOR:", np.mean(costs, axis=0) * 1e3)
             ret = f"{time_tuple[1]:.3f}" if flag else "WRONG"
         except Exception as e:
             with open(f"./{self.log_dir}/{self.fname}/error.txt", "w") as f:

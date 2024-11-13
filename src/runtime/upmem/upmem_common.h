@@ -100,6 +100,10 @@ class UPMEMDeviceAPI final : public DeviceAPI {
 
   int PushXfer();
 
+  void Timestamp(std::string type);
+
+  size_t ElapsedTime(std::string type);
+
  protected:
   void CopyDataFromTo(const void* from, size_t from_offset, void* to, size_t to_offset, size_t size,
                       Device dev_from, Device dev_to, DLDataType type_hint,
@@ -136,10 +140,13 @@ class UPMEMDeviceAPI final : public DeviceAPI {
   std::chrono::high_resolution_clock::time_point kernel_start;
   std::chrono::high_resolution_clock::time_point kernel_end;
   std::chrono::high_resolution_clock::time_point entire_end;
+  std::chrono::high_resolution_clock::time_point last_d2h_start;
   std::chrono::high_resolution_clock::time_point last_d2h_end;
 
   double kernel_time;
+  double before_d2h_time;
   double d2h_time;
+  double after_d2h_time;
 
   void* recent_host_address;
 };
