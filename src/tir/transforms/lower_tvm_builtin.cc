@@ -529,14 +529,15 @@ class BuiltinLower : public StmtExprMutator {
   }
 
   PrimExpr MakeDpuParallelTransferBindBounded(const CallNode* op) {
-    ICHECK(op->args.size() == 3) << "dpu_parallel_transfer_bind_bounded expects 3 arguments";
-    PrimExpr bank_index = op->args[0];
-    PrimExpr host_address = op->args[1];
-    PrimExpr size = op->args[2];
+    ICHECK(op->args.size() == 4) << "dpu_parallel_transfer_bind_bounded expects 3 arguments";
+    PrimExpr bind_buffer_ptr = op->args[0];
+    PrimExpr bank_index = op->args[1];
+    PrimExpr host_address = op->args[2];
+    PrimExpr size = op->args[3];
 
     auto method_name = GetDeviceMethodName("dpu_parallel_transfer_bind_bounded");
     Call call_packed = Call(DataType::Int(32), builtin::tvm_call_packed(),
-                            {method_name, bank_index, host_address, size});
+                            {method_name, bind_buffer_ptr, bank_index, host_address, size});
     return VisitExpr(call_packed);
   }
 

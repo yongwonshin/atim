@@ -100,7 +100,7 @@ class UPMEMDeviceAPI final : public DeviceAPI {
 
   int PushXfer();
 
-  void* BindBounded(int bank_index, uint64_t host_addr, uint64_t size);
+  void* BindBounded(void* bind_buffer_ptr, int bank_index, uint64_t host_addr, uint64_t size);
 
   int BindAll(void* bind_buffer);
 

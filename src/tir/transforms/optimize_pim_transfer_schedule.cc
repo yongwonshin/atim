@@ -38,9 +38,12 @@
 #include "../../runtime/thread_storage_scope.h"
 #include "../../support/utils.h"
 #include "../analysis/var_use_def_analysis.h"
+#include "../../arith/ir_mutator_with_analyzer.h"
 #include "ir_utils.h"
 #include "pim_transfer_schedule.h"
 #include "remove_no_op.h"
+#include "loop_partition.h"
+#include "simplify.h"
 
 namespace tvm {
 namespace tir {
@@ -117,7 +120,7 @@ class BulkPimCopy : public StmtExprMutator {
   std::vector<Var> loop_vars;
   Map<String, Array<PrimExpr>> symbol_map;
   Map<Var, PrimExpr> vmap;
-
+  arith::Analyzer ana;
   class FactorMap : public ExprVisitor {
    public:
     std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> m;
@@ -256,7 +259,7 @@ class BulkPimCopy : public StmtExprMutator {
                   bulk_size = Min(prev_factor, bulk_size);
                 }
               }
-              bulk_size = arith::Analyzer().Simplify(bulk_size);
+              bulk_size = ana.Simplify(bulk_size);
               new_extent = bulk_size;
             } else {
               ICHECK(!clamp_value.defined());
@@ -266,18 +269,20 @@ class BulkPimCopy : public StmtExprMutator {
               new_extent = op->extent;
             }
             if (clamp_value.defined()) {
-              clamp_value = arith::Analyzer().Simplify(clamp_value + op->loop_var * size);
+              clamp_value = ana.Simplify(clamp_value + op->loop_var * size);
               VarUseDefAnalyzer use_def({}, false);
               use_def(clamp_value);
               if (use_def.use_count_.count(op->loop_var.get()) > 0) {
                 return stmt;
               }
-              new_extent = Max(0, Min(bulk_size, clamp_value));
+              new_extent = ana.Simplify(Max(0, Min(bulk_size, clamp_value)));
+              if (is_const_int(new_extent) && ana.CanProve(new_extent < bulk_size)) {
+                bulk_size = new_extent;
+              }
             }
             std::string vname = Downcast<Var>(call->args[0])->name_hint->data;
             String var_name = vname;
             if (symbol_map.find(var_name) != symbol_map.end()) {
-              arith::Analyzer ana;
               PrimExpr max_global_index = host;
               PrimExpr max_host_index = pim;
               for (int i = 0; i < 10 && !max_global_index.as<IntImmNode>(); i++) {
@@ -310,14 +315,14 @@ class BulkPimCopy : public StmtExprMutator {
   }
 };
 
-class UpmemParallelTransfer : public StmtExprMutator {
+class UpmemParallelTransfer : public arith::IRMutatorWithAnalyzer {
  public:
   std::vector<const ForNode*> loop_stack;
   bool inside_upmem = false;
-  arith::Analyzer ana;
   Map<Buffer, PrimExpr> alloca_size_map;
 
-  UpmemParallelTransfer(Map<Buffer, PrimExpr> alloca_size_map) : alloca_size_map(alloca_size_map) {}
+  UpmemParallelTransfer(arith::Analyzer* ana, Map<Buffer, PrimExpr> alloca_size_map) :
+    IRMutatorWithAnalyzer(ana), alloca_size_map(alloca_size_map) {}
 
   Stmt VisitStmt_(const ForNode* op) final {
     if (op->annotations.find("bank") != op->annotations.end()) {
@@ -327,6 +332,23 @@ class UpmemParallelTransfer : public StmtExprMutator {
       return stmt;
     }
     return StmtExprMutator::VisitStmt_(op);
+  }
+
+  PrimExpr ClampToLinearInequalities(PrimExpr expr) {
+    if (auto eq = expr.as<EQNode>()) {
+      if (auto mx = eq->a.as<MaxNode>()) {
+        if (auto mn = mx->b.as<MinNode>()) {
+          if (is_zero(mx->a) && analyzer_->CanProve(eq->b > 0)) {
+            if (analyzer_->CanProve(mn->a == eq->b)) {
+              return eq->b < mn->b;
+            } else if (analyzer_->CanProve(mn->b == eq->b)) {
+              return mn->b < eq->b;
+            }
+          }
+        }
+      }
+    }
+    return expr;
   }
 
   std::pair<Buffer, Stmt> bindSingle(Var buffer_var, PrimExpr bank_index, PrimExpr base,
@@ -353,20 +375,22 @@ class UpmemParallelTransfer : public StmtExprMutator {
     Stmt stmt = BufferStore(
         bind_buffer, Call(DataType::Handle(), builtin::address_of(), {BufferLoad(buf, {base})}),
         {bank_index});
-    if (!ana.CanProve(extent == bulk_size) && d2h) {
-      BufferStore bounded_bind =
-          BufferStore(bind_buffer,
-                      Call(DataType::Handle(), builtin::dpu_parallel_transfer_bind_bounded(),
-                           {bank_index, base, extent}),
-                      {bank_index});
-      stmt = IfThenElse(extent == bulk_size, stmt, bounded_bind);
+    PrimExpr le = ClampToLinearInequalities(extent == bulk_size);
+    if (!analyzer_->CanProve(le) && d2h) {
+      auto bind_bounded =
+          Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer_bind_bounded(),
+                        {bind_buffer->data, bank_index, base, extent}));
+      stmt = IfThenElse(le, stmt, bind_bounded);
     }
 
     for (auto it = loop_stack.rbegin(); it != loop_stack.rend(); ++it) {
       const ForNode* loop = *it;
-      stmt = For(loop->loop_var, 0, loop->extent, ForKind::kSerial, stmt, NullOpt);
+      stmt = For(loop->loop_var, loop->min, loop->extent,
+        ForKind::kSerial, stmt, NullOpt);
+      stmt = AttrStmt(loop->loop_var, attr::pragma_loop_partition_hint, 1, stmt);
     }
-    // stmt = LetStmt(buf_ptr, Cast(DataType::UInt(64), buf.access_ptr(1)), stmt);
+    stmt = Simplify(stmt, analyzer_);
+    stmt = LoopPartition(stmt, true, false, true);
     stmt = Allocate(bind_buffer->data, DataType::Handle(), {n_banks}, const_true(), stmt);
     return {bind_buffer, stmt};
   }
@@ -399,7 +423,10 @@ Stmt OptimizePimTransferSchedule(Stmt stmt, Target target, Map<Buffer, PrimExpr>
   res = EliminateTransferBranch()(std::move(res));
   res = BulkPimCopy()(std::move(res));
 
-  if (target->HasKey("upmem")) res = UpmemParallelTransfer(alloca_size_map)(std::move(res));
+  if (target->HasKey("upmem")) {
+    arith::Analyzer ana;
+    res = UpmemParallelTransfer(&ana, alloca_size_map)(std::move(res));
+  }
   return res;
 }
 

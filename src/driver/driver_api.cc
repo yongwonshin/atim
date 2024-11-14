@@ -601,6 +601,7 @@ transform::Sequential MixedModulePassManager(IRModule mixed_mod, Target target) 
 
   mixed_pass_list.push_back(tir::transform::AnnotateDeviceRegions());
   mixed_pass_list.push_back(tir::transform::ExtractPimTransferSchedule());
+  mixed_pass_list.push_back(tir::transform::Simplify());
   mixed_pass_list.push_back(tir::transform::SplitHostDevice());
   mixed_pass_list.push_back(tir::transform::SplitPimTransfer());
   // mixed_pass_list.push_back(tir::transform::UnrollLoop());
