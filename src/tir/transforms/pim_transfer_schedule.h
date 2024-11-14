@@ -31,7 +31,7 @@
 namespace tvm {
 namespace tir {
 
-Stmt OptimizePimTransferSchedule(Stmt stmt, Target target);
+Stmt OptimizePimTransferSchedule(Stmt stmt, Target target, Map<Buffer, PrimExpr> alloca_size_map);
 
 }
 }  // namespace tvm

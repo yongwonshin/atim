@@ -596,7 +596,7 @@ Stmt ConstructTransferStmt(Stmt stmt, Target target, Map<Var, Buffer> buffer_map
   res = HostBufferPadder(finder)(res);
   // TODO[ywshin]: maybe trans_size = 32 for HBMPIM
   if (IsUPMEMDevice(target)) {
-    res = OptimizePimTransferSchedule(res, target);
+    res = OptimizePimTransferSchedule(res, target, finder.alloca_size_map);
   }
 
   // Array<Stmt> wrapped = {res,

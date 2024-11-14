@@ -829,6 +829,9 @@ TVM_DLL const Op& pim_broadcast();
 TVM_DLL const Op& dpu_parallel_transfer_init();  // buffer, dpu_offset, bulk_size, direction
 TVM_DLL const Op& dpu_parallel_transfer_bind();  // dpu_id, host_offset, size
 TVM_DLL const Op& dpu_parallel_transfer_commit();
+TVM_DLL const Op& dpu_parallel_transfer_bind_bounded();
+TVM_DLL const Op& dpu_parallel_transfer_bind_all();
+
 
 TVM_DLL const Op& dpu_mram_read();
 TVM_DLL const Op& dpu_mram_write();

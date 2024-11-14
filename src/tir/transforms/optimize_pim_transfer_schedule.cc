@@ -29,6 +29,7 @@
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/function.h>
+#include <tvm/tir/index_map.h>
 #include <tvm/tir/stmt.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
@@ -123,9 +124,7 @@ class BulkPimCopy : public StmtExprMutator {
     bool is_affine = true;
     PrimExpr factor = 1;
 
-    FactorMap(PrimExpr expr) {
-      VisitExpr(expr);
-    }
+    FactorMap(PrimExpr expr) { VisitExpr(expr); }
 
     void VisitExpr_(const VarNode* op) final {
       if (m.count(GetRef<Var>(op)) == 0) {
@@ -315,6 +314,10 @@ class UpmemParallelTransfer : public StmtExprMutator {
  public:
   std::vector<const ForNode*> loop_stack;
   bool inside_upmem = false;
+  arith::Analyzer ana;
+  Map<Buffer, PrimExpr> alloca_size_map;
+
+  UpmemParallelTransfer(Map<Buffer, PrimExpr> alloca_size_map) : alloca_size_map(alloca_size_map) {}
 
   Stmt VisitStmt_(const ForNode* op) final {
     if (op->annotations.find("bank") != op->annotations.end()) {
@@ -326,39 +329,77 @@ class UpmemParallelTransfer : public StmtExprMutator {
     return StmtExprMutator::VisitStmt_(op);
   }
 
+  std::pair<Buffer, Stmt> bindSingle(Var buffer_var, PrimExpr bank_index, PrimExpr base,
+                                     PrimExpr extent, PrimExpr bulk_size, bool d2h) {
+    // get number of banks
+    int n_banks = 1;
+    for (auto it = loop_stack.rbegin(); it != loop_stack.rend(); ++it) {
+      n_banks *= Downcast<IntImm>((*it)->extent)->value;
+    }
+    // Var buf_ptr(buffer_var->name_hint + "_ptr", DataType::UInt(64));
+
+    Buffer buf;
+    for (const auto& kv : alloca_size_map) {
+      if (kv.first->data.get() == buffer_var.get()) {
+        buf = kv.first;
+        break;
+      }
+    }
+    ICHECK(buf.defined()) << "Cannot find buffer for " << buffer_var;
+
+    Buffer bind_buffer =
+        decl_buffer({IntImm(DataType::UInt(64), n_banks)}, DataType::Handle(), "bind_buffer");
+    int dtype_size = buffer_var->dtype.bytes();
+    Stmt stmt = BufferStore(
+        bind_buffer, Call(DataType::Handle(), builtin::address_of(), {BufferLoad(buf, {base})}),
+        {bank_index});
+    if (!ana.CanProve(extent == bulk_size) && d2h) {
+      BufferStore bounded_bind =
+          BufferStore(bind_buffer,
+                      Call(DataType::Handle(), builtin::dpu_parallel_transfer_bind_bounded(),
+                           {bank_index, base, extent}),
+                      {bank_index});
+      stmt = IfThenElse(extent == bulk_size, stmt, bounded_bind);
+    }
+
+    for (auto it = loop_stack.rbegin(); it != loop_stack.rend(); ++it) {
+      const ForNode* loop = *it;
+      stmt = For(loop->loop_var, 0, loop->extent, ForKind::kSerial, stmt, NullOpt);
+    }
+    // stmt = LetStmt(buf_ptr, Cast(DataType::UInt(64), buf.access_ptr(1)), stmt);
+    stmt = Allocate(bind_buffer->data, DataType::Handle(), {n_banks}, const_true(), stmt);
+    return {bind_buffer, stmt};
+  }
+
   Stmt VisitStmt_(const EvaluateNode* op) final {
     if (const CallNode* call = op->value.as<CallNode>()) {
       if (call->op.same_as(builtin::pim_transfer_device_to_host()) ||
           call->op.same_as(builtin::pim_transfer_host_to_device())) {
-        PrimExpr direction = call->op.same_as(builtin::pim_transfer_device_to_host())
-                                 ? make_const(DataType::Int(32), 0)
-                                 : make_const(DataType::Int(32), 1);
-        Stmt initialize_transfer =
-            Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer_init(),
-                          {call->args[0], call->args[2], call->args[5], direction}));
-        Stmt nested_func_call =
-            Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer_bind(),
-                          {call->args[3], call->args[1], call->args[4]}));
-        for (auto it = loop_stack.rbegin(); it != loop_stack.rend(); ++it) {
-          const ForNode* loop = *it;
-          nested_func_call =
-              For(loop->loop_var, 0, loop->extent, ForKind::kSerial, nested_func_call, NullOpt);
-        }
+        bool direction = call->op.same_as(builtin::pim_transfer_device_to_host());
+        Stmt initialize_transfer = Evaluate(
+            Call(DataType::Int(32), builtin::dpu_parallel_transfer_init(),
+                 {call->args[0], call->args[2], call->args[5], static_cast<int>(!direction)}));
+
+        auto [bind_buffer, bind_transfer] =
+            bindSingle(Downcast<Var>(call->args[0]), call->args[3], call->args[1], call->args[4],
+                       call->args[5], direction);
+        Stmt bind_all = Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer_bind_all(),
+                                      {bind_buffer->data}));
         Stmt commit_transfer =
             Evaluate(Call(DataType::Int(32), builtin::dpu_parallel_transfer_commit(), {}));
-        return SeqStmt({initialize_transfer, nested_func_call, commit_transfer});
+        return SeqStmt({initialize_transfer, bind_transfer, bind_all, commit_transfer});
       }
     }
     return StmtExprMutator::VisitStmt_(op);
   }
 };
 
-Stmt OptimizePimTransferSchedule(Stmt stmt, Target target) {
+Stmt OptimizePimTransferSchedule(Stmt stmt, Target target, Map<Buffer, PrimExpr> alloca_size_map) {
   Stmt res = AllocateFreeOnce()(std::move(stmt));
   res = EliminateTransferBranch()(std::move(res));
   res = BulkPimCopy()(std::move(res));
 
-  if (target->HasKey("upmem")) res = UpmemParallelTransfer()(std::move(res));
+  if (target->HasKey("upmem")) res = UpmemParallelTransfer(alloca_size_map)(std::move(res));
   return res;
 }
 

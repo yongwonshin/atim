@@ -417,6 +417,12 @@ TIR_DEFINE_BUILTIN_FUNC(dpu_parallel_transfer_init)
 TIR_DEFINE_BUILTIN_FUNC(dpu_parallel_transfer_bind)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 
+TIR_DEFINE_BUILTIN_FUNC(dpu_parallel_transfer_bind_bounded)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
+TIR_DEFINE_BUILTIN_FUNC(dpu_parallel_transfer_bind_all)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
+
 TIR_DEFINE_BUILTIN_FUNC(dpu_parallel_transfer_commit)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque));
 

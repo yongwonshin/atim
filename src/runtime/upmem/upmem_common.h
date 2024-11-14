@@ -100,6 +100,10 @@ class UPMEMDeviceAPI final : public DeviceAPI {
 
   int PushXfer();
 
+  void* BindBounded(int bank_index, uint64_t host_addr, uint64_t size);
+
+  int BindAll(void* bind_buffer);
+
   void Timestamp(std::string type);
 
   size_t ElapsedTime(std::string type);
