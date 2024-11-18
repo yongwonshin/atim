@@ -93,6 +93,7 @@ class UPMEMWorkload:
         record_upmem_c=True,
         record_host_llvm=True,
         max_correctness_indices=32,
+        use_time_evaluator=True
     ):
         self.profile = profile
         self.scheduler = None
@@ -117,6 +118,7 @@ class UPMEMWorkload:
         self.record_upmem_c = record_upmem_c
         self.record_host_llvm = record_host_llvm
         self.max_correctness_indices = max_correctness_indices
+        self.use_time_evaluator = use_time_evaluator
 
         # Fixed
         self.target = tvm.target.Target(target="upmem --num-cores=96", host="llvm")
@@ -197,6 +199,7 @@ class UPMEMWorkload:
                     m = ExtractPimTransferSchedule()(m)
                     m = SplitHostDevice()(m)
                     m = SplitPimTransfer()(m)
+                    m = Simplify()(m)
                     print("from tvm.script import ir as I", file=f)
                     print("from tvm.script import tir as T", file=f)
                     print(m, file=f)
@@ -305,11 +308,13 @@ class UPMEMWorkload:
         # print("\t".join(map(str, time_tuple)))
         return time_tuple
 
+
     def is_passed(self):
         if self.dtype[:5] == "float":
             return np.max(np.abs(self.dev.output.asnumpy() - self.host.output)) < 0.01
         else:
             return np.max(np.abs(self.dev.output.asnumpy() - self.host.output)) == 0
+
 
     def kernel(self, use_time_evaluator=False):
         if use_time_evaluator:
@@ -328,6 +333,7 @@ class UPMEMWorkload:
         else:
             self.func(*self.dev)
 
+
     def h2d(self):
         for symbol in self.symbols:
             if symbol != self.output_symbol:
@@ -342,15 +348,72 @@ class UPMEMWorkload:
         if self.output_symbol:
             self.dev.output = tvm.nd.empty(self.host.output.shape, self.dtype, self.target_device)
 
+
     def print_header(self):
         print("BK\tK\tAK\tD2H\tTOT\tPASS\tCONF")
 
+
     def dump_handtune_max(self):
         if len(self.hand_tuned) == 0:
-            return
+            return None
         print("Best config")
-        print(min(self.hand_tuned, key=lambda x: x[1]))
+        min_conf = min(self.hand_tuned, key=lambda x: x[1])[0]
+        print(min_conf)
         self.hand_tuned = []
+        return min_conf
+
+
+    def evaluate_time_evaluator(self):
+        costs = self.kernel(use_time_evaluator=True)
+        before_kernel = []
+        kernel = []
+        after_kernel = []
+        for i in range(100):
+            before_kernel.append(costs[3 * i])
+            kernel.append(costs[3 * i + 1])
+            after_kernel.append(costs[3 * i + 2])
+        mean_before_kernel = np.mean(before_kernel) * 1e3
+        mean_kernel = np.mean(kernel) * 1e3
+        mean_after_kernel = np.mean(after_kernel) * 1e3
+        return (mean_before_kernel, mean_kernel, mean_after_kernel, 0, mean_before_kernel + mean_kernel + mean_after_kernel)
+
+
+    def evaluate_legacy(self):
+        times = []
+        timestamp = tvm._ffi.get_global_func("device_api.upmem.timestamp")
+        elapsed_time = tvm._ffi.get_global_func("device_api.upmem.elapsed_time")
+        if self.verbose >= 1:
+            print("iter\tBK\tK\tAK\tD2H\tTOT")
+            print("------------------------------")
+        for j in range(self.repeat + self.warmup):
+            self.target_device.sync()
+            total_start = time.time()
+            timestamp("start")
+            self.kernel()
+            timestamp("end")
+            total_end = time.time()
+
+            if j >= self.warmup:
+                before_kernel_time = elapsed_time("before_kernel") / 1e6
+                kernel_time = elapsed_time("kernel") / 1e6
+                after_kernel_time = elapsed_time("after_kernel") / 1e6
+                d2h_time = elapsed_time("d2h") / 1e6
+                total_time = (total_end - total_start) * 1e3
+                time_tuple = (
+                    before_kernel_time,
+                    kernel_time,
+                    after_kernel_time,
+                    d2h_time,
+                    total_time,
+                )
+                times.append(time_tuple)
+                if self.verbose >= 1:
+                    print(str(j) + "\t" + "\t".join([f"{x:.3f}" for x in time_tuple]))
+        if self.verbose >= 1:
+            print("------------------------------")
+        time_tuple = np.mean(times, axis=0)
+        return time_tuple
+
 
     def test(self, scheduler, **kwargs):
         ret = "ERROR"
@@ -365,76 +428,30 @@ class UPMEMWorkload:
         self.fetch_data()
         self.host_version()
 
-        timestamp = tvm._ffi.get_global_func("device_api.upmem.timestamp")
-        elapsed_time = tvm._ffi.get_global_func("device_api.upmem.elapsed_time")
-
         try:
             # with open(f"./{self.log_dir}/{self.fname}.txt", "w") as f:
             self.pre_kernel(self.sch)
             if self.compile_only:
                 return
-
             self.target_device.load_function(self.func)
-            times = []
-
-            if self.verbose >= 1:
-                print("iter\tBK\tK\tAK\tD2H\tTOT")
-                print("------------------------------")
             if self.perform_h2d:
                 self.h2d()
-
             self.target_device.sync()
-            costs = self.kernel(use_time_evaluator=True)
-            before_kernel = []
-            kernel = []
-            after_kernel = []
-            for i in range(100):
-                before_kernel.append(costs[3 * i])
-                kernel.append(costs[3 * i + 1])
-                after_kernel.append(costs[3 * i + 2])
-            mean_before_kernel = np.mean(before_kernel) * 1e3
-            mean_kernel = np.mean(kernel) * 1e3
-            mean_after_kernel = np.mean(after_kernel) * 1e3
-            print(
-                f"TIME EVALUATOR: {mean_before_kernel:.3f}\t{mean_kernel:.3f}\t{mean_after_kernel:.3f}\t{(mean_before_kernel + mean_kernel + mean_after_kernel):.3f}"
-            )
-
-            for j in range(self.repeat + self.warmup):
-                self.target_device.sync()
-                total_start = time.time()
-                timestamp("start")
-                self.kernel()
-                timestamp("end")
-                total_end = time.time()
-
-                if j >= self.warmup:
-                    before_kernel_time = elapsed_time("before_kernel") / 1e6
-                    kernel_time = elapsed_time("kernel") / 1e6
-                    after_kernel_time = elapsed_time("after_kernel") / 1e6
-                    d2h_time = elapsed_time("d2h") / 1e6
-                    total_time = (total_end - total_start) * 1e3
-                    time_tuple = (
-                        before_kernel_time,
-                        kernel_time,
-                        after_kernel_time,
-                        d2h_time,
-                        total_time,
-                    )
-                    times.append(time_tuple)
-                    if self.verbose >= 1:
-                        print(str(j) + "\t" + "\t".join([f"{x:.3f}" for x in time_tuple]))
-            if self.verbose >= 1:
-                print("------------------------------")
-            time_tuple = np.mean(times, axis=0)
+            if self.use_time_evaluator:
+                time_tuple = self.evaluate_time_evaluator()
+            else:
+                time_tuple = self.evaluate_legacy()
             self.recent_time_tuple = time_tuple
             flag = self.is_passed()
-            if flag:
-                self.hand_tuned.append([self.config.__repr__(), time_tuple[4]])
             if self.verbose >= 0:
-                print(
-                    "\t".join([f"{x:.3f}" for x in time_tuple])
-                    + f"\t{flag}\t{self.config.__repr__()}"
-                )
+                # print(
+                #     "\t".join([f"{x:.3f}" for x in time_tuple])
+                #     + f"\t{flag}\t{self.config.__repr__()}"
+                # )
+                # print(f"{time_tuple[0]}\t{time_tuple[1]}\t{time_tuple[2]}\t{time_tuple[4]}")
+                print(time_tuple[1])
+            if flag:
+                self.hand_tuned.append([self.config, time_tuple[4]])
             self.post_kernel()
             ret = f"{time_tuple[1]:.3f}" if flag else "WRONG"
         except Exception as e:

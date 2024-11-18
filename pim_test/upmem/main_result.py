@@ -17,6 +17,8 @@ def get_module(op_type):
         return TTV
     elif op_type == "poly_gemv1":
         return GEMV
+    elif op_type == "polygemv1":
+        return GEMV
     # elif op_type == "poly_gemv2":
     #     pass
     elif op_type == "va":
@@ -24,6 +26,8 @@ def get_module(op_type):
     elif op_type == "ta":
         return TA
     elif op_type == "poly_va":
+        return GEVA
+    elif op_type == "polyva":
         return GEVA
     elif op_type == "poly_mixed":
         pass
@@ -63,7 +67,6 @@ def mtvRTile(M, K, n_yb, n_t=16, n_cache=256, dtype="int32", **kwargs):
     sch.annotate(yb, "bank", True)
     sch.decompose_reduction(block_c, xo)
     return sch
-
 
 def mtvRCTile(M, K, n_xb, n_yb, n_t=16, n_cache=64, n_rt=1, dtype="int32", **kwargs):
     sch = tvm.tir.Schedule(upmem_mtv_factory(M, K, dtype))
@@ -146,6 +149,50 @@ def mmtvRTile(M, N, K, n_bb, n_yb, n_t=16, n_cache=256, n_rt=1, dtype="int32", *
     sch.annotate(block_c, "meta_schedule.optimization_level", 4)
     return sch
 
+def ttvRTile(M, N, K, n_bb, n_yb, n_t=16, n_cache=256, n_rt=1, dtype="int32", **kwargs):
+    sch = tvm.tir.Schedule(upmem_ttv_factory(M, N, K, dtype))
+    block_c = sch.get_block("C")
+    ca = sch.cache_read(block_c, 0, "local")
+    cb = sch.cache_read(block_c, 1, "local")
+    cc = sch.cache_write(block_c, 0, "local")
+    b, i, k = sch.get_loops(block_c)
+    bb, bo = sch.split(b, factors=[n_bb, None])
+    yb, yo, yi, yc = sch.split(i, factors=[n_yb, n_t, None, 2])
+    ko, ki = sch.split(k, factors=[None, n_cache])
+    sch.reorder(bb, yb, bo, yo, yi, yc, ko, ki)
+    sch.compute_at(ca, ko)
+    sch.compute_at(cb, ko)
+    sch.reverse_compute_at(cc, yi)
+    sch.bind(bb, "blockIdx.x")
+    sch.bind(yb, "blockIdx.y")
+    sch.bind(yo, "threadIdx.x")
+    sch.annotate(bb, "bank", True)
+    sch.annotate(yb, "bank", True)
+    sch.decompose_reduction(block_c, ko)
+    sch.annotate(block_c, "meta_schedule.optimization_level", 4)
+    return sch
+
+
+def crossReductionCache(M, n_b, n_t, n_cache, dtype):
+    sch = tvm.tir.Schedule(upmem_red_factory(M, dtype))
+    br = sch.get_block("C")
+    i, = sch.get_loops(br)
+    ib, _, _ = sch.split(i, [n_b, n_t, None])
+    brf = sch.rfactor(ib, factor_axis=0)
+    _, it, _ = sch.get_loops(brf)
+    trf = sch.rfactor(it, factor_axis=0, mem_scope="shared")  # C_rf_rf
+    ca = sch.cache_read(trf, 0, "local")
+    cc = sch.cache_write(trf, 0, "local")
+    tib, tit, tii = sch.get_loops(trf)
+    tii, _ = sch.split(tii, factors=[None, n_cache])
+    sch.compute_at(ca, tii)
+    sch.reverse_compute_at(cc, tii)
+    sch.reverse_compute_at(brf, tit)
+    sch.bind(tib, "blockIdx.x")
+    sch.bind(tit, "threadIdx.x")
+    # sch.annotate(sch.get_block("A_local"), "pragma_explicit_h2d", True)
+    sch.decompose_reduction(trf, tii)
+    return sch
 
 def vaTile(M, n_xb, n_t=16, n_cache=256, dtype="int32", **kwargs):
     sch = tvm.tir.Schedule(upmem_va_factory(M, dtype))
@@ -164,6 +211,50 @@ def vaTile(M, n_xb, n_t=16, n_cache=256, dtype="int32", **kwargs):
     sch.bind(ib, "blockIdx.x")
     sch.bind(it, "threadIdx.x")
     # sch.parallel(ic)
+    return sch
+
+def gevaTile(M, n_xb, n_t=16, n_cache=256, dtype="int32", **kwargs):
+    sch = tvm.tir.Schedule(upmem_poly_va_factory(M, dtype))
+    block_c = sch.get_block("C")
+    (i,) = sch.get_loops(block_c)
+    ca = sch.cache_read(block_c, "A", "local")
+    cb = sch.cache_read(block_c, "B", "local")
+    cc = sch.cache_write(block_c, "C", "local")
+    # ib, it, ii, ic = sch.split(i, factors=[n_b, n_t, None, n_c])
+    bytes = np.dtype(dtype).itemsize
+    ib, it = sch.split(i, factors=[n_xb, math.ceil(M / n_xb / bytes) * bytes])
+    it, ii, ic = sch.split(it, factors=[n_t, None, n_cache])
+    sch.compute_at(ca, ii)
+    sch.compute_at(cb, ii)
+    sch.reverse_compute_at(cc, ii)
+    sch.bind(ib, "blockIdx.x")
+    sch.bind(it, "threadIdx.x")
+    # sch.parallel(ic)
+    return sch
+
+def polygemvRTile(M, K, n_yb, n_t=16, n_cache=256, dtype="int32", **kwargs):
+    sch = tvm.tir.Schedule(upmem_poly_gemv1_factory(M, K, dtype))
+    block_c = sch.get_block("C")
+    _, xo = sch.get_loops(block_c)
+    ca = sch.cache_read(block_c, 0, "local")
+    cb = sch.cache_read(block_c, 1, "local")
+    cc = sch.cache_write(block_c, 0, "local")
+    i, k = sch.get_loops(block_c)
+
+    rounded = math.ceil(M / n_yb / 2) * 2
+    yb, yo = sch.split(i, factors=[n_yb, rounded])
+    yo, yi, yc = sch.split(yo, factors=[n_t, None, 2])
+
+    xo, xi = sch.split(k, factors=[None, n_cache])
+    sch.reorder(yb, yo, yi, yc, xo, xi)
+    sch.compute_at(ca, xo)
+    sch.compute_at(cb, xo)
+    sch.reverse_compute_at(cc, yi)
+    sch.bind(yb, "blockIdx.x")
+    sch.bind(yo, "threadIdx.x")
+    sch.annotate(sch.get_block("A_local"), "pragma_explicit_h2d", True)
+    sch.annotate(yb, "bank", True)
+    sch.decompose_reduction(block_c, xo)
     return sch
 
 
@@ -331,8 +422,8 @@ class MMTV(UPMEMWorkload):
         )
 
     def fetch_data(self):
-        self.host.A = host_array((self.M, self.N, self.K), self.dtype, intdist=2)
-        self.host.B = host_array((self.M, self.K), self.dtype, intdist=2)
+        self.host.A = host_array((self.M, self.N, self.K), self.dtype)
+        self.host.B = host_array((self.M, self.K), self.dtype)
 
     def host_version(self):
         self.host.C = np.einsum("mnk,mk->mn", self.host.A, self.host.B)

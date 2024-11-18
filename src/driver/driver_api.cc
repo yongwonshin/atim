@@ -227,9 +227,9 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   pass_list.insert(pass_list.end(), user_lower_phase1.begin(), user_lower_phase1.end());
 
   // PHASE 2
-  if (!disable_loop_partition) {
-    pass_list.push_back(tir::transform::LoopPartition());
-  }
+  // if (!disable_loop_partition) {
+  //   pass_list.push_back(tir::transform::LoopPartition());
+  // }
 
   pass_list.push_back(tir::transform::VectorizeLoop(!disable_vectorize));
   pass_list.push_back(tir::transform::InjectVirtualThread());
@@ -679,6 +679,7 @@ transform::Sequential DeviceModulePassManager(IRModule mixed_mod, Target target)
   device_pass_list.push_back(tir::transform::BindTarget(target));
 
   device_pass_list.push_back(tir::transform::LowerWarpMemory());
+  device_pass_list.push_back(tir::transform::LoopPartition());
   device_pass_list.push_back(tir::transform::LowerUpmemDeviceMemoryTransfer());
 
   auto pass_ctx = transform::PassContext::Current();

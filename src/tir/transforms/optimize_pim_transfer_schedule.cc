@@ -276,9 +276,9 @@ class BulkPimCopy : public StmtExprMutator {
                 return stmt;
               }
               new_extent = ana.Simplify(Max(0, Min(bulk_size, clamp_value)));
-              if (is_const_int(new_extent) && ana.CanProve(new_extent < bulk_size)) {
-                bulk_size = new_extent;
-              }
+              // if (is_const_int(new_extent) && ana.CanProve(new_extent < bulk_size)) {
+              //   bulk_size = new_extent;
+              // }
             }
             std::string vname = Downcast<Var>(call->args[0])->name_hint->data;
             String var_name = vname;

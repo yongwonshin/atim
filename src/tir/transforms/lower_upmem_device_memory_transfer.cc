@@ -360,7 +360,6 @@ Pass LowerUpmemDeviceMemoryTransfer() {
       if (f->GetAttr<Integer>("optimization_level").defined()) {
         opt_level = f->GetAttr<Integer>("optimization_level").value().IntValue();
       }
-      // std::cerr << "OPT_LEVEL: " << opt_level << std::endl;
 
       if (opt_level == -1)
         opt_level = 4;

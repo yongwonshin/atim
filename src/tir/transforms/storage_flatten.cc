@@ -58,8 +58,9 @@ namespace {
 class OptimizationLevelExtractor : public tir::StmtVisitor {
  public:
   static int Extract(const tir::PrimFunc& func,
-                     const runtime::PackedFunc f_block_filter = nullptr) {  //
-    return OptimizationLevelExtractor(func).Run();
+                    int64_t opt_level,
+                    const runtime::PackedFunc f_block_filter = nullptr) {  //
+    return OptimizationLevelExtractor(func, opt_level).Run();
   }
 
  private:
@@ -70,7 +71,8 @@ class OptimizationLevelExtractor : public tir::StmtVisitor {
     return optimization_level_;
   }
   /*! \brief Constructor */
-  explicit OptimizationLevelExtractor(const tir::PrimFunc& func) : func_(func) {}
+  explicit OptimizationLevelExtractor(const tir::PrimFunc& func, int optimization_level = 4) :
+    func_(func), optimization_level_(optimization_level) {}
   /*! \brief Override the Stmt visiting behaviour */
   void VisitStmt_(const tir::BlockNode* block) override {
     StmtVisitor::VisitStmt_(block);
@@ -1958,7 +1960,9 @@ TVM_REGISTER_GLOBAL("tir.transform.ApplyLayoutTransforms")
 // TODO(tvm-team): consolidate configs to the PassContext
 Pass StorageFlatten(int cache_line_size, bool create_bound_attributes) {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
-    int64_t opt_level = OptimizationLevelExtractor::Extract(f);
+    int64_t opt_level = OptimizationLevelExtractor::Extract(f,
+      ctx->GetConfig<Integer>("tir.UpmemKernelOptimize", Integer(4)).value().IntValue()
+    );
     f = WithAttr(std::move(f), "optimization_level", Integer(opt_level));
     return StorageFlatten(std::move(f), cache_line_size, create_bound_attributes);
   };

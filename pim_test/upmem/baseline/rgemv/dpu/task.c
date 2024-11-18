@@ -123,18 +123,15 @@ int main() {
         mram_read((__mram_ptr void const*)(mram_temp_addr_A), cache_A, BLOCK_SIZE);
         mram_read((__mram_ptr void const*)(mram_temp_addr_B), cache_B, BLOCK_SIZE);
 
-        // if(offset)
-        // {
+        if (offset) {
+          for (unsigned int off = 0; off < (BLOCK_SIZE / sizeof(T)) - 1; off++) {
+            cache_A[off] = cache_A[off + 1];
+          }
 
-        // 	for(unsigned int off = 0; off < (BLOCK_SIZE / sizeof(T)) - 1; off++)
-        // 	{
-        // 		cache_A[off] = cache_A[off + 1];
-        // 	}
+          mram_read((__mram_ptr void const*)(mram_temp_addr_A + BLOCK_SIZE), cache_A_aux, 8);
 
-        // 	mram_read((__mram_ptr void const*) (mram_temp_addr_A + BLOCK_SIZE), cache_A_aux, 8);
-
-        // 	cache_A[BLOCK_SIZE / sizeof(T) - 1] = cache_A_aux[0];
-        // }
+          cache_A[BLOCK_SIZE / sizeof(T) - 1] = cache_A_aux[0];
+        }
 
         // Compute GEMV
         gemv(cache_C, cache_A, cache_B, pos);
@@ -146,19 +143,15 @@ int main() {
 
       mram_read((__mram_ptr void const*)(mram_temp_addr_A), cache_A, BLOCK_SIZE);
 
-      // if(offset)
-      // {
-      // 	for(unsigned int off = 0; off < (BLOCK_SIZE / sizeof(T)) -1; off++)
-      // 	{
+      if (offset) {
+        for (unsigned int off = 0; off < (BLOCK_SIZE / sizeof(T)) - 1; off++) {
+          cache_A[off] = cache_A[off + 1];
+        }
 
-      // 		cache_A[off] = cache_A[off + 1];
-      // 	}
+        mram_read((__mram_ptr void const*)(mram_temp_addr_A + BLOCK_SIZE), cache_A_aux, 8);
 
-      // 	mram_read((__mram_ptr void const*) (mram_temp_addr_A + BLOCK_SIZE ), cache_A_aux,
-      // 8);
-
-      //        cache_A[BLOCK_SIZE / sizeof(T) - 1] = cache_A_aux[0];
-      // }
+        cache_A[BLOCK_SIZE / sizeof(T) - 1] = cache_A_aux[0];
+      }
 
       mram_read((__mram_ptr void const*)(mram_temp_addr_B), cache_B, BLOCK_SIZE);
 

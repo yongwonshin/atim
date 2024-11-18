@@ -61,9 +61,8 @@ static void init_data(T* A, T* B, unsigned int b_size, unsigned int m_size, unsi
   fclose(file);
 }
 
-//Compute output in the host
-void gemv_host(T* C, T* A, T* B, unsigned int b_size, unsigned int m_size,
-                      unsigned int n_size) {
+// Compute output in the host
+void gemv_host(T* C, T* A, T* B, unsigned int b_size, unsigned int m_size, unsigned int n_size) {
   for (unsigned int i = 0; i < m_size * b_size; i++) {
     C[i] = 0;
   }
@@ -110,8 +109,8 @@ int main(int argc, char** argv) {
   }
 
   i = 0;
-  assert(b_size % NR_DPUS_B == 0);
-  assert(m_size % NR_DPUS_Y == 0);
+  // assert(b_size % NR_DPUS_B == 0);
+  // assert(m_size % NR_DPUS_Y == 0);
 
   uint32_t rows_per_dpu = m_size / NR_DPUS_Y;
   uint32_t batches_per_dpu = 1;
@@ -141,8 +140,8 @@ int main(int argc, char** argv) {
     if (rows_per_dpu_pad > max_rows_per_dpu) max_rows_per_dpu = rows_per_dpu_pad;
 
     dpu_info[i].rows_per_dpu = rows_per_dpu;
-    dpu_info[i].rows_per_dpu_pad = rows_per_dpu;
-    dpu_info[i].prev_rows_dpu = m_index * rows_per_dpu;
+    dpu_info[i].rows_per_dpu_pad = rows_per_dpu_pad;
+    dpu_info[i].prev_rows_dpu = prev_rows_dpu;
     dpu_info[i].prev_batches_dpu = b_index;
 
     // Copy input arguments to DPU
@@ -150,38 +149,30 @@ int main(int argc, char** argv) {
     input_args[i].n_size_pad = n_size_pad;
     input_args[i].nr_rows = rows_per_dpu;
   }
-  max_rows_per_dpu = rows_per_dpu;
 
   A = malloc(b_size * max_rows_per_dpu * NR_DPUS_Y * n_size_pad * sizeof(T));
   B = malloc(b_size * n_size_pad * sizeof(T));
-  C = malloc(b_size * rows_per_dpu * NR_DPUS_Y * sizeof(T));
-
-  printf("%d\n", b_size * m_size * n_size);
-  printf("%d\n", b_size * n_size);
-  printf("%d\n", b_size * m_size);
-
-
-  printf("%d\n", b_size * max_rows_per_dpu * NR_DPUS_Y * n_size_pad);
-  printf("%d\n", b_size * n_size_pad);
-  printf("%d\n", b_size * rows_per_dpu * NR_DPUS_Y);
-
+  C = malloc(b_size * max_rows_per_dpu * NR_DPUS_Y * sizeof(T));
 
   // Initialize data with arbitrary data
-  init_data(A, B, b_size, max_rows_per_dpu * NR_DPUS_Y, n_size_pad);
-
+  init_data(A, B, b_size, m_size, n_size);
   // Timer
   Timer timer;
 
   // Compute output on CPU (performance comparison and verification purposes)
   start(&timer, 0, 0);
-  for (unsigned int i = 0; i < max_rows_per_dpu * NR_DPUS_Y * b_size; i++) {
+  for (unsigned int i = 0; i < rows_per_dpu * NR_DPUS_Y * b_size; i++) {
     C[i] = 0;
   }
-  gemv_host(C, A, B, b_size, max_rows_per_dpu * NR_DPUS_Y, n_size_pad);
+  // gemv_host(C, A, B, b_size, max_rows_per_dpu * NR_DPUS_Y, n_size_pad);
+  gemv_host(C, A, B, b_size, m_size, n_size);
+
   stop(&timer, 0);
 
   i = 0;
   DPU_FOREACH(dpu_set, dpu, i) {
+    printf("%d, %d\n",i, dpu_info[i].prev_batches_dpu * n_size * m_size +
+                                         dpu_info[i].prev_rows_dpu * n_size);
     DPU_ASSERT(dpu_prepare_xfer(dpu, A + dpu_info[i].prev_batches_dpu * n_size * m_size +
                                          dpu_info[i].prev_rows_dpu * n_size));
   }
@@ -195,6 +186,7 @@ int main(int argc, char** argv) {
     DPU_FOREACH(dpu_set, dpu, i) {
       // Copy input arguments to DPU
       input_args[i].max_rows = max_rows_per_dpu;
+
       DPU_ASSERT(dpu_prepare_xfer(dpu, input_args + i));
     }
 
@@ -209,7 +201,6 @@ int main(int argc, char** argv) {
                              DPU_XFER_DEFAULT));
 
     if (rep >= p.n_warmup) stop(&timer, 1);
-
     // Run kernel on DPUs
     if (rep >= p.n_warmup) {
       start(&timer, 2, rep - p.n_warmup);
@@ -217,7 +208,6 @@ int main(int argc, char** argv) {
       DPU_ASSERT(dpu_probe_start(&probe));
 #endif
     }
-
     DPU_ASSERT(dpu_launch(dpu_set, DPU_SYNCHRONOUS));
 
     if (rep >= p.n_warmup) {
@@ -298,5 +288,4 @@ int main(int argc, char** argv) {
 #endif
 
   return status ? 0 : -1;
-
 }
