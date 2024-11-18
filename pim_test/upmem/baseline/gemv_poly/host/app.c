@@ -161,7 +161,6 @@ int main(int argc, char** argv) {
     DPU_ASSERT(dpu_broadcast_to(dpu_set, "alpha", 0, alpha, 8, DPU_XFER_DEFAULT));
   }
   for (unsigned int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
-    if (rep >= p.n_warmup) start(&timer, 1, rep - p.n_warmup);
 
     // Input arguments
     i = 0;
@@ -171,6 +170,8 @@ int main(int argc, char** argv) {
 
       DPU_ASSERT(dpu_prepare_xfer(dpu, input_args + i));
     }
+
+    if (rep >= p.n_warmup) start(&timer, 1, rep - p.n_warmup);
 
     DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0,
                              sizeof(dpu_arguments_t), DPU_XFER_DEFAULT));

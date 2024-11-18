@@ -171,8 +171,8 @@ int main(int argc, char** argv) {
 
   i = 0;
   DPU_FOREACH(dpu_set, dpu, i) {
-    printf("%d, %d\n",i, dpu_info[i].prev_batches_dpu * n_size * m_size +
-                                         dpu_info[i].prev_rows_dpu * n_size);
+    printf("%d, %d\n", i,
+           dpu_info[i].prev_batches_dpu * n_size * m_size + dpu_info[i].prev_rows_dpu * n_size);
     DPU_ASSERT(dpu_prepare_xfer(dpu, A + dpu_info[i].prev_batches_dpu * n_size * m_size +
                                          dpu_info[i].prev_rows_dpu * n_size));
   }
@@ -180,7 +180,7 @@ int main(int argc, char** argv) {
                            max_rows_per_dpu * n_size_pad * sizeof(T), DPU_XFER_DEFAULT));
   for (unsigned int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
     // Copy input array and vector
-    if (rep >= p.n_warmup) start(&timer, 1, rep - p.n_warmup);
+
     // Input arguments
     i = 0;
     DPU_FOREACH(dpu_set, dpu, i) {
@@ -192,6 +192,8 @@ int main(int argc, char** argv) {
 
     DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0,
                              sizeof(dpu_arguments_t), DPU_XFER_DEFAULT));
+
+    if (rep >= p.n_warmup) start(&timer, 1, rep - p.n_warmup);
 
     DPU_FOREACH(dpu_set, dpu, i) {
       DPU_ASSERT(dpu_prepare_xfer(dpu, B + dpu_info[i].prev_batches_dpu * n_size));
