@@ -93,7 +93,7 @@ class UPMEMWorkload:
         record_upmem_c=True,
         record_host_llvm=True,
         max_correctness_indices=32,
-        use_time_evaluator=True
+        use_time_evaluator=True,
         output_format="all"
     ):
         self.profile = profile
