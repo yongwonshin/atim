@@ -215,9 +215,9 @@ int main(int argc, char** argv) {
   for (i = 0; i < input_size; i++) {
     if (C[i] != bufferC[i]) {
       status = false;
-// #if PRINT
+#if PRINT
       printf("%d: %u -- %u\n", i, C[i], bufferC[i]);
-// #endif
+#endif
     }
   }
   if (status) {

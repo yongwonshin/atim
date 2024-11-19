@@ -189,6 +189,83 @@ class GEMV(UPMEMWorkload):
             ./bin/gemv_host -m {config['M']} -n {config['K']} -w {self.warmup} -e {self.repeat}"
 
 
+def bench_handtune():
+    for m, k in [
+        (12288, 4096),
+        (4096, 4096),
+        (16384, 4096),
+        (4096, 16384),
+        (21504, 7168),
+        (7168, 7168),
+        (28672, 7168),
+        (7168, 28672)
+    ]:
+        print(m, k)
+        configs = [
+            (m, k, 1, d, t, c, 1, "int32")
+                for d in [256, 512, 1024, 1536, 2048]
+                for t in [16, 20, 24]
+                for c in [8, 16, 32, 64, 128, 256]
+        ]
+
+        max_time = 1e9
+        with tqdm(total=len(configs), leave=True) as pbar:
+            for m, k, xb, yb, yt, cache, rt, dtype in configs:
+                try:
+                    tuples = gemv.benchmark(M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache, dtype=dtype)
+                    total_time = tuples[0] + tuples[1] + tuples[2]
+                    if total_time < max_time:
+                        max_time = total_time
+                        best_config = (m, k, xb, yb, yt, cache, rt, dtype)
+                except ValueError as e:
+                    tuples = ("wrong", "", "")
+                except RuntimeError as e:
+                    tuples = ("fail", "", "")
+                except TimeoutError as e:
+                    tuples = ("timeout", "", "")
+                tqdm.write("\t".join([str(x) for x in tuples] + [str(m), str(k), str(yb), str(yt), str(cache), dtype]))
+                pbar.update(1)
+
+        print(f"Best config: {best_config} with {max_time} ms")
+        print()
+
+def handtune():
+    dims = [
+        (12288, 4096),
+        (4096, 4096),
+        (16384, 4096),
+        (4096, 16384),
+        (21504, 7168),
+        (7168, 7168),
+        (28672, 7168),
+        (7168, 28672)
+    ]
+
+    gemv.use_time_evaluator = False
+    records = []
+
+    for M, K in dims:
+        print(M, K)
+        for by in [512, 1024, 1536, 2048]:
+            for c in [16, 32, 64, 128, 256]:
+                gemv.test(
+                    gemvRCTile,
+                    M=M,
+                    K=K,
+                    n_xb=1,
+                    n_yb=by,
+                    n_cache=c,
+                    n_yt=16,
+                    n_rt=16,
+                    dtype="int32",
+                )
+        records.append(gemv.dump_handtune_max())
+
+    gemv.repeat = 1000
+    gemv.use_time_evaluator = True
+    for conf in records:
+        gemv.test(gemvRCTile, **conf)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--schedule", default="gemvRTile", type=str)
@@ -237,46 +314,37 @@ if __name__ == "__main__":
         gemv.test(schedule, **config)
 
     else:  # custom test
-        config = [
-            (32,400, 2, 1, 16, 16, 16, "int32"),
-            (32,407, 2, 1, 16, 16, 16, "int32"),
+
+
+
+        confs = [
+            {'M': 12288, 'K': 4096, 'dtype': 'int32', 'n_xb': 1, 'n_yb': 512, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'M': 4096, 'K': 4096, 'dtype': 'int32', 'n_xb': 1, 'n_yb': 512, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'M': 16384, 'K': 4096, 'dtype': 'int32', 'n_xb': 1, 'n_yb': 1024, 'n_cache': 256, 'n_yt': 16, 'n_rt': 16},
+            {'M': 4096, 'K': 16384, 'dtype': 'int32', 'n_xb': 1, 'n_yb': 1024, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'M': 21504, 'K': 7168, 'dtype': 'int32', 'n_xb': 1, 'n_yb': 1536, 'n_cache': 128, 'n_yt': 16, 'n_rt': 16},
+            {'M': 7168, 'K': 7168, 'dtype': 'int32', 'n_xb': 1, 'n_yb': 512, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'M': 28672, 'K': 7168, 'dtype': 'int32', 'n_xb': 1, 'n_yb': 2048, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'M': 7168, 'K': 28672, 'dtype': 'int32', 'n_xb': 1, 'n_yb': 512, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
         ]
-        gemv.use_dummy=False
-        gemv.opt_level = 4
+        gemv.use_time_evaluator = False
 
-        for m, k, xb, yb, yt, cache, rt, dtype in config:
-            gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache, dtype=dtype)
+        for c in confs:
+            gemv.test(schedule, **c)
+        #handtune()
+        # config = []
 
-        if args.bench == True:
-            for m, k in [(8192, 8192), (12288, 4096), (4096, 4096), (16384, 4096), (4096, 16384)]:
-                print(m, k)
-                configs = [
-                    (m, k, 1, d, t, c, 1, "int32")
-                        for d in [256, 512, 1024, 1536, 2048]
-                        for t in [16, 20, 24]
-                        for c in [8, 16, 32, 64, 128, 256]
-                ]
+        # for bm, bk in [(16, 128)]:
+        #     for c in [32]:
+        #         config.append((766, 493, bm, bk, 16, c, 16, "int32"))
 
-                max_time = 1e9
-                with tqdm(total=len(configs), leave=True) as pbar:
-                    for m, k, xb, yb, yt, cache, rt, dtype in configs:
-                        try:
-                            tuples = gemv.benchmark(M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache, dtype=dtype)
-                            total_time = tuples[0] + tuples[1] + tuples[2]
-                            if total_time < max_time:
-                                max_time = total_time
-                                best_config = (m, k, xb, yb, yt, cache, rt, dtype)
-                        except ValueError as e:
-                            tuples = ("wrong", "", "")
-                        except RuntimeError as e:
-                            tuples = ("fail", "", "")
-                        except TimeoutError as e:
-                            tuples = ("timeout", "", "")
-                        tqdm.write("\t".join([str(x) for x in tuples] + [str(m), str(k), str(yb), str(yt), str(cache), dtype]))
-                        pbar.update(1)
+        # for m, k, xb, yb, yt, cache, rt, dtype in config:
+        #     gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache, dtype=dtype)
 
-                print(f"Best config: {best_config} with {max_time} ms")
-                print()
+        # gemv.opt_level = 3
+
+        # for m, k, xb, yb, yt, cache, rt, dtype in config:
+        #     gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_yt=yt, n_rt=rt, n_cache=cache, dtype=dtype)
 
         # for m, k, xb, yb, cache in configs:
         #     gemv.test(gemvRCTile, M=m, K=k, n_xb=xb, n_yb=yb, n_cache=cache, n_yt=16, n_rt=16)

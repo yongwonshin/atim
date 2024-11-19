@@ -297,6 +297,7 @@ pim_test/upmem/baseline/va_control/
 pim_test/upmem/baseline/**/bin
 pim_test/upmem/baseline/**/*.conf
 pim_test/sandbox/*
+pim_test/upmem/dummy_kernel.c
 
 temp
 temp-*

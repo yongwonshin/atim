@@ -26,12 +26,13 @@ from main_result import get_module
 parser = argparse.ArgumentParser()
 parser.add_argument("--workdir", default="bench_autotuner_result", type=str)
 parser.add_argument("--only_show", action="store_true")
+parser.add_argument("--only_run", action="store_true")
 args = parser.parse_args()
 
 target = Target("upmem --num-cores=96")
 
 
-def query(workdir: str, only_show: False) -> None:
+def query(workdir: str, only_show: False, only_run: False) -> None:
     parsed = workdir.split("_")
     dtype = "int32"
     if "red" in workdir or "dot" in workdir:
@@ -43,7 +44,8 @@ def query(workdir: str, only_show: False) -> None:
     assert len(top_record.run_secs) == 1
     mod = top_record.workload.mod
     schedule = lambda *args, **kwargs: ms.tir_integration.compile_tir(database, mod, target)
-    schedule().trace.show()
+    if not only_run:
+        schedule().trace.show()
     if only_show:
         return
 
@@ -71,4 +73,4 @@ def query(workdir: str, only_show: False) -> None:
 
 
 if __name__ == "__main__":
-    query(args.workdir, args.only_show)
+    query(args.workdir, args.only_show, args.only_run)

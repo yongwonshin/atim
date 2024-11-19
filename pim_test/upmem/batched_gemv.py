@@ -5,6 +5,7 @@ from tensor import host_array
 import numpy as np
 import math
 import argparse
+import itertools
 from tqdm import tqdm
 
 from tvm.script import ir as I
@@ -74,12 +75,12 @@ class BGEMV(UPMEMWorkload):
             N=16, M=256, K=256, dtype="int32", n_bb=1, n_xb=1, n_yb=1, n_cache=64, n_yt=16, n_rt=64
         )
         super().__init__(
-            profile="bgemv", required=required, symbols=["A", "B", "C"], output_symbol="C", **kwargs
+            profile="rgemv", required=required, symbols=["A", "B", "C"], output_symbol="C", **kwargs
         )
 
     def fetch_data(self):
-        self.host.A = host_array((self.N, self.M, self.K), self.dtype, intdist=2)
-        self.host.B = host_array((self.N, self.K), self.dtype, intdist=2)
+        self.host.A = host_array((self.N, self.M, self.K), self.dtype)
+        self.host.B = host_array((self.N, self.K), self.dtype)
 
     def host_version(self):
         self.host.C = np.einsum("nmk,nk->nm", self.host.A, self.host.B)
@@ -87,9 +88,48 @@ class BGEMV(UPMEMWorkload):
     def benchmark_command(self, config):
         bl = int(math.log2(config["n_cache"] * np.dtype(config["dtype"]).itemsize))
         pbtype = config["dtype"].upper()
-        return f"make clean && NR_DPUS={config['n_xb'] * config['n_yb']} \
-            NR_TASKLETS={config['n_yt']} TYPE={pbtype} BL={bl} make && \
-            ./bin/gemv_host -m {config['M']} -n {config['K']} -w {self.warmup} -e {self.repeat}"
+        return f"""
+            make clean &&
+            NR_DPUS_Y={config["n_yb"]} NR_DPUS_B={config["n_bb"]} \
+                NR_TASKLETS={config["n_yt"]} BL={bl} TYPE={pbtype} make &&
+            ./bin/gemv_host -b {config["N"]} \
+                -m {config["M"]} \
+                -n {config["K"]} \
+                -w {self.warmup} \
+                -e {self.repeat}
+        """
+
+
+def handtune(dims):
+    ytile = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+    tasklets = [1, 2, 4, 8, 16]
+    caches = [16, 32, 64, 128]
+
+    gemv.use_time_evaluator = False
+    records = []
+    for N, M, K in dims:
+        print(N, M, K)
+        configs = []
+        for y, t, c in itertools.product(ytile, tasklets, caches):
+            if N * y <= 2048 and 32 <= N * y and y * t * 2 <= M and N * y >= 32 and c <= K:
+                configs.append((N, y, t, c, "int32"))
+        for bb, yb, yt, cache, dtype in configs:
+            gemv.test(
+                bgemvTile,
+                N=N,
+                M=M,
+                K=K,
+                dtype=dtype,
+                n_bb=bb,
+                n_xb=1,
+                n_yb=yb,
+                n_cache=cache,
+                n_yt=yt,
+                n_rt=16,
+            )
+        tmp = {**gemv.dump_handtune_max()}
+        records.append(tmp)
+    return records
 
 
 if __name__ == "__main__":
@@ -127,76 +167,35 @@ if __name__ == "__main__":
         config = gemv.extract_config(args)
         gemv.benchmark(**config)
         gemv.test(bgemvTile, **config)
-    else:  # custom test
-        # dims = [
-        #     (16, 64, 256),
-        #     (16, 128, 256),
-        #     (16, 256, 256),
-        #     (16, 512, 256),
-        #     (256, 64, 256),
-        #     (256, 128, 256),
-        #     (256, 256, 256),
-        #     (256, 512, 256),
-        #     (48, 64, 256),
-        #     (48, 128, 256),
-        #     (48, 256, 256),
-        #     (48, 512, 256),
-        #     (768, 64, 256),
-        #     (768, 128, 256),
-        #     (768, 256, 256),
-        #     (768, 512, 256),
-        # ]
-
-        # for N, M, K in dims:
-        #     print(N, M, K)
-        #     candidates = []
-        #     for bx in range(5):
-        #         yrange = math.floor(math.log2(M)) - 5
-        #         for by in range(yrange):
-        #             btot = bx + by + math.log2(N)
-        #             print(btot)
-        #             if btot >= 8 and btot <= 11:
-        #                 for c in range(min(3, 5 - bx)):
-        #                     candidates.append((N, 1 << bx, 1 << by, 16 << c))
-        #     for bb, bx, by, c in tqdm(candidates):
-        #         gemv.test(
-        #             bgemvTile,
-        #             N=N,
-        #             M=M,
-        #             K=K,
-        #             dtype="int32",
-        #             n_bb=bb,
-        #             n_xb=bx,
-        #             n_yb=by,
-        #             n_cache=c,
-        #             n_yt=16,
-        #             n_rt=16,
-        #         )
-        #    gemv.dump_handtune_max()
-
+    else:
         configs = [
-            # (16, 64, 256, 16, 1, 16, 16),
-            # (16, 128, 256, 8, 2, 16, 16),
-            # (16, 256, 256, 4, 4, 16, 16),
-            # (16, 512, 256, 2, 8, 32, 32),
-            # (256, 64, 256, 4, 1, 32, 32),
-            # (256, 128, 256, 2, 1, 16, 16),
-            # (256, 256, 256, 1, 4, 32, 32),
-            # (256, 512, 256, 1, 8, 16, 16),
-            # (48, 64, 256, 8, 1, 32, 32),
-            # (48, 128, 256, 4, 2, 32, 32),
-            # (48, 256, 256, 4, 4, 16, 16),
-            # (48, 512, 256, 4, 2, 16, 16),
-            # (768, 64, 256, 1, 1, 16, 16),
-            # (768, 128, 256, 1, 2, 16, 16),
-            # (768, 256, 256, 1, 2, 16, 16),
-            # (768, 512, 256, 1, 2, 16, 16),
-            # (1000, 1000, 1000, 16, 16, 4, 32),
-            (256, 1000, 1000, 16, 8, 8, 32),
-            # (1000, 1000, 1000, 4, 16, 16, 32)
+            {'N': 16, 'M': 64, 'K': 256, 'dtype': 'int32', 'n_bb': 16, 'n_xb': 16, 'n_yb': 1, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 16, 'M': 128, 'K': 256, 'dtype': 'int32', 'n_bb': 16, 'n_xb': 8, 'n_yb': 2, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 16, 'M': 256, 'K': 256, 'dtype': 'int32', 'n_bb': 16, 'n_xb': 16, 'n_yb': 1, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 16, 'M': 512, 'K': 256, 'dtype': 'int32', 'n_bb': 16, 'n_xb': 4, 'n_yb': 4, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 64, 'M': 64, 'K': 256, 'dtype': 'int32', 'n_bb': 64, 'n_xb': 4, 'n_yb': 1, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 64, 'M': 128, 'K': 256, 'dtype': 'int32', 'n_bb': 64, 'n_xb': 2, 'n_yb': 2, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 64, 'M': 256, 'K': 256, 'dtype': 'int32', 'n_bb': 64, 'n_xb': 4, 'n_yb': 1, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 64, 'M': 512, 'K': 256, 'dtype': 'int32', 'n_bb': 64, 'n_xb': 8, 'n_yb': 2, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 256, 'M': 64, 'K': 256, 'dtype': 'int32', 'n_bb': 256, 'n_xb': 1, 'n_yb': 1, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 256, 'M': 128, 'K': 256, 'dtype': 'int32', 'n_bb': 256, 'n_xb': 1, 'n_yb': 2, 'n_cache': 64, 'n_yt': 16, 'n_rt': 16},
+            {'N': 256, 'M': 256, 'K': 256, 'dtype': 'int32', 'n_bb': 256, 'n_xb': 1, 'n_yb': 4, 'n_cache': 32, 'n_yt': 16, 'n_rt': 16},
+            {'N': 256, 'M': 512, 'K': 256, 'dtype': 'int32', 'n_bb': 256, 'n_xb': 1, 'n_yb': 8, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 28, 'M': 64, 'K': 256, 'dtype': 'int32', 'n_bb': 28, 'n_xb': 16, 'n_yb': 1, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 28, 'M': 128, 'K': 256, 'dtype': 'int32', 'n_bb': 28, 'n_xb': 8, 'n_yb': 2, 'n_cache': 32, 'n_yt': 16, 'n_rt': 16},
+            {'N': 28, 'M': 256, 'K': 256, 'dtype': 'int32', 'n_bb': 28, 'n_xb': 8, 'n_yb': 2, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 28, 'M': 512, 'K': 256, 'dtype': 'int32', 'n_bb': 28, 'n_xb': 4, 'n_yb': 4, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 112, 'M': 64, 'K': 256, 'dtype': 'int32', 'n_bb': 112, 'n_xb': 4, 'n_yb': 1, 'n_cache': 64, 'n_yt': 16, 'n_rt': 16},
+            {'N': 112, 'M': 128, 'K': 256, 'dtype': 'int32', 'n_bb': 112, 'n_xb': 8, 'n_yb': 1, 'n_cache': 32, 'n_yt': 16, 'n_rt': 16},
+            {'N': 112, 'M': 256, 'K': 256, 'dtype': 'int32', 'n_bb': 112, 'n_xb': 4, 'n_yb': 1, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 112, 'M': 512, 'K': 256, 'dtype': 'int32', 'n_bb': 112, 'n_xb': 1, 'n_yb': 8, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 448, 'M': 64, 'K': 256, 'dtype': 'int32', 'n_bb': 448, 'n_xb': 1, 'n_yb': 1, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 448, 'M': 128, 'K': 256, 'dtype': 'int32', 'n_bb': 448, 'n_xb': 1, 'n_yb': 2, 'n_cache': 32, 'n_yt': 16, 'n_rt': 16},
+            {'N': 448, 'M': 256, 'K': 256, 'dtype': 'int32', 'n_bb': 448, 'n_xb': 1, 'n_yb': 4, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
+            {'N': 448, 'M': 512, 'K': 256, 'dtype': 'int32', 'n_bb': 448, 'n_xb': 1, 'n_yb': 4, 'n_cache': 16, 'n_yt': 16, 'n_rt': 16},
         ]
 
+        for conf in configs:
+            gemv.test(bgemvTile, **conf)
         # for n, m, k, bb, xb, yb, yt, cache in configs:
         #     gemv.benchmark(N=n, M=m, K=k, n_bb=bb, n_xb=xb, n_yb=yb, n_yt=yt, n_cache=cache)
-        for n, m, k, bb, xb, yb, cache in configs:
-            gemv.test(bgemvTile, N=n, M=m, K=k, n_bb=bb, n_xb=xb, n_yb=yb, n_yt=16, n_cache=cache)

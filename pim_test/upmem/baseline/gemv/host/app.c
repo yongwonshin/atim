@@ -179,11 +179,10 @@ int main(int argc, char** argv) {
       DPU_ASSERT(dpu_prepare_xfer(dpu, input_args + i));
     }
 
-    if (rep >= p.n_warmup) start(&timer, 1, rep - p.n_warmup);
-
     DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0,
                              sizeof(dpu_arguments_t), DPU_XFER_DEFAULT));
 
+    if (rep >= p.n_warmup) start(&timer, 1, rep - p.n_warmup);
     DPU_FOREACH(dpu_set, dpu, i) { DPU_ASSERT(dpu_prepare_xfer(dpu, B)); }
     DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME,
                              max_rows_per_dpu * n_size_pad * sizeof(T), n_size_pad * sizeof(T),
@@ -253,7 +252,7 @@ int main(int argc, char** argv) {
       if (C[i] != C_dpu[n * max_rows_per_dpu + j]) {
         status = false;
 #if PRINT
-        //			printf("%d: %d -- %d\n", i, C[i], C_dpu[n * max_rows_per_dpu + j]);
+        printf("%d: %d -- %d\n", i, C[i], C_dpu[n * max_rows_per_dpu + j]);
 #endif
       }
       i++;

@@ -94,6 +94,7 @@ class UPMEMWorkload:
         record_host_llvm=True,
         max_correctness_indices=32,
         use_time_evaluator=True
+        output_format="all"
     ):
         self.profile = profile
         self.scheduler = None
@@ -119,6 +120,7 @@ class UPMEMWorkload:
         self.record_host_llvm = record_host_llvm
         self.max_correctness_indices = max_correctness_indices
         self.use_time_evaluator = use_time_evaluator
+        self.output_format = "all"
 
         # Fixed
         self.target = tvm.target.Target(target="upmem --num-cores=96", host="llvm")
@@ -444,16 +446,19 @@ class UPMEMWorkload:
             self.recent_time_tuple = time_tuple
             flag = self.is_passed()
             if self.verbose >= 0:
-                # print(
-                #     "\t".join([f"{x:.3f}" for x in time_tuple])
-                #     + f"\t{flag}\t{self.config.__repr__()}"
-                # )
-                # print(f"{time_tuple[0]}\t{time_tuple[1]}\t{time_tuple[2]}\t{time_tuple[4]}")
-                print(time_tuple[1])
+                if self.output_format == "all":
+                    print(
+                        "\t".join([f"{x:.3f}" for x in time_tuple])
+                        + f"\t{flag}\t{self.config.__repr__()}"
+                    )
+                elif self.output_format == "tab":
+                    print(f"{time_tuple[0]}\t{time_tuple[1]}\t{time_tuple[2]}\t{time_tuple[4]}")
+                elif self.output_format == "kernel":
+                    print(time_tuple[1])
             if flag:
                 self.hand_tuned.append([self.config, time_tuple[4]])
             self.post_kernel()
-            ret = f"{time_tuple[1]:.3f}" if flag else "WRONG"
+            ret = f"{time_tuple[1]}" if flag else "WRONG"
         except Exception as e:
             with open(f"./{self.log_dir}/{self.fname}/error.txt", "w") as f:
                 print(traceback.format_exc(), file=f)

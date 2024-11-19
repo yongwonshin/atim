@@ -171,8 +171,6 @@ int main(int argc, char** argv) {
 
   i = 0;
   DPU_FOREACH(dpu_set, dpu, i) {
-    printf("%d, %d\n", i,
-           dpu_info[i].prev_batches_dpu * n_size * m_size + dpu_info[i].prev_rows_dpu * n_size);
     DPU_ASSERT(dpu_prepare_xfer(dpu, A + dpu_info[i].prev_batches_dpu * n_size * m_size +
                                          dpu_info[i].prev_rows_dpu * n_size));
   }

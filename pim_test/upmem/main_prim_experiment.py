@@ -46,7 +46,6 @@ def run(
             except ValueError as e:
                 tuples = ("wrong", "", "")
             except RuntimeError as e:
-                print(e)
                 tuples = ("fail", "", "")
             except TimeoutError as e:
                 tuples = ("timeout", "", "")
@@ -164,7 +163,7 @@ def run_mtv(M, K):
 
 def run_mmtv(B, M, N):
     best_configs = []
-    ytile = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+    ytile = [16, 32, 64, 128, 256]
     tasklets = [1, 2, 4, 8, 16]
     caches = [16, 32, 64, 128]
     configs = []
@@ -174,56 +173,66 @@ def run_mmtv(B, M, N):
     configs_label = ["B", "M", "N", "n_bb", "n_yb", "n_yt", "n_cache", "dtype"]
     res = run(bgemv, configs, configs_label, reducer=get_total_time_gemv)
     best_configs.append(res)
-    print(best_configs)
 
 
-random_toks = [26, 69, 109, 126, 153, 180, 232, 255, 272, 321, 345, 380, 399, 429, 473, 501]
-shapes = [(64, T, 256) for T in random_toks] + [(64, T, T) for T in random_toks]
-shapes = [(64, 69, 256)]
-# run_mmtv(shapes)
+print("GPT")
+run_mmtv(16, 64, 256)
+run_mmtv(16, 128, 256)
+run_mmtv(16, 256, 256)
+run_mmtv(16, 512, 256)
+run_mmtv(64, 64, 256)
+run_mmtv(64, 128, 256)
+run_mmtv(64, 256, 256)
+run_mmtv(64, 512, 256)
+run_mmtv(256, 64, 256)
+run_mmtv(256, 128, 256)
+run_mmtv(256, 256, 256)
+run_mmtv(256, 512, 256)
+run_mmtv(28, 64, 256)
+run_mmtv(28, 128, 256)
+run_mmtv(28, 256, 256)
+run_mmtv(28, 512, 256)
+run_mmtv(112, 64, 256)
+run_mmtv(112, 128, 256)
+run_mmtv(112, 256, 256)
+run_mmtv(112, 512, 256)
+run_mmtv(448, 64, 256)
+run_mmtv(448, 128, 256)
+run_mmtv(448, 256, 256)
+run_mmtv(448, 512, 256)
 
-# run_mmtv(16, 64, 256)
-# run_mmtv(16, 128, 256)
-# run_mmtv(16, 256, 256)
-# run_mmtv(16, 512, 256)
-# run_mmtv(256, 64, 256)
-# run_mmtv(256, 128, 256)
-# run_mmtv(256, 256, 256)
-# run_mmtv(256, 512, 256)
-# run_mmtv(28, 64, 256)
-# run_mmtv(28, 128, 256)
-# run_mmtv(28, 256, 256)
-# run_mmtv(28, 512, 256)
-# run_mmtv(112, 64, 256)
-# run_mmtv(112, 128, 256)
-# run_mmtv(112, 256, 256)
-# run_mmtv(112, 512, 256)
-# run_mmtv(448, 64, 256)
-# run_mmtv(448, 128, 256)
-# run_mmtv(448, 256, 256)
-# run_mmtv(448, 512, 256)
+run_mtv(12288, 4096)
+run_mtv(4096, 4096)
+run_mtv(16384, 4096)
+run_mtv(4096, 16384)
+run_mtv(21504, 7168)
+run_mtv(7168, 7168)
+run_mtv(28672, 7168)
+run_mtv(7168, 28672)
 
-# run_mtv(12288, 4096)
-# run_mtv(4096, 4096)
-# run_mtv(16384, 4096)
-# run_mtv(4096, 16384)
-# run_mtv(21504, 7168)
-# run_mtv(7168, 7168)
-# run_mtv(28672, 7168)
-# run_mtv(7168, 28672)
+print()
+print("POLYBENCH")
 
 run_va(67108864) # why it breaks?=
-# run_red(33554432)
-# run_mtv(8192, 8192)
-# run_mtv(256*512, 512)
-# run_mmtv(256, 512, 512)
+run_red(33554432)
+run_mtv(8192, 8192)
+run_mtv(256*512, 512)
+run_mmtv(256, 512, 512)
 run_polyva(67108864)
-# run_polygemv(8192, 8192)
+run_polygemv(8192, 8192)
 
 run_va(1048576)
-# run_red(524288)
-# run_mtv(1024, 1024)
-# run_mtv(32*64, 512)
-# run_mmtv(32, 64, 512)
+run_red(524288)
+run_mtv(1024, 1024)
+run_mtv(32*64, 512)
+run_mmtv(32, 64, 512)
 run_polyva(1048576)
-# run_polygemv(1024, 1024)
+run_polygemv(1024, 1024)
+
+print()
+print("SENS")
+# random_toks = [26, 69, 109, 126, 153, 180, 232, 255, 272, 321, 345, 380, 399, 429, 473, 501]
+random_toks = [399]
+shapes = [(64, T, 256) for T in random_toks] + [(64, T, T) for T in random_toks]
+for s in shapes:
+    run_mmtv(*s)

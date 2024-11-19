@@ -292,10 +292,9 @@ int UPMEMDeviceAPI::BindAll(void* bind_buffer) {
   for (int i = 0; i < dpu_entry.size(); i++) {
     void* handle = (*((uint64_t**)bind_buffer + i));
     UPMEM_CALL(dpu_prepare_xfer(dpu_entry[i], handle));
-    // std::cerr << i << "; " << handle << " " << (*(int*)handle) << std::endl;
   }
   VLOG(3) << "for (int i = 0; i < " << dpu_entry.size() << "; i++) {\n" <<
-    "  dpu_prepare_xfer(i, " << ");\n}";
+    "  dpu_prepare_xfer(i, ...);\n}";
   return 0;
 }
 

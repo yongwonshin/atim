@@ -133,19 +133,19 @@ def gemv_config():
     # dim_conf = [(256, i) for i in [173, 193, 213, 233]]
     # dim_conf += [(512, i) for i in [373, 393, 413, 433]]
     # dim_conf = [(i, j) for i in [373, 393, 413, 433] for j in [373, 393, 413, 433]]
-    dim_conf = [(400, 400)]
+    dim_conf = [(766, 493)]
     tile_conf = [(4, 4, 16, 16, i, "int32") for i in (16,)]
-    # for bm, bk in [(16, 128), (32, 64), (64, 32), (128, 16)]:
-    # for c in [4, 8, 16, 32]:
-    #     dtype = "int32"
-        # dtype = "int32" if M % 2 == 0 and K % 2 == 0 else "int64"
-        # tile_conf.append((1, 1, 16, 16, c, dtype))
+    for bm, bk in [(16, 128), (32, 64), (64, 32), (128, 16)]:
+        for c in [16, 32, 64, 128]:
+            dtype = "int32"
+            # dtype = "int32" if M % 2 == 0 and K % 2 == 0 else "int64"
+            tile_conf.append((bm, bk, 16, 16, c, dtype))
 
     dim_label = ["M", "K"]
     tile_label = ["n_xb", "n_yb", "n_yt", "n_rt", "n_cache", "dtype"]
     return (
         "gemv",
-        GEMV(warmup=1, repeat=10),
+        GEMV(warmup=1, repeat=100),
         gemvRCTile,
         dim_conf,
         tile_conf,
