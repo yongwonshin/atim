@@ -294,7 +294,7 @@ pim_test/upmem/logs_old/
 pim_test/upmem/isca_*/
 pim_test/upmem/recent_logs/
 pim_test/upmem/baseline/va_control/
-pim_test/upmem/baseline/*/bin
+pim_test/upmem/baseline/**/bin
 pim_test/upmem/baseline/**/*.conf
 pim_test/sandbox/*
 
