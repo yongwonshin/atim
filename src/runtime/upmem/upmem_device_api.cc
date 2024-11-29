@@ -119,7 +119,7 @@ int UPMEMDeviceAPI::AcquireResources(TVMArgs args) {
   }
 
   VLOG(3) << "dpu_alloc(" << bank_num << ", NULL, &dpu_set)";
-  UPMEM_CALL(dpu_alloc(bank_num, NULL, &(dpu_set)));
+  UPMEM_CALL(dpu_alloc(bank_num, "disableSafeChecks=1", &(dpu_set)));
 
   uint32_t nr_dpus;
   UPMEM_CALL(dpu_get_nr_dpus(dpu_set, &nr_dpus));

@@ -261,7 +261,6 @@ int main(int argc, char** argv) {
   i = 0;
 
   int problematic_dpu = -1;
-
   for (n = 0; n < nr_of_dpus; n++) {
     for (j = 0; j < dpu_info[n].rows_per_dpu; j++) {
       if (C[i] != C_dpu[n * max_rows_per_dpu + j]) {
@@ -270,7 +269,6 @@ int main(int argc, char** argv) {
         } else {
           problematic_dpu = n;
         } // 연속된 dpu 8개까지는 봐주는 로직 추가
-        printf("%d %d: %d -- %d\n", n, i, C[i], C_dpu[n * max_rows_per_dpu + j]);
 #if PRINT
         //			printf("%d: %d -- %d\n", i, C[i], C_dpu[n * max_rows_per_dpu + j]);
 #endif

@@ -14,13 +14,11 @@
 
 __host dpu_arguments_t DPU_INPUT_ARGUMENTS;
 __host int coeff[2];
-// int ALPHA = 2;
-// int BETA = 3;
 
 // vector_addition: Computes the vector addition of a cached block
-static void vector_addition(T *bufferC, T *bufferB, T *bufferA, unsigned int l_size, int alpha, int beta) {
+static void vector_addition(T *bufferB, T *bufferA, unsigned int l_size, int alpha, int beta) {
     for (unsigned int i = 0; i < l_size; i++){
-        bufferC[i] = bufferA[i] * alpha + bufferB[i] * beta;
+        bufferB[i] = bufferA[i] * alpha + bufferB[i] * beta;
     }
 }
 
@@ -58,12 +56,10 @@ int main_kernel1() {
     uint32_t base_tasklet = tasklet_id << BLOCK_SIZE_LOG2;
     uint32_t mram_base_addr_A = (uint32_t)DPU_MRAM_HEAP_POINTER;
     uint32_t mram_base_addr_B = (uint32_t)(DPU_MRAM_HEAP_POINTER + input_size_dpu_bytes_transfer);
-    uint32_t mram_base_addr_C = (uint32_t)(DPU_MRAM_HEAP_POINTER + input_size_dpu_bytes_transfer + input_size_dpu_bytes_transfer);
 
     // Initialize a local cache to store the MRAM block
     T *cache_A = (T *) mem_alloc(BLOCK_SIZE);
     T *cache_B = (T *) mem_alloc(BLOCK_SIZE);
-    T *cache_C = (T *) mem_alloc(BLOCK_SIZE);
 
     for(unsigned int byte_index = base_tasklet; byte_index < input_size_dpu_bytes; byte_index += BLOCK_SIZE * NR_TASKLETS){
 
@@ -75,10 +71,10 @@ int main_kernel1() {
         mram_read((__mram_ptr void const*)(mram_base_addr_B + byte_index), cache_B, l_size_bytes);
 
         // Computer vector addition
-        vector_addition(cache_C, cache_B, cache_A, l_size_bytes >> DIV, alpha, beta);
+        vector_addition(cache_B, cache_A, l_size_bytes >> DIV, alpha, beta);
 
         // Write cache to current MRAM block
-        mram_write(cache_C, (__mram_ptr void*)(mram_base_addr_C + byte_index), l_size_bytes);
+        mram_write(cache_B, (__mram_ptr void*)(mram_base_addr_B + byte_index), l_size_bytes);
 
     }
 
