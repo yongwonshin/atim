@@ -57,6 +57,7 @@ def query(workdir: str, only_show: False, only_run: False) -> None:
         warmup=10,
         verbose=False,
         compile_only=False,
+        output_format="tab"
     )
     workload.test(
         schedule,
