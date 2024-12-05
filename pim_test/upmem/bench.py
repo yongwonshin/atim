@@ -265,7 +265,7 @@ def upmem_poly_mixed_factory(M, N, dtype):
                 {
                     "global_symbol": "main",
                     "tir.noalias": T.bool(True),
-                    "pragma_explicit_h2d": ["C", "U1", "V1", "U2", "V2"],
+                    "pragma_explicit_h2d": ["U1", "V1", "U2", "V2"],
                 }
             )
             C = T.match_buffer(c, (M, N), dtype=dtype)

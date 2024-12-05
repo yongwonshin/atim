@@ -26,6 +26,7 @@ parser.add_argument("--M", required=True, type=int)
 parser.add_argument("--N", required=True, type=int)
 parser.add_argument("--K", required=True, type=int)
 parser.add_argument("--workdir", default="bench_autotuner_result", type=str)
+parser.add_argument("--reuse_cost_model", action="store_true")
 args = parser.parse_args()
 
 
@@ -140,13 +141,19 @@ for name, (M, N, K) in tuple_bench.items():
         original_stdout = sys.stdout
         sys.stdout = f
         mod = get_module(M, N, K, dtype="int32")
+        cost_model = "xgb"
+        if args.reuse_cost_model and os.path.exists(f"{args.workdir}.tar"):
+            print("Cost model reused")
+            cost_model = ms.CostModel.create("xgb", num_tuning_cores=1)
+            cost_model.load(f"{args.workdir}.tar")
         database = ms.tir_integration.tune_tir(
             mod=mod,
             target=target,
             work_dir=f"./{args.workdir}",
             max_trials_global=1000,
             num_trials_per_iter=64,
-            num_tuning_cores=1,  # to prevent dpu allocation error
+            # num_tuning_cores=1,  # to prevent dpu allocation error
+            cost_model=cost_model,
         )
         sch = ms.tir_integration.compile_tir(database, mod, target)
         if sch is None:

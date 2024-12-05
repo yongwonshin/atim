@@ -3,6 +3,149 @@ from tvm.script import tir as T
 from bench import *
 
 
+def va_1048576_1_1_Tuned(M, dtype="int64", **kwargs):
+    sch = tvm.tir.Schedule(upmem_va_factory(M, dtype))
+    b0 = sch.get_block(name="C", func_name="main")
+    b1 = sch.get_block(name="root", func_name="main")
+    sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSSSS")
+    (l2,) = sch.get_loops(block=b0)
+    v3, v4, v5, v6, v7 = sch.sample_perfect_tile(
+        loop=l2,
+        n=5,
+        max_innermost_factor=256,
+        min_innermost_factor=1,
+        decision=[1024, 8, 1, 128, 1],
+    )
+    l8, l9, l10, l11, l12 = sch.split(
+        loop=l2, factors=[v3, v4, v5, v6, v7], preserve_unit_iters=True
+    )
+    sch.reorder(l8, l9, l10, l11, l12)
+    sch.bind(loop=l8, thread_axis="blockIdx.x")
+    sch.bind(loop=l9, thread_axis="threadIdx.x")
+    sch.annotate(block_or_loop=l8, ann_key="bank", ann_val=1)
+    b13 = sch.cache_write(block=b0, write_buffer_index=0, storage_scope="local")
+    sch.reverse_compute_at(block=b13, loop=l10, preserve_unit_loops=True, index=-1)
+    b14 = sch.cache_read(block=b0, read_buffer_index=0, storage_scope="local", consumer_blocks=[b0])
+    sch.compute_at(block=b14, loop=l10, preserve_unit_loops=True, index=-1)
+    v15 = sch.sample_categorical(candidates=[1], probs=[1.0], decision=0)
+    sch.annotate(block_or_loop=b14, ann_key="meta_schedule.cooperative_fetch", ann_val=v15)
+    b16 = sch.cache_read(block=b0, read_buffer_index=1, storage_scope="local", consumer_blocks=[b0])
+    sch.compute_at(block=b16, loop=l10, preserve_unit_loops=True, index=-1)
+    # v17 = sch.sample_categorical(candidates=[1], probs=[1.0], decision=0)
+    # sch.annotate(block_or_loop=b16, ann_key="meta_schedule.cooperative_fetch", ann_val=v17)
+    # v18 = sch.sample_categorical(
+    #     candidates=[0, 16, 64, 512], probs=[0.25, 0.25, 0.25, 0.25], decision=3
+    # )
+    # sch.annotate(block_or_loop=b1, ann_key="meta_schedule.unroll_implicit", ann_val=v18)
+    # b19 = sch.get_block(name="root", func_name="main")
+    # sch.annotate(block_or_loop=b19, ann_key="meta_schedule.optimization_level", ann_val=4)
+    # sch.enter_postproc()
+    # b20 = sch.get_block(name="root", func_name="main")
+    # sch.unannotate(block_or_loop=b20, ann_key="meta_schedule.unroll_implicit")
+    # b21, b22, b23, b24 = sch.get_child_blocks(b20)
+    # l25, l26, l27, l28 = sch.get_loops(block=b21)
+    # sch.annotate(block_or_loop=l25, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    # sch.annotate(block_or_loop=l25, ann_key="pragma_unroll_explicit", ann_val=0)
+    # l29, l30, l31, l32 = sch.get_loops(block=b22)
+    # sch.annotate(block_or_loop=l29, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    # sch.annotate(block_or_loop=l29, ann_key="pragma_unroll_explicit", ann_val=0)
+    # l33, l34, l35, l36, l37 = sch.get_loops(block=b23)
+    # sch.annotate(block_or_loop=l33, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    # sch.annotate(block_or_loop=l33, ann_key="pragma_unroll_explicit", ann_val=0)
+    # l38, l39, l40, l41 = sch.get_loops(block=b24)
+    # sch.annotate(block_or_loop=l38, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    # sch.annotate(block_or_loop=l38, ann_key="pragma_unroll_explicit", ann_val=0)
+    return sch
+
+
+def red_524288_1_1_Tuned(M, dtype="int64", **kwargs):
+    sch = tvm.tir.Schedule(upmem_red_factory(M, dtype))
+    b0 = sch.get_block(name="C", func_name="main")
+    b1 = sch.get_block(name="root", func_name="main")
+    (l2,) = sch.get_loops(block=b0)
+    v3, v4 = sch.sample_perfect_tile2(
+        loop=l2, n=2, min_n_splits=2, max_n_splits=2048, decision=[1024, 512]
+    )
+    l5, l6 = sch.split(loop=l2, factors=[v3, v4], preserve_unit_iters=True)
+    b7 = sch.rfactor(loop=l5, factor_axis=0, mem_scope="global")
+    sch.annotate(block_or_loop=b0, ann_key="meta_schedule.random_compute_producer", ann_val=1)
+    sch.annotate(
+        block_or_loop=b7, ann_key="meta_schedule.meta_schedule_rfactor_producer_block", ann_val=1
+    )
+    sch.annotate(
+        block_or_loop=b0, ann_key="meta_schedule.meta_schedule_rfactor_consumer_block", ann_val=1
+    )
+    b8 = sch.get_block(name="C_rf", func_name="main")
+    l9, l10 = sch.get_loops(block=b8)
+    v11, v12 = sch.sample_perfect_tile2(
+        loop=l10, n=2, min_n_splits=2, max_n_splits=24, decision=[16, 32]
+    )
+    l13, l14 = sch.split(loop=l10, factors=[v11, v12], preserve_unit_iters=True)
+    b15 = sch.rfactor(loop=l13, factor_axis=0, mem_scope="shared")
+    l16, l17, l18 = sch.get_loops(block=b15)
+    sch.reverse_compute_at(block=b8, loop=l17, preserve_unit_loops=False, index=-1)
+    sch.unannotate(block_or_loop=b8, ann_key="meta_schedule.meta_schedule_rfactor_producer_block")
+    sch.annotate(
+        block_or_loop=b8,
+        ann_key="meta_schedule.meta_schedule_cross_thread_reduction_block",
+        ann_val=1,
+    )
+    sch.annotate(
+        block_or_loop=b15, ann_key="meta_schedule.meta_schedule_rfactor_producer_block", ann_val=1
+    )
+    b19 = sch.get_block(name="C_rf_rf", func_name="main")
+    sch.reorder_block_iter_var(block=b19, new_order=[1, 0, 2])
+    sch.annotate(block_or_loop=b19, ann_key="meta_schedule.tiling_structure", ann_val="SRRR")
+    l20, l21, l22 = sch.get_loops(block=b19)
+    v23, v24, v25 = sch.sample_perfect_tile(
+        loop=l22, n=3, max_innermost_factor=256, min_innermost_factor=1, decision=[2, 2, 128]
+    )
+    l26, l27, l28 = sch.split(loop=l22, factors=[v23, v24, v25], preserve_unit_iters=True)
+    sch.bind(loop=l20, thread_axis="blockIdx.x")
+    sch.bind(loop=l21, thread_axis="threadIdx.x")
+    sch.annotate(block_or_loop=l20, ann_key="bank", ann_val=1)
+    b29 = sch.cache_write(block=b19, write_buffer_index=0, storage_scope="local")
+    sch.reverse_compute_at(block=b29, loop=l26, preserve_unit_loops=True, index=-1)
+    b30 = sch.cache_read(
+        block=b19, read_buffer_index=0, storage_scope="local", consumer_blocks=[b19]
+    )
+    sch.compute_at(block=b30, loop=l27, preserve_unit_loops=True, index=-1)
+    l31, l32, l33, l34, l35 = sch.get_loops(block=b19)
+    b36 = sch.decompose_reduction(block=b19, loop=l33)
+    v37 = sch.sample_categorical(
+        candidates=[0, 16, 64, 512], probs=[0.25, 0.25, 0.25, 0.25], decision=3
+    )
+    sch.annotate(block_or_loop=b1, ann_key="meta_schedule.unroll_implicit", ann_val=v37)
+    b38 = sch.get_block(name="root", func_name="main")
+    sch.annotate(block_or_loop=b38, ann_key="meta_schedule.optimization_level", ann_val=4)
+    sch.enter_postproc()
+    b39 = sch.get_block(name="root", func_name="main")
+    sch.unannotate(block_or_loop=b39, ann_key="meta_schedule.unroll_implicit")
+    b40, b41, b42, b43, b44, b45 = sch.get_child_blocks(b39)
+    l46, l47 = sch.get_loops(block=b40)
+    sch.annotate(block_or_loop=l46, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    sch.annotate(block_or_loop=l46, ann_key="pragma_unroll_explicit", ann_val=0)
+    l48, l49, l50, l51, l52 = sch.get_loops(block=b41)
+    sch.annotate(block_or_loop=l48, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    sch.annotate(block_or_loop=l48, ann_key="pragma_unroll_explicit", ann_val=0)
+    l53, l54, l55, l56, l57 = sch.get_loops(block=b42)
+    sch.annotate(block_or_loop=l53, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    sch.annotate(block_or_loop=l53, ann_key="pragma_unroll_explicit", ann_val=0)
+    l58, l59, l60, l61, l62, l63 = sch.get_loops(block=b43)
+    sch.annotate(block_or_loop=l58, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    sch.annotate(block_or_loop=l58, ann_key="pragma_unroll_explicit", ann_val=0)
+    l64, l65 = sch.get_loops(block=b44)
+    sch.annotate(block_or_loop=l64, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    sch.annotate(block_or_loop=l64, ann_key="pragma_unroll_explicit", ann_val=0)
+    (l66,) = sch.get_loops(block=b45)
+    sch.annotate(block_or_loop=l66, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    sch.annotate(block_or_loop=l66, ann_key="pragma_unroll_explicit", ann_val=0)
+    b67 = sch.get_block(name="C", func_name="main")
+    (l68,) = sch.get_loops(block=b67)
+    b69 = sch.decompose_reduction(block=b67, loop=l68)
+    return sch
+
+
 # basic
 def mtv_8192_1_8192_Tuned(M, K, dtype="int32", **kwargs):
     sch = tvm.tir.Schedule(upmem_mtv_factory(M, K, dtype))
@@ -1585,7 +1728,9 @@ def mmtv_64_256_256_Tuned(M, N, K, dtype="int32", **kwargs):
     sch = tvm.tir.Schedule(upmem_mmtv_factory(M, N, K, dtype))
     b0 = sch.get_block(name="root", func_name="main")
     b1 = sch.get_block(name="C", func_name="main")
-    sch.annotate(block_or_loop=b1, ann_key="meta_schedule.tiling_structure", ann_val="SSSRSRSR")
+    sch.annotate(
+        block_or_loop=b1, ann_key="meta_schedule.tiling_structure", ann_val="SSSRSRSR"
+    )
     l2, l3, l4 = sch.get_loops(block=b1)
     v5, v6, v7, v8, v9 = sch.sample_perfect_tile(
         loop=l2,
@@ -1602,7 +1747,7 @@ def mmtv_64_256_256_Tuned(M, N, K, dtype="int32", **kwargs):
         n=5,
         max_innermost_factor=256,
         min_innermost_factor=1,
-        decision=[16, 8, 1, 1, 2],
+        decision=[8, 16, 1, 2, 1],
     )
     l20, l21, l22, l23, l24 = sch.split(
         loop=l3, factors=[v15, v16, v17, v18, v19], preserve_unit_iters=True
@@ -1612,9 +1757,11 @@ def mmtv_64_256_256_Tuned(M, N, K, dtype="int32", **kwargs):
         n=3,
         max_innermost_factor=256,
         min_innermost_factor=1,
-        decision=[2, 4, 32],
+        decision=[4, 32, 2],
     )
-    l28, l29, l30 = sch.split(loop=l4, factors=[v25, v26, v27], preserve_unit_iters=True)
+    l28, l29, l30 = sch.split(
+        loop=l4, factors=[v25, v26, v27], preserve_unit_iters=True
+    )
     sch.reorder(l10, l20, l11, l21, l12, l22, l28, l13, l23, l29, l14, l24, l30)
     sch.bind(loop=l10, thread_axis="blockIdx.x")
     sch.bind(loop=l20, thread_axis="blockIdx.y")
@@ -1623,34 +1770,54 @@ def mmtv_64_256_256_Tuned(M, N, K, dtype="int32", **kwargs):
     sch.annotate(block_or_loop=l10, ann_key="bank", ann_val=1)
     sch.annotate(block_or_loop=l20, ann_key="bank", ann_val=1)
     b31 = sch.cache_write(block=b1, write_buffer_index=0, storage_scope="local")
-    sch.reverse_compute_at(block=b31, loop=l23, preserve_unit_loops=True, index=-1)
-    b32 = sch.cache_read(block=b1, read_buffer_index=0, storage_scope="local", consumer_blocks=[b1])
+    sch.reverse_compute_at(block=b31, loop=l22, preserve_unit_loops=True, index=-1)
+    b32 = sch.cache_read(
+        block=b1, read_buffer_index=0, storage_scope="local", consumer_blocks=[b1]
+    )
     sch.compute_at(block=b32, loop=l28, preserve_unit_loops=True, index=-1)
     v33 = sch.sample_categorical(candidates=[1], probs=[1.0], decision=0)
-    sch.annotate(block_or_loop=b32, ann_key="meta_schedule.cooperative_fetch", ann_val=v33)
-    b34 = sch.cache_read(block=b1, read_buffer_index=1, storage_scope="local", consumer_blocks=[b1])
+    sch.annotate(
+        block_or_loop=b32, ann_key="meta_schedule.cooperative_fetch", ann_val=v33
+    )
+    b34 = sch.cache_read(
+        block=b1, read_buffer_index=1, storage_scope="local", consumer_blocks=[b1]
+    )
     sch.compute_at(block=b34, loop=l28, preserve_unit_loops=True, index=-1)
     v35 = sch.sample_categorical(candidates=[1], probs=[1.0], decision=0)
-    sch.annotate(block_or_loop=b34, ann_key="meta_schedule.cooperative_fetch", ann_val=v35)
+    sch.annotate(
+        block_or_loop=b34, ann_key="meta_schedule.cooperative_fetch", ann_val=v35
+    )
     v36 = sch.sample_categorical(
-        candidates=[0, 16, 64, 512], probs=[0.25, 0.25, 0.25, 0.25], decision=2
+        candidates=[0, 16, 64, 512], probs=[0.25, 0.25, 0.25, 0.25], decision=3
     )
     sch.annotate(block_or_loop=b0, ann_key="meta_schedule.unroll_implicit", ann_val=v36)
     b37 = sch.get_block(name="root", func_name="main")
-    sch.annotate(block_or_loop=b37, ann_key="meta_schedule.optimization_level", ann_val=4)
+    sch.annotate(
+        block_or_loop=b37, ann_key="meta_schedule.optimization_level", ann_val=4
+    )
     sch.enter_postproc()
     b38 = sch.get_block(name="root", func_name="main")
     sch.unannotate(block_or_loop=b38, ann_key="meta_schedule.unroll_implicit")
     b39, b40, b41, b42 = sch.get_child_blocks(b38)
     l43, l44, l45, l46, l47, l48, l49, l50, l51, l52 = sch.get_loops(block=b39)
+    sch.annotate(block_or_loop=l43, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    sch.annotate(block_or_loop=l43, ann_key="pragma_unroll_explicit", ann_val=0)
     l53, l54, l55, l56, l57, l58, l59, l60, l61 = sch.get_loops(block=b40)
-    l62, l63, l64, l65, l66, l67, l68, l69, l70, l71, l72, l73, l74 = sch.get_loops(block=b41)
-    sch.annotate(block_or_loop=l62, ann_key="pragma_auto_unroll_max_step", ann_val=64)
+    sch.annotate(block_or_loop=l53, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    sch.annotate(block_or_loop=l53, ann_key="pragma_unroll_explicit", ann_val=0)
+    l62, l63, l64, l65, l66, l67, l68, l69, l70, l71, l72, l73, l74 = sch.get_loops(
+        block=b41
+    )
+    sch.annotate(block_or_loop=l62, ann_key="pragma_auto_unroll_max_step", ann_val=512)
     sch.annotate(block_or_loop=l62, ann_key="pragma_unroll_explicit", ann_val=0)
-    l75, l76, l77, l78, l79, l80, l81, l82, l83, l84, l85 = sch.get_loops(block=b42)
-    b86 = sch.get_block(name="C", func_name="main")
-    l87, l88, l89, l90, l91, l92, l93, l94, l95, l96, l97, l98, l99 = sch.get_loops(block=b86)
-    b100 = sch.decompose_reduction(block=b86, loop=l93)
+    l75, l76, l77, l78, l79, l80, l81, l82 = sch.get_loops(block=b42)
+    sch.annotate(block_or_loop=l75, ann_key="pragma_auto_unroll_max_step", ann_val=512)
+    sch.annotate(block_or_loop=l75, ann_key="pragma_unroll_explicit", ann_val=0)
+    b83 = sch.get_block(name="C", func_name="main")
+    l84, l85, l86, l87, l88, l89, l90, l91, l92, l93, l94, l95, l96 = sch.get_loops(
+        block=b83
+    )
+    b97 = sch.decompose_reduction(block=b83, loop=l90)
     return sch
 
 
@@ -3379,4 +3546,59 @@ def poly_gemv1_8192_1_8192_Tuned(M, K, dtype="int32", **kwargs):
 
 def poly_va_67108864_1_1_Tuned(M, dtype="int32", **kwargs):
     sch = tvm.tir.Schedule(upmem_poly_va_factory(M, dtype))
+    return sch
+
+
+def poly_va_1048576_1_1_Tuned(M, dtype="int32", **kwargs):
+    sch = tvm.tir.Schedule(upmem_poly_va_factory(M, dtype))
+    b0 = sch.get_block(name="C", func_name="main")
+    b1 = sch.get_block(name="root", func_name="main")
+    sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSSSS")
+    (l2,) = sch.get_loops(block=b0)
+    v3, v4, v5, v6, v7 = sch.sample_perfect_tile(
+        loop=l2,
+        n=5,
+        max_innermost_factor=256,
+        min_innermost_factor=1,
+        decision=[1024, 16, 1, 32, 2],
+    )
+    l8, l9, l10, l11, l12 = sch.split(
+        loop=l2, factors=[v3, v4, v5, v6, v7], preserve_unit_iters=True
+    )
+    sch.reorder(l8, l9, l10, l11, l12)
+    sch.bind(loop=l8, thread_axis="blockIdx.x")
+    sch.bind(loop=l9, thread_axis="threadIdx.x")
+    sch.annotate(block_or_loop=l8, ann_key="bank", ann_val=1)
+    b13 = sch.cache_write(block=b0, write_buffer_index=0, storage_scope="local")
+    sch.reverse_compute_at(block=b13, loop=l10, preserve_unit_loops=True, index=-1)
+    b14 = sch.cache_read(block=b0, read_buffer_index=0, storage_scope="local", consumer_blocks=[b0])
+    sch.compute_at(block=b14, loop=l10, preserve_unit_loops=True, index=-1)
+    v15 = sch.sample_categorical(candidates=[1], probs=[1.0], decision=0)
+    sch.annotate(block_or_loop=b14, ann_key="meta_schedule.cooperative_fetch", ann_val=v15)
+    b16 = sch.cache_read(block=b0, read_buffer_index=1, storage_scope="local", consumer_blocks=[b0])
+    sch.compute_at(block=b16, loop=l10, preserve_unit_loops=True, index=-1)
+    v17 = sch.sample_categorical(candidates=[1], probs=[1.0], decision=0)
+    sch.annotate(block_or_loop=b16, ann_key="meta_schedule.cooperative_fetch", ann_val=v17)
+    v18 = sch.sample_categorical(
+        candidates=[0, 16, 64, 512], probs=[0.25, 0.25, 0.25, 0.25], decision=2
+    )
+    sch.annotate(block_or_loop=b1, ann_key="meta_schedule.unroll_implicit", ann_val=v18)
+    b19 = sch.get_block(name="root", func_name="main")
+    sch.annotate(block_or_loop=b19, ann_key="meta_schedule.optimization_level", ann_val=4)
+    sch.enter_postproc()
+    b20 = sch.get_block(name="root", func_name="main")
+    sch.unannotate(block_or_loop=b20, ann_key="meta_schedule.unroll_implicit")
+    b21, b22, b23, b24 = sch.get_child_blocks(b20)
+    l25, l26, l27, l28 = sch.get_loops(block=b21)
+    sch.annotate(block_or_loop=l25, ann_key="pragma_auto_unroll_max_step", ann_val=64)
+    sch.annotate(block_or_loop=l25, ann_key="pragma_unroll_explicit", ann_val=0)
+    l29, l30, l31, l32 = sch.get_loops(block=b22)
+    sch.annotate(block_or_loop=l29, ann_key="pragma_auto_unroll_max_step", ann_val=64)
+    sch.annotate(block_or_loop=l29, ann_key="pragma_unroll_explicit", ann_val=0)
+    l33, l34, l35, l36, l37 = sch.get_loops(block=b23)
+    sch.annotate(block_or_loop=l33, ann_key="pragma_auto_unroll_max_step", ann_val=64)
+    sch.annotate(block_or_loop=l33, ann_key="pragma_unroll_explicit", ann_val=0)
+    l38, l39, l40, l41 = sch.get_loops(block=b24)
+    sch.annotate(block_or_loop=l38, ann_key="pragma_auto_unroll_max_step", ann_val=64)
+    sch.annotate(block_or_loop=l38, ann_key="pragma_unroll_explicit", ann_val=0)
     return sch

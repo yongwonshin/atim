@@ -151,7 +151,7 @@ for name, (M, K) in tuple_mv.items():
             work_dir="./autotuner_result_mv_ablation",
             max_trials_global=1000,
             num_trials_per_iter=64,
-            num_tuning_cores=1,  # to prevent dpu allocation error
+            # num_tuning_cores=1,  # to prevent dpu allocation error
         )
         sch = ms.tir_integration.compile_tir(database, mod, target)
         if sch is None:
@@ -175,7 +175,7 @@ for name, (M, K) in tuple_mv.items():
 #             work_dir="./autotuner_result_bmv_new_resume",
 #             max_trials_global=1000,
 #             num_trials_per_iter=64,
-#             num_tuning_cores=1,  # to prevent dpu allocation error
+#             # num_tuning_cores=1,  # to prevent dpu allocation error
 #         )
 #         sch = ms.tir_integration.compile_tir(database, mod, target)
 #         if sch is None:

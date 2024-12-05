@@ -118,7 +118,7 @@ int UPMEMDeviceAPI::AcquireResources(TVMArgs args) {
     return 0;
   }
 
-  VLOG(3) << "dpu_alloc(" << bank_num << ", NULL, &dpu_set)";
+  VLOG(3) << "dpu_alloc(" << bank_num << ", disableSafeChecks=1, NULL, &dpu_set)";
   UPMEM_CALL(dpu_alloc(bank_num, "disableSafeChecks=1", &(dpu_set)));
 
   uint32_t nr_dpus;
@@ -279,7 +279,8 @@ int UPMEMDeviceAPI::BindXfer(int bank_index, uint64_t host_addr, uint64_t size) 
   return 0;
 }
 
-void* UPMEMDeviceAPI::BindBounded(void* bind_buffer_ptr, int bank_index, uint64_t host_addr, uint64_t size) {
+void* UPMEMDeviceAPI::BindBounded(void* bind_buffer_ptr, int bank_index, uint64_t host_addr,
+                                  uint64_t size) {
   void* new_ptr;
   posix_memalign(&new_ptr, 64, xfer_bulk_size * GetBytes(xfer_handle));
   d2h_temp[bank_index] = {new_ptr, HostOffset(xfer_handle, host_addr), size};
@@ -293,8 +294,8 @@ int UPMEMDeviceAPI::BindAll(void* bind_buffer) {
     void* handle = (*((uint64_t**)bind_buffer + i));
     UPMEM_CALL(dpu_prepare_xfer(dpu_entry[i], handle));
   }
-  VLOG(3) << "for (int i = 0; i < " << dpu_entry.size() << "; i++) {\n" <<
-    "  dpu_prepare_xfer(i, ...);\n}";
+  VLOG(3) << "for (int i = 0; i < " << dpu_entry.size() << "; i++) {\n"
+          << "  dpu_prepare_xfer(i, ...);\n}";
   return 0;
 }
 
@@ -462,19 +463,20 @@ TVM_REGISTER_GLOBAL("device_api.upmem.dpu_parallel_transfer_bind")
     });
 
 TVM_REGISTER_GLOBAL("device_api.upmem.dpu_parallel_transfer_bind_bounded")
-  .set_body([](TVMArgs args, TVMRetValue* rv) {
-    void* bind_buffer_ptr = args[0];
-    int bank_index = args[1];
-    uint64_t host_address = args[2];
-    uint64_t size = args[3];
-    *rv = static_cast<void*>(UPMEMDeviceAPI::Global()->BindBounded(bind_buffer_ptr, bank_index, host_address, size));
-  });
+    .set_body([](TVMArgs args, TVMRetValue* rv) {
+      void* bind_buffer_ptr = args[0];
+      int bank_index = args[1];
+      uint64_t host_address = args[2];
+      uint64_t size = args[3];
+      *rv = static_cast<void*>(
+          UPMEMDeviceAPI::Global()->BindBounded(bind_buffer_ptr, bank_index, host_address, size));
+    });
 
 TVM_REGISTER_GLOBAL("device_api.upmem.dpu_parallel_transfer_bind_all")
-  .set_body([](TVMArgs args, TVMRetValue* rv) {
-    void* bind_buffer = args[0];
-    *rv = static_cast<int>(UPMEMDeviceAPI::Global()->BindAll(bind_buffer));
-  });
+    .set_body([](TVMArgs args, TVMRetValue* rv) {
+      void* bind_buffer = args[0];
+      *rv = static_cast<int>(UPMEMDeviceAPI::Global()->BindAll(bind_buffer));
+    });
 
 TVM_REGISTER_GLOBAL("device_api.upmem.dpu_parallel_transfer_commit")
     .set_body([](TVMArgs args, TVMRetValue* rv) {
