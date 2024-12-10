@@ -298,6 +298,7 @@ pim_test/upmem/baseline/**/bin
 pim_test/upmem/baseline/**/*.conf
 pim_test/sandbox/*
 pim_test/upmem/dummy_kernel.c
+!pim_test/upmem/SimplePIM/lib
 
 temp
 temp-*
