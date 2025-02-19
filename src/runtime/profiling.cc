@@ -880,7 +880,12 @@ PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, 
     // skip first time call, to activate lazy compilation components.
     if (bench) {
       for (int i = 0; i < 100; i++) {
-        pf.CallPacked(args, &temp);
+        try {
+          pf.CallPacked(args, &temp);
+        } catch (std::string & e) {
+          std::cout << "Caught exception: " << e << std::endl;
+          continue;
+        }
       }
     } else {
       pf.CallPacked(args, &temp);
@@ -905,16 +910,23 @@ PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, 
         }
 
         // start timing
-        Timer t = Timer::Start(dev);
         double* abs = new double[number];
         double* d2h = new double[number];
         double* before_d2h = new double[number];
         double* after_d2h = new double[number];
+        Timer t = Timer::Start(dev);
         if (bench) {
-          for (int j = 0; j < number; ++j) {
-            UPMEMDeviceAPI::Global()->Timestamp("start");
-            pf.CallPacked(args, &temp);
-            UPMEMDeviceAPI::Global()->Timestamp("end");
+          int j = 0;
+          while (j < number) {
+            // std::cout << "Iteration " << i << " rep " <<  j << std::endl;
+            try {
+              UPMEMDeviceAPI::Global()->Timestamp("start");
+              pf.CallPacked(args, &temp);
+              UPMEMDeviceAPI::Global()->Timestamp("end");
+            } catch (std::string& e) {
+              std::cout << "Caught exception: " << e << std::endl;
+              continue;
+            }
             before_kernel_time += UPMEMDeviceAPI::Global()->ElapsedTime("before_kernel") / 1e6;
             kernel_time += UPMEMDeviceAPI::Global()->ElapsedTime("kernel") / 1e6;
 
@@ -924,22 +936,19 @@ PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, 
             auto t = UPMEMDeviceAPI::Global()->entire_end - UPMEMDeviceAPI::Global()->last_d2h_end;
             after_d2h[j] = std::chrono::duration_cast<std::chrono::nanoseconds>(t).count() / 1e6;
             after_kernel_time += abs[j];
-          }
-          for (int j = 0; j < number; ++j) {
-            // std::cerr << before_d2h[j] << std::endl;
-            // std::cerr << before_d2h[j] << "\t" << d2h[j] << "\t" << after_d2h[j] << "\t" << abs[j] << std::endl;
+            j++;
           }
         } else {
           for (int j = 0; j < number; ++j) {
             pf.CallPacked(args, &temp);
           }
         }
+        t->Stop();
         delete[] abs;
         delete[] d2h;
         delete[] before_d2h;
         delete[] after_d2h;
 
-        t->Stop();
         int64_t t_nanos = t->SyncAndGetElapsedNanos();
         if (t_nanos == 0) absolute_zero_times++;
         duration_ms = t_nanos / 1e6;

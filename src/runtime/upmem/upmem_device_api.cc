@@ -119,7 +119,16 @@ int UPMEMDeviceAPI::AcquireResources(TVMArgs args) {
   }
 
   VLOG(3) << "dpu_alloc(" << bank_num << ", disableSafeChecks=1, NULL, &dpu_set)";
-  UPMEM_CALL(dpu_alloc(bank_num, "disableSafeChecks=1", &(dpu_set)));
+  int attempt = 0;
+  for (; attempt< 10; attempt++) {
+    if (dpu_alloc(bank_num, "disableSafeChecks=1", &dpu_set) == DPU_OK) {
+      break;
+    }
+    if (attempt == 9) {
+      LOG(FATAL) << "Error: Unable to allocate DPUs";
+    }
+  }
+  printf("Attempt in %d\n", attempt);
 
   uint32_t nr_dpus;
   UPMEM_CALL(dpu_get_nr_dpus(dpu_set, &nr_dpus));

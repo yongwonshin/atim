@@ -208,7 +208,9 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
     finder(stmt);
 
     if (finder.noncontiguous_cache) {
-      // errors_.push_back("Non-contiguous cache access is not allowed.");
+      errors_.push_back("Non-contiguous cache access is not allowed.");
+      // OFF for reduction autotuning currently
+      // TODO: detect the CommReducer pattern and bypass
     }
 
     global_memory_per_block_ = 0;
