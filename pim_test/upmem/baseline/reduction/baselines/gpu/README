@@ -1,9 +1,0 @@
-Reduction (RED)
-
-Compilation instructions
-
-    TYPE=UINT64 make
-
-Execution instructions
-
-    ./red -i 1048576000

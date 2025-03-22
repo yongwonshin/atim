@@ -281,24 +281,9 @@ gallery/how_to/work_with_microtvm/micro_tvmc.py
 custom_gemv/
 playground/
 
-pim_test/*/errors
-pim_test/*/results
-pim_test/data/*.bin
-pim_test/upmem/temp
-pim_test/upmem/autotuner_result/*
-pim_test/upmem/autotuner_result*/*
-pim_test/upmem/result*/
-pim_test/upmem/opt_results/
-pim_test/upmem/logs/
-pim_test/upmem/logs_old/
-pim_test/upmem/isca_*/
-pim_test/upmem/recent_logs/
-pim_test/upmem/baseline/va_control/
-pim_test/upmem/baseline/**/bin
-pim_test/upmem/baseline/**/*.conf
-pim_test/sandbox/*
-pim_test/upmem/dummy_kernel.c
-!pim_test/upmem/SimplePIM/lib
+pim_test
+3rdparty/hbmpim
+custom_gemv
 
 temp
 temp-*
