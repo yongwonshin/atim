@@ -303,9 +303,6 @@ class PopenWorker:
             return value
         if status == StatusKind.EXCEPTION:
             raise value
-        # stdout, stderr = self._proc.communicate()
-        # if "One or more DPUs are in fault" in stderr:
-        #     raise "One or more DPUs are in fault"
         assert status == StatusKind.TIMEOUT
         # kill and lazily restart the process in the next send.
         self.kill()

@@ -111,9 +111,6 @@ Array<tir::Schedule> AddRFactorNode::Apply(const tir::Schedule& sch, const tir::
       // be considered by the rule Random-Compute-Location.
       sch_tmp->Annotate(block_rv, tir::attr::meta_schedule_random_compute_producer, Integer(1));
       res.push_back(sch_tmp);
-      // std::cerr << "AFTER RFACTOR: "
-      //           << sch_tmp->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
-      std::cerr << sch_tmp->mod() << std::endl;
     } catch (const tvm::runtime::Error& e) {
     }
   }

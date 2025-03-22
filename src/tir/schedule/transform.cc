@@ -310,11 +310,7 @@ Optional<LoopRV> TileWithTensorIntrin(const tir::Schedule& sch, const tir::Block
   Optional<tir::TensorizeInfo> opt_tensorize_info =
       GetTensorizeLoopMapping(sch->state(), sch->GetSRef(block_rv),
                               tir::TensorIntrin::Get(intrin_name).value()->desc, allow_padding);
-  if (!opt_tensorize_info) {
-    // std::cerr << "NOT TileWithTensorIntrin: "
-    //           << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
-    return NullOpt;
-  }
+  if (!opt_tensorize_info) return NullOpt;
   const tir::TensorizeInfoNode* info = opt_tensorize_info.value().get();
   if (info->block_iter_paddings.defined()) {
     sch->PadEinsum(block_rv, info->block_iter_paddings.value());

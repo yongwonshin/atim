@@ -28,7 +28,6 @@ from tvm.meta_schedule.testing.local_rpc import LocalRPC
 from tvm.script import tir as T
 from tvm.target import Target
 from tvm.tir.schedule import BlockRV, Schedule
-from typing import Callable
 
 logging.basicConfig()
 logging.getLogger("tvm.meta_schedule").setLevel(logging.DEBUG)
@@ -45,63 +44,6 @@ def matmul(a: T.handle, b: T.handle, c: T.handle) -> None:
             with T.init():
                 C[vi, vj] = 0.0
             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
-
-
-def matvec_factory(M: int, K: int, dtype="int32") -> Callable[[T.handle, T.handle, T.handle], None]:
-    @T.prim_func
-    def matvec(a: T.handle, b: T.handle, c: T.handle) -> None:
-        T.func_attr({"pragma_explicit_h2d": ["A"]})
-        A = T.match_buffer(a, (M, K), dtype=dtype)
-        B = T.match_buffer(b, (K,), dtype=dtype)
-        C = T.match_buffer(c, (M,), dtype=dtype)
-        for i, k in T.grid(M, K):
-            with T.block("update"):
-                vi, vk = T.axis.remap("SR", [i, k])
-                with T.init():
-                    C[vi] = 0
-                C[vi] = C[vi] + A[vi, vk] * B[vk]
-
-    return matvec
-
-
-def bgemv_factory(N: int, M: int, K: int, dtype="int32"):
-    @T.prim_func
-    def batched_gemv(a: T.handle, b: T.handle, c: T.handle):
-        T.func_attr({"pragma_explicit_h2d": ["A"]})
-        A = T.match_buffer(a, (N, M, K), dtype=dtype)
-        B = T.match_buffer(b, (N, K), dtype=dtype)
-        C = T.match_buffer(c, (N, M), dtype=dtype)
-
-        for n, i, k in T.grid(N, M, K):
-            with T.block("C"):
-                v_n, v_i, v_k = T.axis.remap("SSR", [n, i, k])
-                with T.init():
-                    C[v_n, v_i] = 0
-                C[v_n, v_i] = C[v_n, v_i] + A[v_n, v_i, v_k] * B[v_n, v_k]
-
-    return batched_gemv
-
-
-def va_factory(L, dtype):
-    @tvm.script.ir_module
-    class VAModule:
-        @T.prim_func
-        def main(a: T.handle, b: T.handle, c: T.handle):
-            T.func_attr(
-                {
-                    "global_symbol": "main",
-                    "tir.noalias": T.bool(True),
-                    "pragma_explicit_h2d": ["A", "B"],
-                }
-            )
-            A = T.match_buffer(a, (L,), dtype=dtype)
-            B = T.match_buffer(b, (L,), dtype=dtype)
-            C = T.match_buffer(c, (L,), dtype=dtype)
-            for i in T.serial(0, L):
-                with T.block("C"):
-                    C[i] = A[i] + B[i]
-
-    return VAModule
 
 
 @T.prim_func
@@ -138,49 +80,7 @@ def test_tune_matmul_cpu():
             sch.trace.show()
 
 
-def test_tune_matmul_hbmpim():
-    matvec = matvec_factory(4096, 1024, dtype="int16")
-    with tempfile.TemporaryDirectory() as work_dir:
-        target = Target("hbmpim")
-        database = ms.tir_integration.tune_tir(
-            mod=matvec,
-            target=target,
-            work_dir=work_dir,
-            max_trials_global=1,
-            num_trials_per_iter=1,
-            per_iter_timeout_sec=180,  # NOTE: timeout 에러가 조용하게 발생하는 버그가 있으니 유의해야 한다.
-            min_repeat_ms=0,
-            num_tuning_cores=1,  # running simulator
-        )
-        sch = ms.tir_integration.compile_tir(database, matvec, target)
-        if sch is None:
-            print("No valid schedule found!")
-        else:
-            sch.mod.show()
-            sch.trace.show()
-
-
-def test_tune_matmul_upmem():
-    matvec = va_factory(160000000, dtype="int32")
-    with tempfile.TemporaryDirectory() as work_dir:
-        target = Target("upmem --num-cores=96")
-        database = ms.tir_integration.tune_tir(
-            mod=matvec,
-            target=target,
-            work_dir=work_dir,
-            max_trials_global=1000,
-            num_trials_per_iter=64,
-            num_tuning_cores=1,  # to prevent dpu allocation error
-        )
-        sch = ms.tir_integration.compile_tir(database, matvec, target)
-        if sch is None:
-            print("No valid schedule found!")
-        else:
-            sch.mod.show()
-            sch.trace.show()
-
-
-# @tvm.testing.requires_cuda
+@tvm.testing.requires_cuda
 def test_tune_matmul_cuda():
     with tempfile.TemporaryDirectory() as work_dir:
         target = Target("nvidia/geforce-rtx-3070")
@@ -279,9 +179,7 @@ def test_tune_block_cpu():
 
 
 if __name__ == """__main__""":
-    test_tune_matmul_upmem()
-    # test_tune_matmul_hbmpim()
-    # test_tune_matmul_cpu()
-    # test_tune_matmul_cuda()
-    # test_tune_run_module_via_rpc()
-    # test_tune_block_cpu()
+    test_tune_matmul_cpu()
+    test_tune_matmul_cuda()
+    test_tune_run_module_via_rpc()
+    test_tune_block_cpu()
