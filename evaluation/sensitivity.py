@@ -1,0 +1,98 @@
+import tvm
+import numpy as np
+import math
+
+from workloads import MTV, VA
+from bench import upmem_mtv_factory, upmem_va_factory
+
+
+def gemvRCTile(M, K, n_xb, n_yb, n_yt=16, n_cache=64, n_rt=16, dtype="int32", **kwargs):
+    sch = tvm.tir.Schedule(upmem_mtv_factory(M, K, dtype))
+    block_c = sch.get_block("C")
+    _, k = sch.get_loops(block_c)
+    xb, xo = sch.split(k, factors=[n_xb, None])
+    block_crf = sch.rfactor(xb, factor_axis=0)
+    ca = sch.cache_read(block_crf, 0, "local")
+    cb = sch.cache_read(block_crf, 1, "local")
+    cc = sch.cache_write(block_crf, 0, "local")
+    i, xb, k = sch.get_loops(block_crf)
+    yb, yo = sch.split(i, factors=[n_yb, None])
+    yo, yi, yc = sch.split(yo, factors=[n_yt, None, 8 // np.dtype(dtype).itemsize])
+    xo, xi = sch.split(k, factors=[None, n_cache])
+    sch.reorder(xb, yb, yo, yi, yc, xo, xi)
+    sch.compute_at(ca, xo)
+    sch.compute_at(cb, xo)
+    sch.reverse_compute_at(cc, yi)
+    sch.bind(xb, "blockIdx.x")
+    sch.bind(yb, "blockIdx.y")
+    sch.bind(yo, "threadIdx.x")
+    sch.annotate(xb, "bank", True)
+    sch.annotate(yb, "bank", True)
+    sch.decompose_reduction(block_crf, xo)
+    i, _ = sch.get_loops(block_c)
+    it, _ = sch.split(i, factors=[n_rt, None])
+    sch.parallel(it)
+    return sch
+
+
+def vaTile(M, n_b, n_t, n_c, dtype):
+    sch = tvm.tir.Schedule(upmem_va_factory(M, dtype))
+    block_c = sch.get_block("C")
+    (i,) = sch.get_loops(block_c)
+    ca = sch.cache_read(block_c, "A", "local")
+    cb = sch.cache_read(block_c, "B", "local")
+    cc = sch.cache_write(block_c, "C", "local")
+    bytes = np.dtype(dtype).itemsize
+    ib, it = sch.split(i, factors=[n_b, math.ceil(M / n_b / bytes) * bytes])
+    it, ii, ic = sch.split(it, factors=[n_t, None, n_c])
+    sch.compute_at(ca, ii)
+    sch.compute_at(cb, ii)
+    sch.reverse_compute_at(cc, ii)
+    sch.bind(ib, "blockIdx.x")
+    sch.bind(it, "threadIdx.x")
+    return sch
+
+
+def sens_mtv():
+    shape_expand = [72, 91, 123, 145, 164, 196, 212, 245]
+    shapes = [(m, m) for m in shape_expand]
+    confs = [
+        {
+            "M": m,
+            "K": k,
+            "dtype": "int32",
+            "n_xb": 1,
+            "n_yb": 1,
+            "n_cache": 32,
+            "n_yt": 16,
+            "n_rt": 16,
+        }
+        for m, k in shapes
+    ]
+
+    mtv = MTV(repeat=1, warmup=5, verbose=-1)
+    for c in confs:
+        # tt = [mtv.benchmark(**c)[1]]
+        tt = []
+        for opt in [0, 1, 2, 4]:
+            mtv.opt_level = opt
+            tt.append(mtv.test(gemvRCTile, **c))
+        print("\t".join([str(t) for t in tt]))
+
+
+def sens_va():
+    shape = [i * 100000 for i in [1, 2, 3, 4, 5, 6, 7, 8]]
+    confs = [{"M": l, "n_b": 32, "n_t": 16, "n_c": 64, "dtype": "int32"} for l in shape]
+
+    va = VA(repeat=1, warmup=5, verbose=-1)
+    for c in confs:
+        print(c["M"])
+        # tt = [va.benchmark(**c)[1]]
+        tt = []
+        for opt in [0, 1, 2, 4]:
+            va.opt_level = opt
+            tt.append(va.test(vaTile, **c))
+        print("\t".join([str(t) for t in tt]))
+
+# sens_mtv()
+sens_va()
