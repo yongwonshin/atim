@@ -17,6 +17,11 @@
 
 if(USE_UPMEM)
   message(STATUS "Build with UPMEM support")
+  # set(UPMEM_INCLUDE_DIR "/root/dev/upmem-2025.1.0-Linux-x86_64/include/dpu")
+  # set(UPMEM_LIB "/root/dev/upmem-2025.1.0-Linux-x86_64/lib/libdpu.so")
+  # set(UPMEM_INCLUDE_DIR "/usr/local/include/dpu")
+  # set(UPMEM_LIB "/usr/local/lib/libdpu.so")
+
   find_path(UPMEM_INCLUDE_DIR dpu.h PATH_SUFFIXES dpu)
   find_library(UPMEM_LIB dpu)
   # find_library(UUID_LIB uuid)

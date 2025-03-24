@@ -128,7 +128,6 @@ int UPMEMDeviceAPI::AcquireResources(TVMArgs args) {
       LOG(FATAL) << "Error: Unable to allocate DPUs";
     }
   }
-  printf("Attempt in %d\n", attempt);
 
   uint32_t nr_dpus;
   UPMEM_CALL(dpu_get_nr_dpus(dpu_set, &nr_dpus));

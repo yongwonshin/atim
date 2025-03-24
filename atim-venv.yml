@@ -1,0 +1,17 @@
+name: atim-venv
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - cmake>=3.24
+  - pip
+  - pip:
+      - numpy<2.0
+      - decorator
+      - attrs
+      - typing-extensions
+      - psutil
+      - scipy
+      - tornado
+      - xgboost==1.6.1
+      - cloudpickle

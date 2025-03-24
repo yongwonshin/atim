@@ -76,6 +76,7 @@ set(USE_OPENCL OFF)
 # OpenCLWorkspace->GetHostPtr API returns the host accessible pointer
 set(USE_OPENCL_ENABLE_HOST_PTR OFF)
 
+set(USE_UPMEM ON)
 # Whether enable Metal runtime
 set(USE_METAL OFF)
 
@@ -142,7 +143,7 @@ set(USE_MICRO_STANDALONE_RUNTIME OFF)
 # - OFF: disable llvm, note this will disable CPU codegen
 #        which is needed for most cases
 # - /path/to/llvm-config: enable specific LLVM when multiple llvm-dev is available.
-set(USE_LLVM OFF)
+set(USE_LLVM "llvm-config --ignore-libllvm --link-static")
 
 #---------------------------------------------
 # Contrib libraries
@@ -418,5 +419,3 @@ set(USE_UMA OFF)
 
 # Set custom Alloc Alignment for device allocated memory ndarray points to
 set(USE_KALLOC_ALIGNMENT 64)
-set(USE_UPMEM OFF)
-set(USE_HBMPIM OFF)
