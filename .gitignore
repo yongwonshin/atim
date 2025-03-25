@@ -293,3 +293,6 @@ temp-*
 evaluation/data/*.bin
 evaluation/logs
 evaluation/recent_logs
+evaluation/preliminary/
+evaluation/baseline/**/bin/
+evaluation/baseline/**/_*
