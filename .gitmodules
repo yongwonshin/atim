@@ -25,6 +25,6 @@
 [submodule "3rdparty/cutlass_fpA_intB_gemm"]
 	path = 3rdparty/cutlass_fpA_intB_gemm
 	url = https://github.com/tlc-pack/cutlass_fpA_intB_gemm
-[submodule "evaluation/baseline/SimplePIM"]
-	path = evaluation/baseline/SimplePIM
+[submodule "evaluation/baseline/simplepim"]
+	path = evaluation/baseline/simplepim
 	url = https://github.com/stonerdk/SimplePIM
