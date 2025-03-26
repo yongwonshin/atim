@@ -125,8 +125,7 @@ class ROCMDeviceAPI final : public DeviceAPI {
     }
     *rv = value;
   }
-  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
-                       Optional<String> mem_scope = NullOpt) final {
+  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint) final {
     ROCM_CALL(hipSetDevice(dev.device_id));
     ICHECK_EQ(256 % alignment, 0U) << "ROCM space is aligned at 256 bytes";
     void* ret;

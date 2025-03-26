@@ -28,7 +28,7 @@ from .profiling import Report
 
 # function exposures
 from .object_generic import convert_to_object, convert, const
-from .ndarray import device, cpu, cuda, gpu, opencl, cl, vulkan, metal, mtl, upmem, hbmpim
+from .ndarray import device, cpu, cuda, gpu, opencl, cl, vulkan, metal, mtl, upmem
 from .ndarray import vpi, rocm, ext_dev
 from .module import load_module, enabled, system_lib, load_static_library
 from .container import String, ShapeTuple

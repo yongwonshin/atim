@@ -75,8 +75,7 @@ class WebGPUDeviceAPI : public DeviceAPI {
     }
   }
 
-  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
-                       Optional<String> mem_scope = NullOpt) final {
+  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint) final {
     double ptr_number = alloc_space_(nbytes);
     return reinterpret_cast<void*>(static_cast<int64_t>(ptr_number));
   }

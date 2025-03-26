@@ -337,7 +337,6 @@ struct LoopNest {
   ForVec threadIdx_z;  // The loops whose ForKind are kThreadBinding to threadIdx.z
   ForVec vthread;      // The loops whose ForKind are kThreadBinding to vthread.*
   // TODO[ywshin]
-  ForVec puIdx;    // The loops whose ForKind are kThreadBinding to puIdx.*
   ForVec bankIdx;  // The loops whose ForKind are kThreadBinding to bankIdx.*
 
   /*!
@@ -377,8 +376,6 @@ struct LoopNest {
         ref_loops = &threadIdx_z;
       } else if (support::StartsWith(thread_tag, "vthread")) {
         ref_loops = &vthread;
-      } else if (support::StartsWith(thread_tag, "puIdx")) {
-        ref_loops = &puIdx;
       } else if (support::StartsWith(thread_tag, "bankIdx")) {
         ref_loops = &bankIdx;
       } else {
@@ -1410,6 +1407,7 @@ class PerStoreFeatureNode : public FeatureExtractorNode {
       const auto& candidate = candidates[task_id];
       std::vector<std::vector<double>> features;
       // TODO[ywshin]: IDK why DeepCopyIRModule encloses the module
+      // ExtractSingle(DeepCopyIRModule(candidate->sch->mod()), is_gpu, &features);
       ExtractSingle(candidate->sch->mod(), is_gpu, &features);
       if (extract_workload) {
         for (auto& feature : features) {

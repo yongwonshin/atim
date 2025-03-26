@@ -99,10 +99,9 @@ class TensorInfo(ArgInfo):
 
     dtype: DataType
     shape: ShapeTuple
-    mem_scoope: str
 
     def __init__(
-        self, dtype: DataType, shape: Union[ShapeTuple, List[int]], mem_scope: str = "global"
+        self, dtype: DataType, shape: Union[ShapeTuple, List[int]]
     ) -> None:
         """Constructor
 
@@ -121,5 +120,4 @@ class TensorInfo(ArgInfo):
             _ffi_api.TensorInfo,  # type: ignore # pylint: disable=no-member
             dtype,
             shape_tuple,
-            mem_scope,
         )

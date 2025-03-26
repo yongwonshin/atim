@@ -600,8 +600,6 @@ def run_module(
             dev = session.vulkan()
         elif device == "upmem":
             dev = session.upmem()
-        elif device == "hbmpim":
-            dev = session.hbmpim()
         elif device == "rocm":
             dev = session.rocm()
         elif device == "micro":

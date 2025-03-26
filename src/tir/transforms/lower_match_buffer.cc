@@ -125,19 +125,6 @@ class MatchBufferLower : public StmtExprMutator {
       CheckAndUpdateVarMap(match_buffer);
     }
 
-    for (auto match_buffer : op->match_buffers) {
-      match_buffer_map_.Set(match_buffer->source->buffer->name, match_buffer->buffer->name);
-      if (match_buffer->buffer.scope() == "internal") {
-        IntImm buffer_size = Downcast<IntImm>(match_buffer->source->region[0]->extent);
-        for (int i = 1; i < match_buffer->source->region.size(); i++) {
-          buffer_size *= Downcast<IntImm>(match_buffer->source->region[i]->extent);
-        }
-        internel_buffer_index_map_[match_buffer->buffer->name] =
-            std::tuple<PrimExpr, int64_t>{match_buffer->source->region[0]->min, buffer_size->value};
-        internal_buffer_loop_level_.Set(match_buffer->buffer->name, loop_order_.size());
-      }
-    }
-
     Stmt stmt = StmtExprMutator ::VisitStmt_(op);
     op = stmt.as<BlockNode>();
     ICHECK(op != nullptr);
@@ -215,28 +202,6 @@ class MatchBufferLower : public StmtExprMutator {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<BufferLoadNode>();
     ICHECK(op != nullptr);
-
-    if (op->buffer.scope() == "internal") {
-      BufferLoad load = Downcast<BufferLoad>(StmtExprMutator::VisitExpr_(op));
-      BufferLoadNode* op_ = load.CopyOnWrite();
-
-      const Buffer& buffer = op_->buffer;
-      auto ndim = buffer->shape.size();
-      PrimExpr flattened = op_->indices[0];
-      for (int i = 1; i < ndim; i++) {
-        flattened = flattened * buffer->shape[i] + op_->indices[i];
-      }
-
-      RewriteBufferAccess(op_->buffer->name, flattened, &op_->global_indices,
-                          op_->buffer->shape.size(),
-                          internel_buffer_index_map_.count(op_->buffer->name) > 0
-                              ? std::get<0>(internel_buffer_index_map_[op_->buffer->name])
-                              : PrimExpr(),
-                          internel_buffer_index_map_.count(op_->buffer->name) > 0
-                              ? std::get<1>(internel_buffer_index_map_[op_->buffer->name])
-                              : 0);
-      return std::move(load);
-    }
 
     auto it = match_buffers_.find(op->buffer);
     if (it == match_buffers_.end()) {

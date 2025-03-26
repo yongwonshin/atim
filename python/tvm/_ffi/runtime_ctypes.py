@@ -244,7 +244,6 @@ class Device(ctypes.Structure):
     kOpenGL = 34
     kDLMicroDev = 35
     kDLUPMEM = 64
-    kDLHBMPIM = 65
 
     _fields_ = [("device_type", ctypes.c_int), ("device_id", ctypes.c_int)]
     MASK2STR = {
@@ -267,7 +266,6 @@ class Device(ctypes.Structure):
         kOpenGL: "opengl",
         kDLMicroDev: "microdev",
         kDLUPMEM: "upmem",
-        kDLHBMPIM: "hbmpim",
     }
 
     STR2MASK = {
@@ -293,7 +291,6 @@ class Device(ctypes.Structure):
         "hexagon": kDLHexagon,
         "webgpu": kDLWebGPU,
         "upmem": kDLUPMEM,
-        "hbmpim": kDLHBMPIM,
     }
 
     def __init__(self, device_type, device_id):

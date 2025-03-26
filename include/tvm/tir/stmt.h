@@ -238,7 +238,7 @@ class BufferStoreNode : public StmtNode {
     v->Visit("buffer", &buffer);
     v->Visit("value", &value);
     v->Visit("indices", &indices);
-    // v->Visit("global_indices", &global_indices);
+    // v->Visit("global_indices", &global_indices); // [ywshin]: remove this line to avoid error
     v->Visit("span", &span);
   }
 

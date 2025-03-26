@@ -235,24 +235,12 @@ class ScheduleRule : public runtime::ObjectRef {
    */
   TVM_DLL static ScheduleRule AddRFactor(int max_jobs_per_core,  //
                                          Optional<Integer> max_innermost_factor);
-  TVM_DLL static ScheduleRule AddHBMPIMRFactor(int vector_len, const String& mem_scope = "global");
-  TVM_DLL static bool IsAddHBMPIMRFactor(const ScheduleRule& rule);
   TVM_DLL static ScheduleRule AddUPMEMRFactor(int min_n_splits, int max_n_splits,
                                               const String& mem_scope = "global");
   TVM_DLL static ScheduleRule PrepareCrossThreadReduction();
   TVM_DLL static ScheduleRule SetOptimizationLevel(int level);
   TVM_DLL static bool IsAddUPMEMRFactor(const ScheduleRule& rule);
   TVM_DLL static bool IsPrepareCrossThreadReduction(const ScheduleRule& rule);
-  TVM_DLL static ScheduleRule MultiLevelTilingHBMPIM(
-      Array<Map<String, String>> intrin_groups, String structure,
-      Optional<Array<String>> tile_binds, Optional<Integer> max_innermost_factor,
-      Optional<Array<Integer>> vector_load_lens, Optional<Map<String, ObjectRef>> reuse_read,
-      Optional<Map<String, ObjectRef>> reuse_write, Optional<Integer> min_innermost_factor,
-      Optional<Array<Integer>> reordering, Optional<Array<Array<Integer>>> s_split_factors,
-      Optional<Array<Array<Integer>>> r_split_factors, Optional<Bool> hoist_rfactor_loop,
-      Optional<Array<Map<String, ObjectRef>>> annotations,
-      Optional<Array<String>> reduction_tile_binds,
-      Optional<Array<Map<String, ObjectRef>>> reduction_annotations);
   TVM_DLL static ScheduleRule MultiLevelTilingUPMEM(
       Optional<Array<Map<String, String>>> intrin_groups, String structure,
       Optional<Array<String>> tile_binds, Optional<Integer> max_innermost_factor,
@@ -283,7 +271,6 @@ class ScheduleRule : public runtime::ObjectRef {
       Optional<Array<Map<String, ObjectRef>>> annotations,
       Optional<Array<String>> reduction_tile_binds,
       Optional<Array<Map<String, ObjectRef>>> reduction_annotations);
-  TVM_DLL static bool IsMultiLevelTilingHBMPIM(const ScheduleRule& rule);
   TVM_DLL static bool IsMultiLevelTilingUPMEM(const ScheduleRule& rule);
   TVM_DLL static bool IsMultiLevelTilingSpatialUPMEM(const ScheduleRule& rule);
   TVM_DLL static bool IsMultiLevelTilingReductionUPMEM(const ScheduleRule& rule);
@@ -345,7 +332,6 @@ class ScheduleRule : public runtime::ObjectRef {
   TVM_DLL static Array<ScheduleRule, void> DefaultLLVM();
   /*! \brief Create default schedule rules for x86 (AVX512 and VNNI) */
   TVM_DLL static Array<ScheduleRule, void> DefaultX86(const String& type);
-  TVM_DLL static Array<ScheduleRule, void> DefaultHBMPIM();
   TVM_DLL static Array<ScheduleRule, void> DefaultUPMEM();
   /*! \brief Create default schedule rules for CUDA */
   TVM_DLL static Array<ScheduleRule, void> DefaultCUDA();

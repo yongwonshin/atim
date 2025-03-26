@@ -79,37 +79,21 @@ Array<Schedule> MultiLevelTilingSpatialUPMEMNode::Apply(const Schedule& sch,
 std::vector<State> MultiLevelTilingSpatialUPMEMNode::ApplySubRules(std::vector<State> states) {
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = TileLoopNest(std::move(state));
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER TILING: " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = AddWriteReuse(state);
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER AddWriteReuse: " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = AddReadReuse(state);
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER AddReadReuse: " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   return states;
 }
 
 std::vector<State> MultiLevelTilingSpatialUPMEMNode::ApplyExtraSubRules(std::vector<State> states) {
-  states = SubRule(std::move(states), [&](State state) {
-    // std::cerr << "AFTER MultiLevelTilingSpatial: " << std::endl;
-    // std::cerr << state->sch->mod() << std::endl;
-    return std::vector<State>{state};
-  });
+  states = SubRule(std::move(states), [&](State state) { return std::vector<State>{state}; });
   return states;
 }
 

@@ -111,8 +111,8 @@ class TVM_DLL DeviceAPI {
    * as OpenGL, as nbytes & alignment are sufficient for most backends.
    * \return The allocated device pointer.
    */
-  virtual void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
-                               Optional<String> mem_scope = NullOpt) = 0;
+  virtual void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment,
+                               DLDataType type_hint) = 0;
   /*!
    * \brief Allocate a data space on device with memory scope support.
    * \param dev The device device to perform operation.
@@ -196,7 +196,6 @@ class TVM_DLL DeviceAPI {
    * as OpenGL, as nbytes is sufficient for most backends.
    */
   virtual void* AllocWorkspace(Device dev, size_t nbytes, DLDataType type_hint = {});
-  virtual void* AllocWorkspace(Device dev, size_t nbytes, DLDataType type_hint, String mem_scope);
   /*!
    * \brief Free temporal workspace in backend execution.
    *
@@ -290,8 +289,6 @@ inline const char* DeviceName(int type) {
       return "microdev";
     case kDLUPMEM:
       return "upmem";
-    case kDLHBMPIM:
-      return "hbmpim";
     default:
       LOG(FATAL) << "unknown type =" << type;
   }

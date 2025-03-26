@@ -51,9 +51,6 @@ String GetRuleKindFromTarget(const Target& target) {
     }
     return "llvm";
   }
-  if (target->kind->name == "hbmpim") {
-    return "hbmpim";
-  }
   if (target->kind->name == "upmem") {
     return "upmem";
   }
@@ -135,10 +132,6 @@ void SpaceGeneratorNode::InitializeWithTuneContext(const TuneContext& context) {
       default_sch_rules = ScheduleRule::DefaultARM("dotprod");
       default_postprocs = Postproc::DefaultCPUTensorization();
       default_mutator_probs = Mutator::DefaultLLVM();
-    } else if (kind == "hbmpim") {
-      default_sch_rules = ScheduleRule::DefaultHBMPIM();
-      default_postprocs = Postproc::DefaultHBMPIM();
-      default_mutator_probs = Mutator::DefaultHBMPIM();
     } else if (kind == "upmem") {
       default_sch_rules = ScheduleRule::DefaultUPMEM();
       default_postprocs = Postproc::DefaultUPMEM();

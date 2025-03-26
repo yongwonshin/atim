@@ -222,7 +222,7 @@ cl_kernel OpenCLModuleNode::InstallKernel(cl::OpenCLWorkspace* w, cl::OpenCLThre
   auto platform = w->device_to_platform[did];
   if (programs_[func_name][device_id] == nullptr) {
     // create program
-    if (fmt_ == "cl" || fmt_ == "pclbin") {
+    if (fmt_ == "cl") {
       const char* s = parsed_kernels_[func_name].c_str();
       size_t len = parsed_kernels_[func_name].length();
       cl_int err;

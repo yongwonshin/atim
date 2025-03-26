@@ -518,7 +518,7 @@ inline bool IsGPUTarget(const std::string& target_name) {
 }
 
 inline bool IsPIMTarget(const std::string& target_name) {
-  static const std::unordered_set<std::string> pim_targets{"upmem", "hbmpim"};
+  static const std::unordered_set<std::string> pim_targets{"upmem"};
   return pim_targets.count(target_name);
 }
 

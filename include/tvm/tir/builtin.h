@@ -797,17 +797,6 @@ TVM_DLL const Op& start_profile_intrinsic();
  */
 TVM_DLL const Op& end_profile_intrinsic();
 
-TVM_DLL const Op& R_CMD();
-TVM_DLL const Op& W_CMD();
-TVM_DLL const Op& W_CMD_R();
-TVM_DLL const Op& W_CMD_R_C();
-TVM_DLL const Op& B_CMD();
-TVM_DLL const Op& vloadn();
-TVM_DLL const Op& vstoren();
-TVM_DLL const Op& barrier();
-TVM_DLL const Op& mem_fence();
-TVM_DLL const Op& addr_gen();
-
 // Used for common PIM
 // num (for UPMEM, num means the number of dpus)
 TVM_DLL const Op& pim_acquire_resources();
@@ -831,7 +820,6 @@ TVM_DLL const Op& dpu_parallel_transfer_bind();  // dpu_id, host_offset, size
 TVM_DLL const Op& dpu_parallel_transfer_commit();
 TVM_DLL const Op& dpu_parallel_transfer_bind_bounded();
 TVM_DLL const Op& dpu_parallel_transfer_bind_all();
-
 
 TVM_DLL const Op& dpu_mram_read();
 TVM_DLL const Op& dpu_mram_write();

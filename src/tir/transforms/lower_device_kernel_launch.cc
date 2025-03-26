@@ -108,8 +108,7 @@ class DeviceInfoCollector : public StmtVisitor {
       IterVar iv = Downcast<IterVar>(op->node);
       ICHECK_NE(iv->thread_tag.length(), 0U);
 
-      if (std::string(iv->thread_tag.c_str()).compare(0, 6, "puIdx.") == 0 ||
-          std::string(iv->thread_tag.c_str()).compare(0, 8, "bankIdx.") == 0) {
+      if (std::string(iv->thread_tag.c_str()).compare(0, 8, "bankIdx.") == 0) {
         StmtVisitor::VisitStmt_(op);
         return;
       }

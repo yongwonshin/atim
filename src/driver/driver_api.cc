@@ -56,7 +56,6 @@ TVM_REGISTER_PASS_CONFIG_OPTION("tir.use_async_copy", Bool);
 TVM_REGISTER_PASS_CONFIG_OPTION("tir.instrument_lwp", Bool);
 TVM_REGISTER_PASS_CONFIG_OPTION("tir.vtcm_capacity", Integer);
 TVM_REGISTER_PASS_CONFIG_OPTION("tir.ptx_ldg32", Bool);
-TVM_REGISTER_PASS_CONFIG_OPTION("tir.hbmpim", Bool);
 
 // WARNING: May cause coherency issues resulting data miscompares
 // Experimental feature that, when enabled by the runtime, bypasses the cache when using DMA. When
@@ -150,12 +149,12 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
       pass_ctx->GetConfig<Bool>("tir.disable_storage_rewrite", Bool(false)).value();
   bool instrument_bound_checkers =
       pass_ctx->GetConfig<Bool>("tir.instrument_bound_checkers", Bool(false)).value();
+  // [ywshin]: why are these commented out?
   // bool disable_cse_tir = pass_ctx->GetConfig<Bool>("tir.disable_cse_tir", Bool(false)).value();
   // bool enable_equiv_terms_in_cse_tir =
   //     pass_ctx->GetConfig<Bool>("tir.enable_equiv_terms_in_cse_tir", Bool(false)).value();
 
   bool ptx_ldg32 = pass_ctx->GetConfig<Bool>("tir.ptx_ldg32", Bool(false)).value();
-  bool is_hbmpim = pass_ctx->GetConfig<Bool>("tir.hbmpim", Bool(false)).value();
 
   // Get any user-added passes
   Array<Array<ObjectRef>> add_lower_pass =
@@ -209,7 +208,6 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   pass_list.push_back(tir::transform::CompactBufferAllocation());
   pass_list.push_back(tir::transform::LowerAutoCopy());
   pass_list.push_back(tir::transform::LowerMatchBuffer());
-  // pass_list.push_back(tir::transform::InjectHBMPIMParams());
   pass_list.push_back(tir::transform::UnifyThreadBinding());
   pass_list.push_back(tir::transform::Simplify());
   pass_list.push_back(tir::transform::InjectPermutedLayout());
@@ -227,6 +225,7 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   pass_list.insert(pass_list.end(), user_lower_phase1.begin(), user_lower_phase1.end());
 
   // PHASE 2
+  // [ywshin]: why are these commented out?
   // if (!disable_loop_partition) {
   //   pass_list.push_back(tir::transform::LoopPartition());
   // }
@@ -248,6 +247,7 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   pass_list.insert(pass_list.end(), user_lower_phase2.begin(), user_lower_phase2.end());
 
   // PHASE 3
+  // [ywshin]: why are these commented out?
   // pass_list.push_back(tir::transform::RenormalizeSplitPattern());
   pass_list.push_back(tir::transform::Simplify());
   pass_list.push_back(tir::transform::RemoveNoOp());
@@ -263,10 +263,6 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
 
   if (ptx_ldg32) {
     pass_list.push_back(tir::transform::InjectPTXLDG32(true));
-  }
-
-  if (is_hbmpim) {
-    pass_list.push_back(tir::transform::InjectHBMPIMParams());
   }
 
   // This pass instruments the loops with the profile builtin calls to capture the runtime

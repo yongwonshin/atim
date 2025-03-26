@@ -72,8 +72,7 @@ class UPMEMDeviceAPI final : public DeviceAPI {
 
   void FreeWorkspace(Device dev, void* data) final;
 
-  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
-                       Optional<String> mem_scope = NullOpt) final;
+  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint) final;
 
   void FreeDataSpace(Device dev, void* ptr);
 

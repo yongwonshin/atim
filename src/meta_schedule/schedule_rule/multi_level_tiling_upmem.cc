@@ -80,26 +80,14 @@ Array<Schedule> MultiLevelTilingUPMEMNode::Apply(const Schedule& sch, const Bloc
 std::vector<State> MultiLevelTilingUPMEMNode::ApplySubRules(std::vector<State> states) {
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = TileLoopNest(std::move(state));
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER TILING: " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = AddWriteReuse(state);
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER AddWriteReuse: " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = AddReadReuse(state);
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER AddReadReuse: " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   return states;
@@ -108,10 +96,6 @@ std::vector<State> MultiLevelTilingUPMEMNode::ApplySubRules(std::vector<State> s
 std::vector<State> MultiLevelTilingUPMEMNode::ApplyExtraSubRules(std::vector<State> states) {
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = HandleReductionBlockUPMEM(state);
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER HandleReductionBlockUPMEM: " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   return states;

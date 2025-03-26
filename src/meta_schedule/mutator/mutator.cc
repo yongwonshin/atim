@@ -59,16 +59,6 @@ Map<Mutator, FloatImm> Mutator::DefaultLLVM() {
       {Mutator::MutateParallel(/*max_jobs_per_core=*/16), FloatImm(DataType::Float(64), 0.02)}};
 }
 
-Map<Mutator, FloatImm> Mutator::DefaultHBMPIM() {
-  // TODO[ywshin]
-  return Map<Mutator, FloatImm>{
-      // {Mutator::MutateTileSize(), FloatImm(DataType::Float(64), 0.9)},
-      // {Mutator::MutateComputeLocation(), FloatImm(DataType::Float(64), 0.05)},
-      // {Mutator::MutateUnroll(), FloatImm(DataType::Float(64), 0.03)},
-      // {Mutator::MutateParallel(/*max_jobs_per_core=*/16), FloatImm(DataType::Float(64), 0.02)}
-  };
-}
-
 Map<Mutator, FloatImm> Mutator::DefaultUPMEM() {
   return Map<Mutator, FloatImm>{
       {Mutator::MutateTileSize(), FloatImm(DataType::Float(64), 0.9)},

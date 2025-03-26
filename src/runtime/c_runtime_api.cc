@@ -144,10 +144,6 @@ void* DeviceAPI::AllocWorkspace(Device dev, size_t size, DLDataType type_hint) {
   return AllocDataSpace(dev, size, kTempAllocaAlignment, type_hint);
 }
 
-void* DeviceAPI::AllocWorkspace(Device dev, size_t size, DLDataType type_hint, String mem_scope) {
-  return AllocDataSpace(dev, size, kTempAllocaAlignment, type_hint, mem_scope);
-}
-
 static size_t GetDataAlignment(const DLDataType dtype) {
   size_t align = (dtype.bits / 8) * dtype.lanes;
   if (align < kAllocAlignment) return kAllocAlignment;
@@ -156,7 +152,7 @@ static size_t GetDataAlignment(const DLDataType dtype) {
 
 void* DeviceAPI::AllocDataSpace(Device dev, int ndim, const int64_t* shape, DLDataType dtype,
                                 Optional<String> mem_scope) {
-  if (!mem_scope.defined() || mem_scope.value() == "global" || mem_scope.value() == "internal") {
+  if (!mem_scope.defined() || mem_scope.value() == "global") {
     // by default, we can always redirect to the flat memory allocations
     DLTensor temp;
     temp.data = nullptr;
@@ -168,7 +164,7 @@ void* DeviceAPI::AllocDataSpace(Device dev, int ndim, const int64_t* shape, DLDa
     temp.byte_offset = 0;
     size_t size = GetDataSize(temp);
     size_t alignment = GetDataAlignment(temp.dtype);
-    return AllocDataSpace(dev, size, alignment, dtype, mem_scope);
+    return AllocDataSpace(dev, size, alignment, dtype);
   }
   LOG(FATAL) << "Device does not support allocate data space with "
              << "specified memory scope: " << mem_scope.value();
@@ -432,7 +428,7 @@ int TVMBackendGetFuncFromEnv(void* mod_node, const char* func_name, TVMFunctionH
 }
 
 void* TVMBackendAllocWorkspace(int device_type, int device_id, uint64_t size, int dtype_code_hint,
-                               int dtype_bits_hint, const char* mem_scope) {
+                               int dtype_bits_hint) {
   DLDevice dev;
   dev.device_type = static_cast<DLDeviceType>(device_type);
   dev.device_id = device_id;
@@ -442,8 +438,7 @@ void* TVMBackendAllocWorkspace(int device_type, int device_id, uint64_t size, in
   type_hint.bits = static_cast<decltype(type_hint.bits)>(dtype_bits_hint);
   type_hint.lanes = 1;
 
-  return DeviceAPIManager::Get(dev)->AllocWorkspace(dev, static_cast<size_t>(size), type_hint,
-                                                    mem_scope);
+  return DeviceAPIManager::Get(dev)->AllocWorkspace(dev, static_cast<size_t>(size), type_hint);
 }
 
 int TVMBackendFreeWorkspace(int device_type, int device_id, void* ptr) {

@@ -82,12 +82,10 @@ class TensorInfoNode : public ArgInfoNode {
   runtime::DataType dtype;
   /*! \brief The shape of the tensor. */
   runtime::ShapeTuple shape;
-  String mem_scope;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("dtype", &dtype);
     v->Visit("shape", &shape);
-    v->Visit("mem_scope", &mem_scope);
   }
 
   static constexpr const char* _type_key = "meta_schedule.TensorInfo";
@@ -108,8 +106,7 @@ class TensorInfo : public ArgInfo {
    * \param dtype The data type of the tensor argument.
    * \param shape The shape tuple of the tensor argument.
    */
-  TVM_DLL explicit TensorInfo(runtime::DataType dtype, runtime::ShapeTuple shape,
-                              String mem_scope = "global");
+  TVM_DLL explicit TensorInfo(runtime::DataType dtype, runtime::ShapeTuple shape);
   /*!
    * \brief Parse the argument information from a JSON object.
    * \param json_obj The json object to parse.

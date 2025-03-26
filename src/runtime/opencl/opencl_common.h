@@ -202,8 +202,10 @@ inline cl_channel_type DTypeToOpenCLChannelType(DLDataType data_type) {
  * \brief Protected OpenCL call
  * \param func Expression to call.
  */
-#define OPENCL_CHECK_ERROR(e) \
-  { ICHECK(e == CL_SUCCESS) << "OpenCL Error, code=" << e << ": " << cl::CLGetErrorString(e); }
+#define OPENCL_CHECK_ERROR(e)                                                                 \
+  {                                                                                           \
+    ICHECK(e == CL_SUCCESS) << "OpenCL Error, code=" << e << ": " << cl::CLGetErrorString(e); \
+  }
 
 #define OPENCL_CALL(func)  \
   {                        \
@@ -234,8 +236,8 @@ class PIMWorkspaceCommon {
                                    int bank_index, int size) {
     return 0;
   }
-  virtual int TransferDeviceToHost(void* handle, uint64_t host_addr, uint64_t in_bank_addr, int bank_idx,
-                           int size) {
+  virtual int TransferDeviceToHost(void* handle, uint64_t host_addr, uint64_t in_bank_addr,
+                                   int bank_idx, int size) {
     return 0;
   }
   virtual int GetBytes(void* handle) { return addr_ptr_[handle].bytes; }
@@ -243,7 +245,7 @@ class PIMWorkspaceCommon {
   virtual std::string GetSymbolName(void* handle) { return addr_ptr_[handle].var_name; }
 
   virtual void* HostOffset(void* handle, uint64_t offset) {
-    return (char *)handle + (size_t)offset * GetBytes(handle);
+    return (char*)handle + (size_t)offset * GetBytes(handle);
   }
 
  protected:
@@ -434,7 +436,6 @@ struct BufferDescriptor {
      *         e.g. image2d[height=NH, width=WC]
      */
     kImage2DNHWC,
-    kBuffer1DInternal,
   };
   BufferDescriptor() = default;
   explicit BufferDescriptor(Optional<String> scope) : layout(MemoryLayoutFromScope(scope)) {}

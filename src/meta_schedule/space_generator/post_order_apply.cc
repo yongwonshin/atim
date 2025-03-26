@@ -123,8 +123,7 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
 
     for (ScheduleRule sch_rule : sch_rules.value()) {
       for (const tir::Schedule& sch : result) {
-        if (ScheduleRule::IsMultiLevelTilingHBMPIM(sch_rule) ||
-            ScheduleRule::IsPrepareCrossThreadReduction(sch_rule) ||
+        if (ScheduleRule::IsPrepareCrossThreadReduction(sch_rule) ||
             // ScheduleRule::IsMultiLevelTilingSpatialUPMEM(sch_rule) ||
             ScheduleRule::IsMultiLevelTilingReductionUPMEM(sch_rule) ||
             ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule)) {
@@ -161,8 +160,7 @@ class PostOrderApplyNode : public SpaceGeneratorNode {
             sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_producer_block);
         Optional<Integer> rfactor_consumer = tir::GetAnn<Integer>(
             sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_consumer_block);
-        if ((ScheduleRule::IsMultiLevelTilingHBMPIM(sch_rule) ||
-             ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule) ||
+        if ((ScheduleRule::IsMultiLevelTilingUPMEM(sch_rule) ||
              ScheduleRule::IsMultiLevelTilingSpatialUPMEM(sch_rule) ||
              ScheduleRule::IsMultiLevelTilingReductionUPMEM(sch_rule) ||
              ScheduleRule::IsPrepareCrossThreadReduction(sch_rule)) &&
