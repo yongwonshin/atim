@@ -31,7 +31,7 @@ static T* A;
 
 // Create input arrays
 static void read_input(T* A, unsigned int nr_elements) {
-  FILE* file = fopen("../../../data/int64_403200000.bin", "rb");
+  FILE* file = fopen("../../../data/int64_array.bin", "rb");
   if (file == NULL) {
     printf("Error: file not found\n");
     exit(1);

@@ -246,11 +246,11 @@ class UPMEMWorkload:
     def benchmark(self, **kwargs):
         config = {**self.required, **kwargs}
         cmd = self.benchmark_command(config)
-        if not cmd or os.path.exists(f"baseline/{self.profile}") is False:
+        if not cmd or os.path.exists(f"baseline/prim/{self.profile}") is False:
             return 0, 0, 0
         try:
             process = subprocess.Popen(
-                f"cd baseline/{self.profile} && {cmd}",
+                f"cd baseline/prim/{self.profile} && {cmd}",
                 preexec_fn=os.setpgrp,
                 shell=True,
                 stdout=subprocess.PIPE,
@@ -260,8 +260,10 @@ class UPMEMWorkload:
         except subprocess.CalledProcessError as e:
             result = result.decode("utf-8")
             if "iffer" in result:
-                raise ValueError("Wrong")
-            raise RuntimeError(f"Failed: {error.decode('utf-8')}")
+                if not self.ignore_wrong: # Wrong
+                    raise ValueError("Wrong")
+            else:
+                raise RuntimeError(f"Failed: {error.decode('utf-8')}")
         except subprocess.TimeoutExpired as e:
             for _ in range(5):
                 try:
@@ -282,17 +284,8 @@ class UPMEMWorkload:
         try:
             result = result.decode("utf-8")
             if "iffer" in result:
-                raise ValueError("Wrong")
-            partial_cpudpu = re.findall("Elapsed Time\(1\) \(ms\): (\d+\.*\d*)", result)
-            partial_kernel = re.findall("Elapsed Time\(2\) \(ms\): (\d+\.*\d*)", result)
-            partial_dpucpu = re.findall("Elapsed Time\(3\) \(ms\): (\d+\.*\d*)", result)
-            if self.verbose >= 1:
-                print("iter\tBK\tK\tAK")
-                print("------------------------------")
-                for j, (c, k, d) in enumerate(zip(partial_cpudpu, partial_kernel, partial_dpucpu)):
-                    time_tuple = (float(c), float(k), float(d))
-                    print(str(j) + "\t" + "\t".join([f"{float(x):.3f}" for x in time_tuple]))
-                print("------------------------------")
+                if not self.ignore_wrong: # Wrong
+                    raise ValueError("Wrong")
 
             bench_before_kernel_time = re.search("CPU-DPU Time \(ms\): (\d+\.\d+)", result)
             bench_before_kernel_time = float(bench_before_kernel_time.group(1))

@@ -69,8 +69,6 @@ int main_kernel1() {
 
         // Computer vector addition
         vector_addition(cache_B, cache_A, l_size_bytes >> DIV);
-        printf("hello world\n");
-        printf("%d", cache_B[0]);
         // Write cache to current MRAM block
         mram_write(cache_B, (__mram_ptr void*)(mram_base_addr_B + byte_index), l_size_bytes);
 

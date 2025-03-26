@@ -57,6 +57,13 @@ class VA(UPMEMWorkload):
     def host_version(self):
         self.host.C = self.host.A + self.host.B
 
+    def benchmark_command(self, config):
+        bl = int(math.log2(config["n_c"] * np.dtype(config["dtype"]).itemsize))
+        pbtype = config["dtype"].upper()
+        return f"make clean && NR_DPUS={config['n_b']} NR_TASKLETS={config['n_t']} \
+            TYPE={pbtype} BL={bl} make && \
+            ./bin/host_code -i {config['L']} -w {self.warmup} -e {self.repeat}"
+
 
 class GEVA(UPMEMWorkload):
     def __init__(self, **kwargs):
@@ -137,6 +144,12 @@ class RED(UPMEMWorkload):
     def host_version(self):
         self.host.B = np.sum(self.host.A)
 
+    def benchmark_command(self, config):
+        bl = int(math.log2(config["n_c"] * np.dtype(config["dtype"]).itemsize))
+        pbtype = config["dtype"].upper()
+        return f"make clean && NR_DPUS={config['n_b']} \
+            NR_TASKLETS={config['n_t']} TYPE={pbtype} BL={bl} VERSION=HANDSHAKE make >/dev/null 2>/dev/null && \
+            ./bin/host_code -i {config['L']} -w {self.warmup} -e {self.repeat}"
 
 class MTV(UPMEMWorkload):
     def __init__(self, **kwargs):
@@ -151,6 +164,14 @@ class MTV(UPMEMWorkload):
 
     def host_version(self):
         self.host.C = np.dot(self.host.A, self.host.B)
+
+    def benchmark_command(self, config):
+        bl = int(math.log2(config["n_cache"] * np.dtype(config["dtype"]).itemsize))
+        pbtype = config["dtype"].upper()
+        return f"make clean && NR_DPUS={config['n_xb'] * config['n_yb']} \
+            NR_TASKLETS={config['n_yt']} TYPE={pbtype} BL={bl} make && \
+            ./bin/gemv_host -m {config['M']} -n {config['K']} -w {self.warmup} -e {self.repeat}"
+
 
 
 class GEMV(UPMEMWorkload):
@@ -213,6 +234,15 @@ class MMTV(UPMEMWorkload):
     def benchmark_command(self, config):
         bl = int(math.log2(config["n_cache"] * np.dtype(config["dtype"]).itemsize))
         pbtype = config["dtype"].upper()
-        return f"make clean && NR_DPUS={config['n_xb'] * config['n_yb']} \
-            NR_TASKLETS={config['n_t']} TYPE={pbtype} BL={bl} make && \
-            ./bin/mmtv_host -m {config['M']} -n {config['K']} -w {self.warmup} -e {self.repeat}"
+        return f"""
+            make clean &&
+            NR_DPUS_Y={config["n_yb"]} \
+            NR_DPUS_B={config["n_bb"]} \
+            NR_TASKLETS={config["n_yt"]} \
+            BL={bl} TYPE={pbtype} make &&
+            ./bin/gemv_host -b {config["B"]} \
+                -m {config["M"]} \
+                -n {config["N"]} \
+                -w {self.warmup} \
+                -e {self.repeat}
+        """

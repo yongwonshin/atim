@@ -33,7 +33,7 @@ static T* C;
 static T* C_dpu;
 
 // Create input arrays
-static void init_data(T* A, T* B, unsigned int b_size, unsigned int m_size, unsigned int n_size) {
+static void init_data(T* A, T* B, unsigned int m_size, unsigned int n_size) {
   /*
   srand(0);
 
@@ -48,29 +48,30 @@ static void init_data(T* A, T* B, unsigned int b_size, unsigned int m_size, unsi
   }
   */
 
-  char* fname = "../../../data/int32_163840_4096.bin";
-
-  FILE* file = fopen(fname, "rb");
+  FILE* file = fopen("../../../data/int32_array.bin", "rb");
   if (file == NULL) {
     printf("Error: file not found\n");
     exit(1);
   }
-  fread(A, sizeof(T), b_size * m_size * n_size, file);
-  rewind(file);
-  fread(B, sizeof(T), b_size * n_size, file);
+  fread(A, sizeof(T), m_size * n_size, file);
   fclose(file);
+  file = fopen("../../../data/int32_array.bin", "rb");
+  if (file == NULL) {
+    printf("Error: file not found\n");
+    exit(1);
+  }
+  fread(B, sizeof(T), n_size, file);
 }
 
 // Compute output in the host
-void gemv_host(T* C, T* A, T* B, unsigned int b_size, unsigned int m_size, unsigned int n_size) {
-  for (unsigned int i = 0; i < m_size * b_size; i++) {
+static void gemv_host(T* C, T* A, T* B, unsigned int m_size, unsigned int n_size) {
+  for (unsigned int i = 0; i < m_size; i++) {
     C[i] = 0;
   }
-  for (unsigned int b = 0; b < b_size; b++) {
-    for (unsigned int m = 0; m < m_size; m++) {
-      for (unsigned int n = 0; n < n_size; n++) {
-        C[b * m_size + m] += A[b * m_size * n_size + m * n_size + n] * B[b * n_size + n];
-      }
+
+  for (unsigned int m = 0; m < m_size; m++) {
+    for (unsigned int n = 0; n < n_size; n++) {
+      C[m] += A[m * n_size + n] * B[n];
     }
   }
 }
@@ -83,11 +84,9 @@ int main(int argc, char** argv) {
   uint32_t nr_of_dpus;
 
   // Allocate DPUs and load binary
-  uint32_t nr_dpus = p.b_size * NR_DPUS_Y;  // nr_dpus_b = b_size
-
   int attempt = 0;
   for (; attempt< 10; attempt++) {
-    if (dpu_alloc(nr_dpus, "disableSafeChecks=1", &dpu_set) == DPU_OK) {
+    if (dpu_alloc(NR_DPUS, "disableSafeChecks=1", &dpu_set) == DPU_OK) {
       break;
     }
     if (attempt == 9) {
@@ -95,11 +94,10 @@ int main(int argc, char** argv) {
       exit(1);
     }
   }
-
   printf("Attempt in %d\n", attempt);
+
   DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
   DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus));
-  assert(nr_of_dpus == nr_dpus);
 
 #if ENERGY
   struct dpu_probe_t probe;
@@ -107,7 +105,6 @@ int main(int argc, char** argv) {
 #endif
 
   unsigned int i;
-  unsigned int b_size = p.b_size;
   unsigned int m_size = p.m_size;
   unsigned int n_size = p.n_size;
 
@@ -121,30 +118,22 @@ int main(int argc, char** argv) {
   }
 
   i = 0;
-  // assert(b_size % NR_DPUS_B == 0);
-  // assert(m_size % NR_DPUS_Y == 0);
-
-  uint32_t rows_per_dpu = m_size / NR_DPUS_Y;
-  uint32_t batches_per_dpu = 1;
-
   DPU_FOREACH(dpu_set, dpu, i) {
-    uint32_t b_index = i / NR_DPUS_Y;  // 0
-    uint32_t m_index = i % NR_DPUS_Y;
-
     uint32_t rows_per_dpu;
     uint32_t prev_rows_dpu = 0;
-    uint32_t chunks = m_size / NR_DPUS_Y;
+    uint32_t chunks = m_size / nr_of_dpus;
     rows_per_dpu = chunks;
-    uint32_t rest_rows = m_size % NR_DPUS_Y;
-    if (m_index < rest_rows) rows_per_dpu++;
+    uint32_t rest_rows = m_size % nr_of_dpus;
+    if (i < rest_rows) rows_per_dpu++;
     if (rest_rows > 0) {
-      if (m_index >= rest_rows)
-        prev_rows_dpu = rest_rows * (chunks + 1) + (m_index - rest_rows) * chunks;
+      if (i >= rest_rows)
+        prev_rows_dpu = rest_rows * (chunks + 1) + (i - rest_rows) * chunks;
       else
-        prev_rows_dpu = m_index * (chunks + 1);
+        prev_rows_dpu = i * (chunks + 1);
     } else {
-      prev_rows_dpu = m_index * chunks;
+      prev_rows_dpu = i * chunks;
     }
+
     // Keep max rows for parallel transfers
     uint32_t rows_per_dpu_pad = rows_per_dpu;
     if (rows_per_dpu_pad % 2 == 1)  // 4-byte elements
@@ -154,7 +143,6 @@ int main(int argc, char** argv) {
     dpu_info[i].rows_per_dpu = rows_per_dpu;
     dpu_info[i].rows_per_dpu_pad = rows_per_dpu_pad;
     dpu_info[i].prev_rows_dpu = prev_rows_dpu;
-    dpu_info[i].prev_batches_dpu = b_index;
 
     // Copy input arguments to DPU
     input_args[i].n_size = n_size;
@@ -162,34 +150,30 @@ int main(int argc, char** argv) {
     input_args[i].nr_rows = rows_per_dpu;
   }
 
-  A = malloc(b_size * max_rows_per_dpu * NR_DPUS_Y * n_size_pad * sizeof(T));
-  B = malloc(b_size * n_size_pad * sizeof(T));
-  C = malloc(b_size * max_rows_per_dpu * NR_DPUS_Y * sizeof(T));
+  A = malloc(max_rows_per_dpu * nr_of_dpus * n_size_pad * sizeof(T));
+  B = malloc(n_size_pad * sizeof(T));
+  C = malloc(max_rows_per_dpu * nr_of_dpus * sizeof(T));
 
   // Initialize data with arbitrary data
-  init_data(A, B, b_size, m_size, n_size);
+  init_data(A, B, m_size, n_size);
+
   // Timer
   Timer timer;
 
   // Compute output on CPU (performance comparison and verification purposes)
   start(&timer, 0, 0);
-  for (unsigned int i = 0; i < rows_per_dpu * NR_DPUS_Y * b_size; i++) {
-    C[i] = 0;
-  }
-  // gemv_host(C, A, B, b_size, max_rows_per_dpu * NR_DPUS_Y, n_size_pad);
-  gemv_host(C, A, B, b_size, m_size, n_size);
-
+  gemv_host(C, A, B, m_size, n_size);
   stop(&timer, 0);
-
-  i = 0;
-  DPU_FOREACH(dpu_set, dpu, i) {
-    DPU_ASSERT(dpu_prepare_xfer(dpu, A + dpu_info[i].prev_batches_dpu * n_size * m_size +
-                                         dpu_info[i].prev_rows_dpu * n_size));
-  }
-  DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0,
-                           max_rows_per_dpu * n_size_pad * sizeof(T), DPU_XFER_DEFAULT));
   for (unsigned int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
     // Copy input array and vector
+    i = 0;
+    DPU_FOREACH(dpu_set, dpu, i) {
+      DPU_ASSERT(dpu_prepare_xfer(dpu, A + dpu_info[i].prev_rows_dpu * n_size));
+    }
+    DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0,
+                             max_rows_per_dpu * n_size_pad * sizeof(T), DPU_XFER_DEFAULT));
+  }
+  for (unsigned int rep = 0; rep < p.n_warmup + p.n_reps; rep++) {
 
     // Input arguments
     i = 0;
@@ -204,10 +188,7 @@ int main(int argc, char** argv) {
                              sizeof(dpu_arguments_t), DPU_XFER_DEFAULT));
 
     if (rep >= p.n_warmup) start(&timer, 1, rep - p.n_warmup);
-
-    DPU_FOREACH(dpu_set, dpu, i) {
-      DPU_ASSERT(dpu_prepare_xfer(dpu, B + dpu_info[i].prev_batches_dpu * n_size));
-    }
+    DPU_FOREACH(dpu_set, dpu, i) { DPU_ASSERT(dpu_prepare_xfer(dpu, B)); }
     DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME,
                              max_rows_per_dpu * n_size_pad * sizeof(T), n_size_pad * sizeof(T),
                              DPU_XFER_DEFAULT));
@@ -241,7 +222,7 @@ int main(int argc, char** argv) {
       DPU_ASSERT(dpu_prepare_xfer(dpu, C_dpu + i * max_rows_per_dpu));
     }
     DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME,
-                             (max_rows_per_dpu * n_size_pad + n_size_pad) * sizeof(T),
+                             max_rows_per_dpu * n_size_pad * sizeof(T) + n_size_pad * sizeof(T),
                              max_rows_per_dpu * sizeof(T), DPU_XFER_DEFAULT));
     if (rep >= p.n_warmup) stop(&timer, 3);
   }
@@ -280,9 +261,9 @@ int main(int argc, char** argv) {
           status = false;
         } else {
           problematic_dpu = n;
-        } // 연속된 dpu 8개까지는 봐주는 로직 추가
+        }
 #if PRINT
-        //			printf("%d: %d -- %d\n", i, C[i], C_dpu[n * max_rows_per_dpu + j]);
+        printf("%d: %d -- %d\n", i, C[i], C_dpu[n * max_rows_per_dpu + j]);
 #endif
       }
       i++;

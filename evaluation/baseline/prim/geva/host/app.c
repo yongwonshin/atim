@@ -36,14 +36,14 @@ int coeff[2] = { 3, 5 };
 
 // Create input arrays
 static void read_input(T* A, T* B, unsigned int nr_elements) {
-  FILE* file = fopen("../../../data/int32_163840_4096.bin", "rb");
+  FILE* file = fopen("../../../data/int32_array.bin", "rb");
   if (file == NULL) {
     printf("Error: file not found\n");
     exit(1);
   }
   fread(A, 4, nr_elements, file);
   fclose(file);
-  file = fopen("../../../data/int32_163840_4096.bin", "rb");
+  file = fopen("../../../data/int32_array.bin", "rb");
   if (file == NULL) {
     printf("Error: file not found\n");
     exit(1);

@@ -1,7 +1,7 @@
 DPU_DIR := dpu
 HOST_DIR := host
 BUILDDIR ?= bin
-NR_TASKLETS ?= 16 
+NR_TASKLETS ?= 16
 BL ?= 10
 NR_DPUS ?= 32
 
@@ -42,3 +42,4 @@ clean:
 
 test: all
 	./${HOST_TARGET} -m 8192 -n 8192
+
