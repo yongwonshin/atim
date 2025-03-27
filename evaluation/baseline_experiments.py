@@ -9,7 +9,6 @@ import time
 
 VERBOSE = 0
 NAIVE = False
-TOT = 54
 warmup = 1
 rep = 100
 eval_warmup = 100
@@ -142,9 +141,8 @@ def run_mmtv(B, M, N):
     best_configs.append(res)
 
 def search():
-    global TOT, VERBOSE, NAIVE
+    global VERBOSE, NAIVE
     VERBOSE = 1
-    start_time = time.time()
 
     for naive in [False, True]:
         NAIVE = naive

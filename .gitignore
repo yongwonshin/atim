@@ -294,5 +294,6 @@ evaluation/data/*.bin
 evaluation/logs
 evaluation/recent_logs
 evaluation/preliminary/
+evaluation/prim_search_results.txt
 evaluation/baseline/**/bin/
 evaluation/baseline/**/_*
