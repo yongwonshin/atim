@@ -23,6 +23,7 @@
  */
 
 #include <dmlc/json.h>
+#include <emmintrin.h>
 #include <tvm/runtime/c_backend_api.h>
 #include <tvm/runtime/data_type.h>
 #include <tvm/runtime/packed_func.h>
@@ -876,7 +877,8 @@ PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, 
     TVMRetValue temp;
     std::ostringstream os;
     // skip first time call, to activate lazy compilation components.
-    pf.CallPacked(args, &temp);
+    for (int j = 0; j < 10; j++)
+      pf.CallPacked(args, &temp);
 
     DeviceAPI::Get(dev)->StreamSync(dev, nullptr);
 
@@ -892,6 +894,19 @@ PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, 
           number = static_cast<int>(
               std::max((min_repeat_ms / (duration_ms / number) + 1), number * golden_ratio));
         }
+
+        number = 1;
+        for (int i = 0; i < args.size(); i++) {
+          DLTensor* arr = static_cast<DLTensor*>(args.values[i].v_handle);
+          int64_t flatten_size = arr->dtype.bits / 8;
+          for (int j = 0; j < arr->ndim; j++) {
+            flatten_size *= arr->shape[j];
+          }
+          for (size_t j = 0; j < flatten_size; j += 64) {
+            _mm_clflush((char*)(arr->data) + j);
+          }
+        }
+        _mm_mfence();
 
         // start timing
         Timer t = Timer::Start(dev);
