@@ -164,8 +164,7 @@ Array<Schedule> MultiLevelTilingReductionNode::Apply(const Schedule& sch, const 
     return results;
   }
   if (try_reorder && IsTrivialBindingOrTryReorder(sch, block_rv)) {
-    // std::cerr << "RECOVER SUCCESSFUL: " << std::endl;
-    // std::cerr << sch->mod() << std::endl;
+    // do nothing
   }
   if ((filter_fn_ && filter_fn_.value()(sch, sch->GetSRef(block_rv))) ||
       NeedsMultiLevelTilingReduction(sch->state(), sch->GetSRef(block_rv))) {

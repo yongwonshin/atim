@@ -36,6 +36,7 @@ void ExprVisitor::VisitExpr_(const AnyNode* op) {}
 
 void ExprVisitor::VisitExpr_(const BufferLoadNode* op) {
   VisitArray(op->indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  // [ywshin]: is it safe?
   // VisitArray(op->global_indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
 }
 

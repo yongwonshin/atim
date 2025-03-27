@@ -103,8 +103,6 @@ void MultiLevelTilingNode::InitializeWithTuneContext(const TuneContext& context)
 
 // Entry of the mega rule; Inherited from ScheduleRuleNode
 Array<Schedule> MultiLevelTilingNode::Apply(const Schedule& sch, const BlockRV& block_rv) {
-  // std::cerr << "MultiLevelTilingNode::Apply: "
-  //           << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
   bool try_reorder = false;
   if ((filter_fn_ && filter_fn_.value()(sch, sch->GetSRef(block_rv))) ||
       NeedsMultiLevelTiling(sch->state(), sch->GetSRef(block_rv), &try_reorder)) {
@@ -117,8 +115,7 @@ Array<Schedule> MultiLevelTilingNode::Apply(const Schedule& sch, const BlockRV& 
     return results;
   }
   if (try_reorder && IsTrivialBindingOrTryReorder(sch, block_rv)) {
-    // std::cerr << "RECOVER SUCCESSFUL: " << std::endl;
-    // std::cerr << sch->mod() << std::endl;
+    // do nothing
   }
   if ((filter_fn_ && filter_fn_.value()(sch, sch->GetSRef(block_rv))) ||
       NeedsMultiLevelTiling(sch->state(), sch->GetSRef(block_rv))) {

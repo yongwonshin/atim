@@ -69,6 +69,7 @@ void StmtVisitor::VisitStmt_(const DeclBufferNode* op) { this->VisitStmt(op->bod
 void StmtVisitor::VisitStmt_(const BufferStoreNode* op) {
   this->VisitExpr(op->value);
   VisitArray(op->indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  // [ywshin]: is it safe?
   // VisitArray(op->global_indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
 }
 

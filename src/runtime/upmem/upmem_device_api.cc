@@ -66,7 +66,7 @@ void UPMEMDeviceAPI::GetAttr(Device dev, DeviceAttrKind kind, TVMRetValue* rv) {
 // MSC, Android first. Reuse memalloc in cpu_device_api first.
 
 void* UPMEMDeviceAPI::AllocDataSpace(Device dev, size_t nbytes, size_t alignment,
-                                     DLDataType type_hint, Optional<String> mem_scope) {
+                                     DLDataType type_hint) {
   void* ptr;
   VLOG(3) << "Attempt to alloc dataspace " << nbytes << " bytes with alignment " << alignment;
   int ret = posix_memalign(&ptr, 32, nbytes);
@@ -120,7 +120,7 @@ int UPMEMDeviceAPI::AcquireResources(TVMArgs args) {
 
   VLOG(3) << "dpu_alloc(" << bank_num << ", disableSafeChecks=1, NULL, &dpu_set)";
   int attempt = 0;
-  for (; attempt< 10; attempt++) {
+  for (; attempt < 10; attempt++) {
     if (dpu_alloc(bank_num, "disableSafeChecks=1", &dpu_set) == DPU_OK) {
       break;
     }

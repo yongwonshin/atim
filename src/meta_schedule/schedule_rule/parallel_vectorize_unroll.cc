@@ -65,6 +65,7 @@ class ParallelizeVectorizeUnrollNode : public ScheduleRuleNode {
       sch->Annotate(root_rv, tir::attr::meta_schedule_vectorize, Integer(max_vectorize_extent));
     }
     // Unroll
+    // [ywshin]
     // if (!unroll_max_steps.empty() && !tir::CheckSpatialPrimFunc(sch, root_rv)) {
     if (!unroll_max_steps.empty()) {
       int n = unroll_max_steps.size();

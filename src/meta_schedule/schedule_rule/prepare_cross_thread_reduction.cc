@@ -49,12 +49,9 @@ ScheduleRule ScheduleRule::PrepareCrossThreadReduction() {
 
 Array<tir::Schedule> PrepareCrossThreadReductionNode::Apply(const tir::Schedule& sch,
                                                             const tir::BlockRV& block_rv) {
-  // std::cerr << "PrepareCrossThreadReductionNode::Apply: "
-  //           << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
   if (NeedsMultiLevelTilingReduction(sch->state(), sch->GetSRef(block_rv)) &&
       tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_producer_block)
           .defined()) {
-    // std::cerr << "PrepareCrossThreadReductionNode::Apply2" << std::endl;
     // Reorder the loop axes if reduction loops are not innermost.
     // After the reordering, fuse all the reduction loops.
     size_t num_spatial_loops;
@@ -74,7 +71,6 @@ Array<tir::Schedule> PrepareCrossThreadReductionNode::Apply(const tir::Schedule&
     sch->Unannotate(block_rv, tir::attr::meta_schedule_rfactor_producer_block);
     sch->Annotate(block_rv, tir::attr::meta_schedule_cross_thread_reduction_block, Integer(1));
     sch->Annotate(block_rf, tir::attr::meta_schedule_rfactor_producer_block, Integer(1));
-    // std::cerr << sch->mod() << std::endl;
   }
   return {sch};
 }

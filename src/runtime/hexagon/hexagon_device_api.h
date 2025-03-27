@@ -94,7 +94,7 @@ class HexagonDeviceAPI final : public DeviceAPI {
   /*! \brief Currently unimplemented interface to specify the active
    *  Hexagon device.
    */
-  void SetDevice(Device dev) final{};
+  void SetDevice(Device dev) final {};
 
   //! \brief Return the queried Hexagon device attribute.
   void GetAttr(Device dev, DeviceAttrKind kind, TVMRetValue* rv) final;
@@ -104,8 +104,7 @@ class HexagonDeviceAPI final : public DeviceAPI {
 
   //! \note Standard memory allocation methods of the DeviceAPI interface.
   //! \brief Allocate a flat allocation of global memory wrapped in a HexagonBuffer.
-  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint,
-                       Optional<String> mem_scope = NullOpt) final;
+  void* AllocDataSpace(Device dev, size_t nbytes, size_t alignment, DLDataType type_hint) final;
 
   //! \brief Free the allocated HexagonBuffer.
   void FreeDataSpace(Device dev, void* ptr) final;

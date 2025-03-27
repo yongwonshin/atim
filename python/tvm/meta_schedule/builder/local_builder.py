@@ -258,17 +258,8 @@ def default_build(mod: IRModule, target: Target, _params: Optional[Dict[str, NDA
     from tvm.ir.transform import PassContext
     from tvm.script import from_source
 
-    # pylint: enable=import-outside-toplevel
-    if target.kind.name == "hbmpim":
-        mod = from_source(mod.script())  # TODO[ywshin]: 이렇게 하지 않으면 오류가 발생한다...
-
     mod = RemoveWeightLayoutRewriteBlock(skip_ndarray_rewrite=True)(mod)
-
-    if target.kind.name == "hbmpim":
-        with PassContext(config={"tir.hbmpim": True}):
-            return tvm_build(mod, target=target)
-    else:
-        return tvm_build(mod, target=target)
+    return tvm_build(mod, target=target)
 
 
 @register_func("meta_schedule.builder.default_export")

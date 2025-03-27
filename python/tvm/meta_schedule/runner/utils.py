@@ -52,8 +52,8 @@ def alloc_argument_common(
         The allocation args
     """
 
-    def alloc_tensor(_, dtype, shape, mem_scope="global") -> ndarray.NDArray:
-        arg = ndarray.empty(shape=shape, dtype=dtype, device=device, mem_scope=mem_scope)
+    def alloc_tensor(_, dtype, shape) -> ndarray.NDArray:
+        arg = ndarray.empty(shape=shape, dtype=dtype, device=device)
         f_random_fill(arg)
         return arg
 

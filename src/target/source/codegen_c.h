@@ -104,7 +104,6 @@ class CodeGenC : public ExprFunctor<void(const PrimExpr&, std::ostream&)>,
    *  Example: stream << "void";
    */
   virtual void PrintFuncPrefix(std::ostream& os);  // NOLINT(*)
-  virtual void PrintExtraFuncParams(const PrimFunc& f){};
   /*!
    * \brief Print extra function attributes
    *
@@ -116,11 +115,6 @@ class CodeGenC : public ExprFunctor<void(const PrimExpr&, std::ostream&)>,
    * \param f The function to be compiled.
    */
   virtual void PreFunctionBody(const PrimFunc& f) {}
-  /*!
-   * \brief Insert statement after function body.
-   * \param f The function to be compiled.
-   */
-  virtual void PostFunctionBody(const PrimFunc& f) {}
   /*!
    * \brief Initialize codegen state for generating f.
    * \param f The function to be compiled.

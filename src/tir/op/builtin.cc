@@ -279,41 +279,6 @@ TIR_DEFINE_BUILTIN_FUNC(ptx_ldmatrix)
     .set_attr<TScriptDtypePrintLocation>("TScriptDtypePrintLocation",
                                          Integer(ScriptDtypePrintLocation::kFirst));
 
-TIR_DEFINE_BUILTIN_FUNC(R_CMD)
-    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque))
-    .set_attr<TScriptDtypePrintLocation>("TScriptDtypePrintLocation",
-                                         Integer(ScriptDtypePrintLocation::kFirst));
-TIR_DEFINE_BUILTIN_FUNC(W_CMD)
-    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque))
-    .set_attr<TScriptDtypePrintLocation>("TScriptDtypePrintLocation",
-                                         Integer(ScriptDtypePrintLocation::kFirst));
-TIR_DEFINE_BUILTIN_FUNC(W_CMD_R)
-    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque))
-    .set_attr<TScriptDtypePrintLocation>("TScriptDtypePrintLocation",
-                                         Integer(ScriptDtypePrintLocation::kFirst));
-TIR_DEFINE_BUILTIN_FUNC(W_CMD_R_C)
-    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque))
-    .set_attr<TScriptDtypePrintLocation>("TScriptDtypePrintLocation",
-                                         Integer(ScriptDtypePrintLocation::kFirst));
-TIR_DEFINE_BUILTIN_FUNC(B_CMD).set_attr<TCallEffectKind>("TCallEffectKind",
-                                                         Integer(CallEffectKind::kOpaque));
-TIR_DEFINE_BUILTIN_FUNC(vloadn)
-    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque))
-    .set_attr<TScriptDtypePrintLocation>("TScriptDtypePrintLocation",
-                                         Integer(ScriptDtypePrintLocation::kFirst));
-TIR_DEFINE_BUILTIN_FUNC(vstoren)
-    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque))
-    .set_attr<TScriptDtypePrintLocation>("TScriptDtypePrintLocation",
-                                         Integer(ScriptDtypePrintLocation::kFirst));
-TIR_DEFINE_BUILTIN_FUNC(barrier)
-    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque))
-    .set_attr<TScriptDtypePrintLocation>("TScriptDtypePrintLocation",
-                                         Integer(ScriptDtypePrintLocation::kFirst));
-TIR_DEFINE_BUILTIN_FUNC(mem_fence).set_attr<TCallEffectKind>("TCallEffectKind",
-                                                             Integer(CallEffectKind::kOpaque));
-TIR_DEFINE_BUILTIN_FUNC(addr_gen).set_attr<TCallEffectKind>("TCallEffectKind",
-                                                            Integer(CallEffectKind::kPure));
-
 TIR_DEFINE_BUILTIN_FUNC(ptx_cp_async)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kOpaque))
     .set_attr<TScriptDtypePrintLocation>("TScriptDtypePrintLocation",

@@ -282,13 +282,10 @@ custom_gemv/
 playground/
 
 pim_test
-3rdparty/hbmpim
 custom_gemv
 
 temp
 temp-*
-
-!3rdparty/hbmpim/external_libs/include/dramsim2/lib
 
 evaluation/data/*.bin
 evaluation/logs

@@ -97,10 +97,6 @@ std::vector<State> MultiLevelTilingReductionUPMEMNode::ApplyExtraSubRules(
     std::vector<State> states) {
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = HandleReductionBlockUPMEM(state);
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER HandleReductionBlockUPMEM (reduction): " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   return states;
@@ -112,7 +108,6 @@ std::vector<State> MultiLevelTilingReductionUPMEMNode::HandleReductionBlockUPMEM
   const BlockRV& block_rv = state->block_rv;
   if (tir::GetAnn<Integer>(sch->GetSRef(block_rv), tir::attr::meta_schedule_rfactor_consumer_block)
           .defined()) {
-    // std::cerr << "HandleReductionBlockUPMEM START!" << std::endl;
     Array<LoopRV> loops = sch->GetLoops(block_rv);
     std::vector<IterVarType> iter_types = GetBlockVarTypes(sch->GetSRef(state->block_rv));
 
@@ -150,34 +145,18 @@ std::vector<State> MultiLevelTilingReductionUPMEMNode::ApplySubRules(std::vector
   // });
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = TileLoopNest(std::move(state));
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER TILING (reduction): " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = AddWriteReuse(state);
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER AddWriteReuse: " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = AddReadReuse(state);
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER AddReadReuse: " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   states = SubRule(std::move(states), [&](State state) {
     auto new_states = DecomposeReduction(state);
-    for (auto new_state : new_states) {
-      // std::cerr << "AFTER DecomposeReduction (reduction): " << std::endl;
-      // std::cerr << new_state->sch->mod() << std::endl;
-    }
     return new_states;
   });
   return states;

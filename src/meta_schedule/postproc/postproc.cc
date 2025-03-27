@@ -67,16 +67,6 @@ Array<Postproc> Postproc::DefaultCPUTensorization() {
   };
 }
 
-Array<Postproc> Postproc::DefaultHBMPIM() {
-  // TODO[ywshin]
-  return Array<Postproc>{
-      Postproc::DisallowDynamicLoop(),
-      // Postproc::RewriteParallelVectorizeUnroll(),
-      Postproc::RewriteReductionBlock(), Postproc::RewriteTensorize(/*vectorize_init_loop=*/false),
-      // Postproc::RewriteLayout(),
-  };
-}
-
 Array<Postproc> Postproc::DefaultUPMEM() {
   return Array<Postproc>{
       Postproc::DisallowDynamicLoop(),

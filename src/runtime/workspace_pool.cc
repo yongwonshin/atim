@@ -159,10 +159,6 @@ void* WorkspacePool::AllocWorkspace(Device dev, size_t size) {
 }
 
 void WorkspacePool::FreeWorkspace(Device dev, void* ptr) {
-  // TODO[ywshin]: temporary not free "internal" buffers
-  if (static_cast<size_t>(dev.device_id) >= array_.size() || array_[dev.device_id] == nullptr)
-    return;
-
   ICHECK(static_cast<size_t>(dev.device_id) < array_.size() && array_[dev.device_id] != nullptr);
   array_[dev.device_id]->Free(ptr);
 }

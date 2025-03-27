@@ -24,7 +24,7 @@ endif()
 # You can create a config.cmake at build folder
 # and add set(OPTION VALUE) to override these build options.
 # Alernatively, use cmake -DOPTION=VALUE through command-line.
-tvm_option(USE_CUDA "Build with CUDA" ON)
+tvm_option(USE_CUDA "Build with CUDA" OFF)
 tvm_option(USE_OPENCL "Build with OpenCL" OFF)
 tvm_option(USE_OPENCL_ENABLE_HOST_PTR "Enable OpenCL memory object access to host" OFF)
 tvm_option(USE_OPENCL_GTEST "Path to OpenCL specific gtest version for runtime cpp tests." /path/to/opencl/gtest)
@@ -41,7 +41,6 @@ tvm_option(USE_KHRONOS_SPIRV "Whether to use spirv-tools.and SPIRV-Headers from 
 tvm_option(USE_SPIRV_KHR_INTEGER_DOT_PRODUCT "whether enable SPIRV_KHR_DOT_PRODUCT" OFF)
 tvm_option(USE_METAL "Build with Metal" OFF)
 tvm_option(USE_UPMEM "Build with UPMEM" OFF)
-tvm_option(USE_HBMPIM "Build with HBMPIM" OFF)
 tvm_option(USE_ROCM "Build with ROCM" OFF)
 tvm_option(ROCM_PATH "The path to rocm" /opt/rocm)
 tvm_option(USE_HEXAGON "Build with Hexagon support" OFF)
@@ -834,12 +833,4 @@ if(USE_CUDA AND USE_CUTLASS)
   install(TARGETS fpA_intB_gemm EXPORT ${PROJECT_NAME}Targets DESTINATION lib${LIB_SUFFIX})
   target_link_libraries(tvm PRIVATE fpA_intB_gemm)
   target_link_libraries(tvm_runtime PRIVATE fpA_intB_gemm)
-endif()
-
-if(USE_HBMPIM)
-  # TODO[ywshin]: hardcoded libarary path
-  find_library(DRAMSIM2_SO /lib/libdramsim2.so)
-  target_link_libraries(tvm_runtime PUBLIC ${DRAMSIM2_SO})
-  target_link_libraries(tvm PUBLIC ${DRAMSIM2_SO})
-  link_directories("3rdparty/hbmpim/external_libs")
 endif()

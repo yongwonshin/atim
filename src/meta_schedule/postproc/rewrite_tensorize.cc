@@ -31,33 +31,21 @@ using tir::LoopRV;
 void CollectTensorizationJobs(
     const tir::Schedule& sch, const String& func_name, const tir::PrimFuncNode* func,
     bool vectorize_init_loop,
-    std::vector<std::tuple<String, String, std::function<void(tir::BlockRV)>>>* jobs,
-    bool& is_successful, bool& tensorized) {
-  tir::PostOrderVisit(func->body, [=, &jobs, &is_successful, &tensorized](const ObjectRef& obj) {
+    std::vector<std::tuple<String, String, std::function<void(tir::BlockRV)>>>* jobs) {
+  tir::PostOrderVisit(func->body, [=, &jobs](const ObjectRef& obj) {
     if (const auto* block = obj.as<tir::BlockNode>()) {
       tir::StmtSRef block_sref = sch->GetSRef(block);
       std::string block_name = block_sref->StmtAs<tir::BlockNode>()->name_hint;
       if (Optional<String> intrin_name =
               tir::GetAnn<String>(block_sref, tir::attr::meta_schedule_auto_tensorize)) {
         if (intrin_name.value() != "") {
-          jobs->emplace_back(
-              block_name, func_name,
-              [sch, intrin_name, block_name, &is_successful, &tensorized](tir::BlockRV block) {
-                tir::Schedule org_sch = sch->Copy();
-                try {
-                  sch->Tensorize(block, intrin_name.value());
-                  tensorized = true;
-                  //  std::cerr << "TENSORIZATION SUCCESSFUL!" << std::endl;
-                } catch (const std::exception& e) {
-                  LOG(WARNING) << "BLOCK: " << block_name << " attempted to be tensorized with "
-                               << intrin_name.value() << " but "
-                               << "Tensorize failed with error "
-                               << e.what();  // << org_sch->mod();
-                                             // std::cerr << sch->mod() <<
-                                             // std::endl;
-                  is_successful = false;
-                }
-              });
+          jobs->emplace_back(block_name, func_name, [sch, intrin_name](tir::BlockRV block) {
+            try {
+              sch->Tensorize(block, intrin_name.value());
+            } catch (const std::exception& e) {
+              LOG(WARNING) << "Tensorize failed with error " << e.what();
+            }
+          });
         } else if (block_name.find("init") && vectorize_init_loop) {
           jobs->emplace_back(block_name, func_name, [sch](tir::BlockRV block) {
             Array<BlockRV> child_blocks = sch->GetChildBlocks(block);
@@ -94,14 +82,11 @@ class RewriteTensorizeNode : public PostprocNode {
 bool RewriteTensorizeNode::Apply(const tir::Schedule& sch) {
   // The rewriting jobs, 3-tuple (block_name, func_name, job_func)
   std::vector<std::tuple<String, String, std::function<void(tir::BlockRV)>>> jobs;
-  bool is_successful = true;
-  bool tensorized = false;
   for (const auto& kv : sch->mod()->functions) {
     GlobalVar g_var = kv.first;
     BaseFunc base_func = kv.second;
     if (const tir::PrimFuncNode* prim_func = base_func.as<tir::PrimFuncNode>()) {
-      CollectTensorizationJobs(sch, g_var->name_hint, prim_func, vectorize_init_loop, &jobs,
-                               is_successful, tensorized);
+      CollectTensorizationJobs(sch, g_var->name_hint, prim_func, vectorize_init_loop, &jobs);
     }
   }
   for (const auto& job : jobs) {
@@ -112,19 +97,6 @@ bool RewriteTensorizeNode::Apply(const tir::Schedule& sch) {
     sch->Unannotate(block, tir::attr::meta_schedule_auto_tensorize);
     job_func(block);
   }
-
-  if (is_successful && tensorized) {
-    // std::cerr << "AFTER RewriteTensorize:" << std::endl;
-    // std::cerr << sch->mod() << std::endl;
-  }
-
-  if (!tensorized || !is_successful) {
-    return false;
-  } else if (tensorized && !is_successful) {
-    std::cerr << "SOMETHING WENT WRONG!" << std::endl;
-    return false;
-  }
-
   return true;
 }
 

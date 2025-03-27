@@ -153,7 +153,7 @@ class MemoryAccessVerifier final : protected StmtExprVisitor {
            kDLMetal == dev_type || kDLROCM == dev_type || kOpenGL == dev_type;
   }
 
-  static bool IsPIMDevice(int dev_type) { return kDLUPMEM == dev_type || kDLHBMPIM == dev_type; }
+  static bool IsPIMDevice(int dev_type) { return kDLUPMEM == dev_type; }
   /// Check if a given DLDeviceType/TVMDeviceExtType value denotes FPGA device.
   static bool IsFPGADevice(int dev_type) { return kDLSDAccel == dev_type || kDLAOCL == dev_type; }
 

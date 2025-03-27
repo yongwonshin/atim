@@ -60,7 +60,7 @@ inline bool IsGPUTask(const SearchTask& task) {
 
 inline bool IsPIMTask(const SearchTask& task) {
   int device_type = (task)->target->GetTargetDeviceType();
-  return device_type == kDLUPMEM || device_type == kDLHBMPIM;
+  return device_type == kDLUPMEM;
 }
 
 /*! \brief Return whether the search task is targeting a Hexagon. */

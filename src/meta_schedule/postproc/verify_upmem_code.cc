@@ -89,7 +89,6 @@ class VerifyUPMEMCodeNode : public PostprocNode {
           pass_list.push_back(tir::transform::CompactBufferAllocation());
           pass_list.push_back(tir::transform::LowerAutoCopy());
           pass_list.push_back(tir::transform::LowerMatchBuffer());
-          // pass_list.push_back(tir::transform::InjectHBMPIMParams());
           pass_list.push_back(tir::transform::UnifyThreadBinding());
           pass_list.push_back(tir::transform::Simplify());
           pass_list.push_back(tir::transform::InjectPermutedLayout());
@@ -122,12 +121,10 @@ class VerifyUPMEMCodeNode : public PostprocNode {
           IRModule mod = IRModule(Map<GlobalVar, BaseFunc>({{GlobalVar(g_var->name_hint), f}}));
           lowered = tvm::transform::Sequential(pass_list)(std::move(mod));
         } catch (const dmlc::Error& e) {
-          // std::cerr << "ERROR 1" << std::endl;
           // std::cerr << e.what() << std::endl;
           return false;
         }
         if (!Verify(lowered)) {
-          // std::cerr << "ERROR 2" << std::endl;
           return false;
         }
       }

@@ -64,8 +64,6 @@ Array<tir::Schedule> AddUPMEMRFactorNode::Apply(const tir::Schedule& sch,
   tir::StmtSRef block_sref = sch->GetSRef(block_rv);
   Array<tir::LoopRV> loops = sch->GetLoops(block_rv);
   if (loops.empty()) {
-    // std::cerr << "NOT RFACTORED (empty): "
-    //           << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
     return {sch};
   }
 
@@ -74,8 +72,6 @@ Array<tir::Schedule> AddUPMEMRFactorNode::Apply(const tir::Schedule& sch,
                                                  /*require_stage_pipeline=*/false);
   if (!IsReductionBlock(self, block_sref, scope_sref) || HasBeenMultiLevelTiled(block_sref) ||
       IsSpatial(block_sref)) {
-    // std::cerr << "NOT RFACTORED (no reduction): "
-    //           << sch->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
     return {sch};
   }
 
@@ -113,14 +109,9 @@ Array<tir::Schedule> AddUPMEMRFactorNode::Apply(const tir::Schedule& sch,
       sch_tmp->Annotate(block_rf, tir::attr::meta_schedule_rfactor_producer_block, Integer(1));
       sch_tmp->Annotate(block_rv, tir::attr::meta_schedule_rfactor_consumer_block, Integer(1));
       res.push_back(sch_tmp);
-      // std::cerr << "AFTER PIM RFACTOR: "
-      //           << sch_tmp->GetSRef(block_rv)->StmtAs<tir::BlockNode>()->name_hint << std::endl;
-      // std::cerr << sch_tmp->mod() << std::endl;
     } catch (const tvm::runtime::Error& e) {
-      // std::cerr << "ERROR WHILE RFACTORING" << std::endl;
     }
-    // only first loop must be rfactored
-    // TODO[ywshin]: option?
+    // TODO[ywshin]: only first loop must be rfactored. Any other option?
     break;
   }
 
