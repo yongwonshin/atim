@@ -585,7 +585,7 @@ PackedFunc ProfileFunction(Module mod, std::string func_name, int device_type, i
  */
 PackedFunc WrapTimeEvaluator(PackedFunc f, Device dev, int number, int repeat, int min_repeat_ms,
                              int limit_zero_time_iterations, int cooldown_interval_ms,
-                             int repeats_to_cooldown, PackedFunc f_preproc = nullptr);
+                             int repeats_to_cooldown, PackedFunc f_preproc = nullptr, bool flushing_cache = false);
 
 }  // namespace profiling
 }  // namespace runtime

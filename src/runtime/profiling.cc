@@ -862,7 +862,7 @@ TVM_REGISTER_GLOBAL("runtime.profiling.ProfileFunction")
 
 PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, int min_repeat_ms,
                              int limit_zero_time_iterations, int cooldown_interval_ms,
-                             int repeats_to_cooldown, PackedFunc f_preproc) {
+                             int repeats_to_cooldown, PackedFunc f_preproc, bool flushing_cache) {
   ICHECK(pf != nullptr);
 
   if (static_cast<int>(dev.device_type) == static_cast<int>(kDLMicroDev)) {
@@ -873,7 +873,7 @@ PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, 
 
   auto ftimer = [pf, dev, number, repeat, min_repeat_ms, limit_zero_time_iterations,
                  cooldown_interval_ms, repeats_to_cooldown,
-                 f_preproc](TVMArgs args, TVMRetValue* rv) mutable {
+                 f_preproc, flushing_cache](TVMArgs args, TVMRetValue* rv) mutable {
     TVMRetValue temp;
     std::ostringstream os;
     // skip first time call, to activate lazy compilation components.
@@ -894,19 +894,20 @@ PackedFunc WrapTimeEvaluator(PackedFunc pf, Device dev, int number, int repeat, 
           number = static_cast<int>(
               std::max((min_repeat_ms / (duration_ms / number) + 1), number * golden_ratio));
         }
-
-        number = 1;
-        for (int i = 0; i < args.size(); i++) {
-          DLTensor* arr = static_cast<DLTensor*>(args.values[i].v_handle);
-          int64_t flatten_size = arr->dtype.bits / 8;
-          for (int j = 0; j < arr->ndim; j++) {
-            flatten_size *= arr->shape[j];
+        if (flushing_cache) {
+          number = 1;
+          for (int i = 0; i < args.size(); i++) {
+            DLTensor* arr = static_cast<DLTensor*>(args.values[i].v_handle);
+            uint64_t flatten_size = arr->dtype.bits / 8;
+            for (int j = 0; j < arr->ndim; j++) {
+              flatten_size *= arr->shape[j];
+            }
+            for (size_t j = 0; j < flatten_size; j += 64) {
+              _mm_clflush((char*)(arr->data) + j);
+            }
           }
-          for (size_t j = 0; j < flatten_size; j += 64) {
-            _mm_clflush((char*)(arr->data) + j);
-          }
+          _mm_mfence();
         }
-        _mm_mfence();
 
         // start timing
         Timer t = Timer::Start(dev);

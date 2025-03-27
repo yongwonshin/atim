@@ -30,8 +30,7 @@ parser.add_argument("--reuse_cost_model", action="store_true")
 args = parser.parse_args()
 
 tuple_bench = {"default": (args.M, args.N, args.K)}
-# target = Target("llvm --num-cores=96")
-target = Target("upmem --num-cores=96")
+target = Target("llvm --num-cores=96")
 
 
 def get_module(M, N, K, dtype):
@@ -41,8 +40,6 @@ def get_module(M, N, K, dtype):
         return upmem_ttv_factory(M, N, K, dtype)
     elif args.op_type == "polygemv1":
         return upmem_poly_gemv1_factory(M, K, dtype)
-    # elif args.op_type == "polygemv2":
-    #     return upmem_poly_gemv2_factory(M, K, dtype)
     elif args.op_type == "va":
         return upmem_va_factory(M, dtype)
     elif args.op_type == "ta":
@@ -85,7 +82,6 @@ for name, (M, N, K) in tuple_bench.items():
                 work_dir=f"./{args.workdir}",
                 max_trials_global=16,
                 num_trials_per_iter=1,
-                # num_tuning_cores=96,  # to prevent dpu allocation error
                 cost_model=cost_model,
             )
             sch = ms.tir_integration.compile_tir(database, mod, target)
