@@ -1,6 +1,5 @@
 from tune import tune
 from tasks import poly_tasks, gptj_tasks
-import argparse
 
 
 def tune_group(tasks):
@@ -13,11 +12,6 @@ def tune_group(tasks):
             print(f"Error: {op_type}, {m}, {n}, {k}")
             print(e)
             continue
-parser = argparse.ArgumentParser(description="Run search or evaluation.")
-parser.add_argument("--search", action="store_true", help="Run the search process.")
-parser.add_argument("--eval", action="store_true", help="Run the evaluation process.")
-args = parser.parse_args()
 
-if args.search:
-    tune_group(poly_tasks)
-    tune_group(gptj_tasks)
+tune_group(poly_tasks)
+tune_group(gptj_tasks)

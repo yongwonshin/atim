@@ -8,16 +8,9 @@ import argparse
 from bench import *
 from workloads import get_workload
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--workdir", default="bench_autotuner_result", type=str)
-parser.add_argument("--only_show", action="store_true")
-parser.add_argument("--only_run", action="store_true")
-args = parser.parse_args()
-
-target = Target("upmem --num-cores=96")
-
 
 def query(workdir: str, only_show: False, only_run: False) -> None:
+    target = Target("upmem --num-cores=96")
     parsed = workdir.split("/")[-1].split("_")
     dtype = "int32"
     if "red" in workdir or "dot" in workdir:
@@ -59,7 +52,14 @@ def query(workdir: str, only_show: False, only_run: False) -> None:
         n_cache=-1,
         dtype=dtype,
     )
+    return workload.recent_time_tuple
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--workdir", default="bench_autotuner_result", type=str)
+    parser.add_argument("--only_show", action="store_true")
+    parser.add_argument("--only_run", action="store_true")
+    args = parser.parse_args()
+
     query(args.workdir, args.only_show, args.only_run)

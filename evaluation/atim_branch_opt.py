@@ -70,9 +70,8 @@ def sens_mtv(m, k):
     for opt in [0, 1, 2, 4]:
         mtv.opt_level = opt
         t = mtv.test(gemvRCTile, **option)
-        if t == "ERROR" or t == "WRONG":
-            t = 0
-        res.append(max(0.001, float(t)))
+        t = 0 if t == "ERROR" else t
+        res.append(float(t))
     print(f"{m}\t{k}\t" + "\t".join([f"{t:.4f}" for t in res]))
     return res
 
@@ -84,9 +83,8 @@ def sens_va(l):
     for opt in [0, 1, 2, 4]:
         va.opt_level = opt
         t = va.test(vaTile, **option)
-        if t == "ERROR" or t == "WRONG":
-            t = 0
-        res.append(max(0.001, float(t)))
+        t = 0 if t == "ERROR" else t
+        res.append(float(t))
     print(f"{l}\t1\t" + "\t".join([f"{t:.4f}" for t in res]))
     return res
 
