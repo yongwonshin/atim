@@ -67,6 +67,8 @@ if __name__ == "__main__":
     for naive in [True, False]:
         print(("PrIM" if naive else "PrIM-Search") + " search for Tensor programs")
         for task in poly_tasks:
+            if not task[0]:
+                continue
             params = search(*task, naive=naive)
             save_search_params(*task, params, naive)
         print(("PrIM" if naive else "PrIM-Search") + " search for GPT-J")

@@ -38,10 +38,22 @@ def eval(op_type, M, N, K, tiling):
 
 
 if __name__ == "__main__":
-    df_gptj = pd.read_csv("./graph/result_gptj.csv")
-    df_poly = pd.read_csv("./graph/result_poly.csv")
+    df_gptj = pd.read_csv("./reproduced/result_gptj.csv")
+    df_poly = pd.read_csv("./reproduced/result_poly.csv")
     for naive in [True, False]:
         start_col = 5 if naive else 9
+        print(("PrIM" if naive else "PrIM-Search") + " evaluate for Tensor programs")
+        results = []
+        for task in poly_tasks:
+            if not task[0]:
+                results.append((0, 0, 0))
+                continue
+            params = load_search_params(*task, naive)
+            res = eval(*task, params)
+            results.append(res)
+        df_poly.iloc[:, start_col : start_col + 4] = results
+        df_poly.to_csv("./reproduced/result_poly.csv", index=False)
+
         print(("PrIM" if naive else "PrIM-Search") + " evaluate for GPT-J")
         results = []
         for task in gptj_tasks:
@@ -49,13 +61,4 @@ if __name__ == "__main__":
             res = eval(*task, params)
             results.append(res)
         df_gptj.iloc[:, start_col : start_col + 4] = results
-        df_gptj.to_csv("./graph/result_gptj.csv", index=False)
-
-        print(("PrIM" if naive else "PrIM-Search") + " evaluate for Tensor programs")
-        results = []
-        for task in poly_tasks:
-            params = load_search_params(*task, naive)
-            res = eval(*task, params)
-            results.append(res)
-        df_poly.iloc[:, start_col : start_col + 4] = results
-        df_poly.to_csv("./graph/result_poly.csv", index=False)
+        df_gptj.to_csv("./reproduced/result_gptj.csv", index=False)

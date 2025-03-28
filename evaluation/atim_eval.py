@@ -22,11 +22,11 @@ def eval_group(df, tasks):
     df.iloc[:, 13:16] = results
 
 if __name__ == "__main__":
-    df_gptj = pd.read_csv("./graph/result_gptj.csv")
-    df_poly = pd.read_csv("./graph/result_poly.csv")
+    df_gptj = pd.read_csv("./reproduced/result_gptj.csv")
+    df_poly = pd.read_csv("./reproduced/result_poly.csv")
 
     eval_group(df_gptj, gptj_tasks)
     eval_group(df_poly, poly_tasks)
 
-    df_gptj.to_csv("./graph/result_gptj.csv", index=False)
-    df_poly.to_csv("./graph/result_poly.csv", index=False)
+    df_gptj.to_csv("./reproduced/result_gptj.csv", index=False)
+    df_poly.to_csv("./reproduced/result_poly.csv", index=False)
