@@ -6,6 +6,7 @@ from workloads import VA, RED, MTV, MMTV
 import math
 import numpy as np
 import time
+import pandas as pd
 
 VERBOSE = 0
 NAIVE = False
@@ -62,8 +63,9 @@ def run(
     instance.repeat, prev_repeat = eval_rep, instance.repeat
     best_tuple = instance.benchmark(**dict(zip(config_label, best_config)))
     instance.warmup, instance.repeat = prev_warmup, prev_repeat
+    latency = list(best_tuple) + [reducer(best_tuple)]
     print(f"{instance.profile}\t{best_tuple[0]}\t{best_tuple[1]}\t{best_tuple[2]}\t{reducer(best_tuple)}\t{best_config}")
-    return best_config
+    return latency
 
 
 default_config = {
@@ -92,40 +94,39 @@ def tilings(default_tasklets=16, default_caches=256):
 def run_va(L):
     va.profile = "va"
     configs = [(L, *p, "int32") for p in tilings()]
-    config_label = ["L", "n_b", "n_t", "n_c", "dtype"]
-    run(va, configs, config_label)
+    config_label = ["M", "n_b", "n_t", "n_c", "dtype"]
+    return run(va, configs, config_label)
 
 
 def run_red(L):
     configs = [(L, *p, "int64") for p in tilings()]
-    config_label = ["L", "n_b", "n_t", "n_c", "dtype"]
-    run(reduction, configs, config_label)
+    config_label = ["M", "n_b", "n_t", "n_c", "dtype"]
+    return run(reduction, configs, config_label)
 
 
 def run_polyva(L):
     va.profile = "geva"
     configs = [(L, *p, "int32") for p in tilings()]
-    config_label = ["L", "n_b", "n_t", "n_c", "dtype"]
-    run(va, configs, config_label)
+    config_label = ["M", "n_b", "n_t", "n_c", "dtype"]
+    return run(va, configs, config_label)
 
 
 def run_polygemv(M, K):
     gemv.profile = "gemv"
     configs = [ (M, K, 1, d, t, 1, c, "int32") for d, t, c in tilings() ]
     config_label = ["M", "K", "n_xb", "n_yb", "n_yt", "n_rt", "n_cache", "dtype"]
-    run(gemv, configs, config_label, reducer=get_total_time_gemv)
+    return run(gemv, configs, config_label, reducer=get_total_time_gemv)
 
 
 def run_mtv(M, K):
     gemv.profile = "mtv"
     configs = [(M, K, 1, d, t, 1, c, "int32") for d, t, c in tilings()]
     config_label = ["M", "K", "n_xb", "n_yb", "n_yt", "n_rt", "n_cache", "dtype"]
-    run(gemv, configs, config_label, reducer=get_total_time_gemv)
+    return run(gemv, configs, config_label, reducer=get_total_time_gemv)
 
 
-def run_mmtv(B, M, N):
+def run_mmtv(M, N, K):
     bgemv.profile = "mmtv"
-    best_configs = []
     ytile = [1, 2, 4, 8, 16, 32, 64, 128, 256]
     tasklets = [1, 2, 4, 8, 16]
     caches = [16, 32, 64, 128, 256]
@@ -133,108 +134,112 @@ def run_mmtv(B, M, N):
     if NAIVE:
         tasklets = [16]
         caches = [256]
-    for b, y, t, c in product([B], ytile, tasklets, caches):
-        if B * y <= 2048 and 32 <= B * y and y * t * 2 <= M and b * y >= 32:
-            configs.append((B, M, N, b, y, t, c, "int32"))
-    configs_label = ["B", "M", "N", "n_bb", "n_yb", "n_yt", "n_cache", "dtype"]
-    res = run(bgemv, configs, configs_label, reducer=get_total_time_gemv)
-    best_configs.append(res)
+    for b, y, t, c in product([M], ytile, tasklets, caches):
+        if M * y <= 2048 and 32 <= M * y and y * t * 2 <= N and b * y >= 32:
+            configs.append((M, N, K, b, y, t, c, "int32"))
+    configs_label = ["M", "N", "K", "n_bb", "n_yb", "n_yt", "n_cache", "dtype"]
+    return run(bgemv, configs, configs_label, reducer=get_total_time_gemv)
 
-def search():
-    global VERBOSE, NAIVE
-    VERBOSE = 1
+def search_poly(naive=False):
+    global NAIVE
+    NAIVE = naive
 
-    for naive in [False, True]:
-        NAIVE = naive
+    df_poly = pd.read_csv("./graph/result_poly.csv")
 
-        print("POLYBENCH-XL")
-        run_va(134217728)
-        run_red(67108864)
-        run_mtv(8192, 16384)
-        run_mtv(512*512, 512)
-        run_mmtv(512, 512, 512)
-        run_polyva(134217728)
-        run_polygemv(8192, 16384)
-        print()
+    poly_res = []
+    print("POLYBENCH-S")
+    poly_res.append(run_va(1048576))
+    poly_res.append(run_red(524288))
+    poly_res.append(run_mtv(1024, 1024))
+    poly_res.append(run_mtv(32*64, 512))
+    poly_res.append(run_mmtv(32, 64, 512))
+    poly_res.append(run_polyva(1048576))
+    poly_res.append(run_polygemv(1024, 1024))
+    print()
 
-        print("POLYBENCH-L")
-        run_va(67108864)
-        run_red(33554432)
-        run_mtv(8192, 8192)
-        run_mtv(256*512, 512)
-        run_mmtv(256, 512, 512)
-        run_polyva(67108864)
-        run_polygemv(8192, 8192)
-        print()
+    print("POLYBENCH-M")
+    poly_res.append(run_va(16777216))
+    poly_res.append(run_red(8388608))
+    poly_res.append(run_mtv(4096, 4096))
+    poly_res.append(run_mtv(128*256, 512))
+    poly_res.append(run_mmtv(128, 256, 512))
+    poly_res.append(run_polyva(16777216))
+    poly_res.append(run_polygemv(4096, 4096))
+    print()
 
-        print("POLYBENCH-M")
-        run_va(16777216)
-        run_red(8388608)
-        run_mtv(4096, 4096)
-        run_mtv(128*256, 512)
-        run_mmtv(128, 256, 512)
-        run_polyva(16777216)
-        run_polygemv(4096, 4096)
-        print()
+    print("POLYBENCH-L")
+    poly_res.append(run_va(67108864))
+    poly_res.append(run_red(33554432))
+    poly_res.append(run_mtv(8192, 8192))
+    poly_res.append(run_mtv(256*512, 512))
+    poly_res.append(run_mmtv(256, 512, 512))
+    poly_res.append(run_polyva(67108864))
+    poly_res.append(run_polygemv(8192, 8192))
+    print()
 
-        print("POLYBENCH-S")
-        run_va(1048576)
-        run_red(524288)
-        run_mtv(1024, 1024)
-        run_mtv(32*64, 512)
-        run_mmtv(32, 64, 512)
-        run_polyva(1048576)
-        run_polygemv(1024, 1024)
-        print()
+    print("POLYBENCH-XL")
+    poly_res.append([0.0, 0.0, 0.0, 0.0])
+    poly_res.append(run_red(67108864))
+    poly_res.append(run_mtv(8192, 16384))
+    poly_res.append(run_mtv(512*512, 512))
+    poly_res.append(run_mmtv(512, 512, 512))
+    poly_res.append([0.0, 0.0, 0.0, 0.0])
+    poly_res.append(run_polygemv(8192, 16384))
+    print()
+    if naive:
+        df_poly.iloc[:, 5:9] = poly_res
+    else:
+        df_poly.iloc[:, 9:13] = poly_res
+    df_poly.to_csv("./graph/result_poly.csv", index=False)
 
-        print("SEARCH")
-        print("GPT-6B")
-        run_mmtv(16, 64, 256)
-        run_mmtv(16, 128, 256)
-        run_mmtv(16, 256, 256)
-        run_mmtv(16, 512, 256)
-        run_mmtv(32, 64, 256)
-        run_mmtv(32, 128, 256)
-        run_mmtv(32, 256, 256)
-        run_mmtv(32, 512, 256)
-        run_mmtv(64, 64, 256)
-        run_mmtv(64, 128, 256)
-        run_mmtv(64, 256, 256)
-        run_mmtv(64, 512, 256)
-        run_mmtv(256, 64, 256)
-        run_mmtv(256, 128, 256)
-        run_mmtv(256, 256, 256)
-        run_mmtv(256, 512, 256)
-        print()
 
-        print("GPT-13B")
-        run_mmtv(28, 64, 256)
-        run_mmtv(28, 128, 256)
-        run_mmtv(28, 256, 256)
-        run_mmtv(28, 512, 256)
-        run_mmtv(56, 64, 256)
-        run_mmtv(56, 128, 256)
-        run_mmtv(56, 256, 256)
-        run_mmtv(56, 512, 256)
-        run_mmtv(112, 64, 256)
-        run_mmtv(112, 128, 256)
-        run_mmtv(112, 256, 256)
-        run_mmtv(112, 512, 256)
-        run_mmtv(448, 64, 256)
-        run_mmtv(448, 128, 256)
-        run_mmtv(448, 256, 256)
-        run_mmtv(448, 512, 256)
-        print()
+def search_gptj(naive=False):
+    global NAIVE
+    NAIVE = naive
 
-        print("GPT-MTV")
-        run_mtv(12288, 4096)
-        run_mtv(4096, 4096)
-        run_mtv(16384, 4096)
-        run_mtv(4096, 16384)
-        run_mtv(21504, 7168)
-        run_mtv(7168, 7168)
-        run_mtv(28672, 7168)
-        run_mtv(7168, 28672)
+    df_gptj = pd.read_csv("./graph/result_gptj.csv")
+    gptj_res = []
+
+    print("GPT-6B")
+    gptj_res.append(run_mmtv(16, 64, 256))
+    gptj_res.append(run_mmtv(16, 128, 256))
+    gptj_res.append(run_mmtv(16, 256, 256))
+    gptj_res.append(run_mmtv(16, 512, 256))
+    gptj_res.append(run_mmtv(64, 64, 256))
+    gptj_res.append(run_mmtv(64, 128, 256))
+    gptj_res.append(run_mmtv(64, 256, 256))
+    gptj_res.append(run_mmtv(64, 512, 256))
+    print()
+
+    print("GPT-13B")
+    gptj_res.append(run_mmtv(28, 64, 256))
+    gptj_res.append(run_mmtv(28, 128, 256))
+    gptj_res.append(run_mmtv(28, 256, 256))
+    gptj_res.append(run_mmtv(28, 512, 256))
+    gptj_res.append(run_mmtv(112, 64, 256))
+    gptj_res.append(run_mmtv(112, 128, 256))
+    gptj_res.append(run_mmtv(112, 256, 256))
+    gptj_res.append(run_mmtv(112, 512, 256))
+    print()
+
+    print("GPT-MTV")
+    gptj_res.append(run_mtv(12288, 4096))
+    gptj_res.append(run_mtv(4096, 4096))
+    gptj_res.append(run_mtv(16384, 4096))
+    gptj_res.append(run_mtv(4096, 16384))
+    gptj_res.append(run_mtv(21504, 7168))
+    gptj_res.append(run_mtv(7168, 7168))
+    gptj_res.append(run_mtv(28672, 7168))
+    gptj_res.append(run_mtv(7168, 28672))
+
+    if naive:
+        df_gptj.iloc[:, 5:9] = gptj_res
+    else:
+        df_gptj.iloc[:, 9:13] = gptj_res
+    df_gptj.to_csv("./graph/result_gptj.csv", index=False)
 
 if __name__ == "__main__":
-    search()
+    search_poly(True)
+    search_gptj(True)
+    search_poly(False)
+    search_gptj(False)

@@ -16,3 +16,4 @@ dependencies:
       - xgboost==1.6.1
       - cloudpickle
       - tqdm
+      - pandas

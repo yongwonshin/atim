@@ -1,5 +1,5 @@
 import traceback
-from typing import Any
+from typing import Any, List
 import os
 import re
 import glob
@@ -7,14 +7,14 @@ import time
 import subprocess
 from abc import abstractmethod
 from functools import lru_cache
+import sys
+import itertools
+import signal
 
 import tvm
 from tvm.tir.transform import *
 from tvm.target import Target
 import numpy as np
-import signal
-from typing import Any, Callable, Dict, List
-import itertools
 
 
 class SymbolSpace:
@@ -299,7 +299,8 @@ class UPMEMWorkload:
                 bench_after_kernel_time,
             )
         except AttributeError as e:
-            raise RuntimeError(f"Error parsing benchmark results: {result}")
+            print(traceback.format_exc(), file=sys.stderr)
+            return [1000.0, 1000.0, 1000.0]
         self.benchmark_results.append(time_tuple)
         # print("\t".join(map(str, time_tuple)))
         return time_tuple

@@ -27,4 +27,4 @@
 	url = https://github.com/tlc-pack/cutlass_fpA_intB_gemm
 [submodule "evaluation/baseline/simplepim"]
 	path = evaluation/baseline/simplepim
-	url = https://github.com/stonerdk/SimplePIM
+	url = https://github.com/stonerdk/SimplePIM.git

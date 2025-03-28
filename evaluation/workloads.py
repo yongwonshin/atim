@@ -149,7 +149,7 @@ class RED(UPMEMWorkload):
         pbtype = config["dtype"].upper()
         return f"make clean && NR_DPUS={config['n_b']} \
             NR_TASKLETS={config['n_t']} TYPE={pbtype} BL={bl} VERSION=HANDSHAKE make >/dev/null 2>/dev/null && \
-            ./bin/host_code -i {config['L']} -w {self.warmup} -e {self.repeat}"
+            ./bin/host_code -i {config['M']} -w {self.warmup} -e {self.repeat}"
 
 class MTV(UPMEMWorkload):
     def __init__(self, **kwargs):
@@ -240,9 +240,9 @@ class MMTV(UPMEMWorkload):
             NR_DPUS_B={config["n_bb"]} \
             NR_TASKLETS={config["n_yt"]} \
             BL={bl} TYPE={pbtype} make &&
-            ./bin/gemv_host -b {config["B"]} \
-                -m {config["M"]} \
-                -n {config["N"]} \
+            ./bin/gemv_host -b {config["M"]} \
+                -m {config["N"]} \
+                -n {config["K"]} \
                 -w {self.warmup} \
                 -e {self.repeat}
         """
