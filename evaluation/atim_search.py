@@ -13,5 +13,5 @@ def tune_group(tasks):
             print(e)
             continue
 
-tune_group(poly_tasks)
 tune_group(gptj_tasks)
+tune_group(poly_tasks)

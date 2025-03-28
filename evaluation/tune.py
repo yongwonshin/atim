@@ -9,34 +9,34 @@ from tvm.target import Target
 from bench import *
 
 
-def get_module(M, N, K, dtype):
-    if args.op_type == "mtv":
+def get_module(op_type, M, N, K, dtype):
+    if op_type == "mtv":
         return upmem_mtv_factory(M, K, dtype)
-    elif args.op_type == "ttv":
+    elif op_type == "ttv":
         return upmem_ttv_factory(M, N, K, dtype)
-    elif args.op_type == "polygemv1":
+    elif op_type == "polygemv1":
         return upmem_poly_gemv1_factory(M, K, dtype)
-    elif args.op_type == "va":
+    elif op_type == "va":
         return upmem_va_factory(M, dtype)
-    elif args.op_type == "ta":
+    elif op_type == "ta":
         return upmem_ta_factory(M, N, K, dtype)
-    elif args.op_type == "polyva":
+    elif op_type == "polyva":
         return upmem_poly_va_factory(M, dtype)
-    elif args.op_type == "polymixed":
+    elif op_type == "polymixed":
         return upmem_poly_mixed_factory(M, N, dtype)
-    elif args.op_type == "dot":
+    elif op_type == "dot":
         dtype = "int64"
         return upmem_dot_factory(M, dtype)
-    elif args.op_type == "red":
+    elif op_type == "red":
         dtype = "int64"
         return upmem_red_factory(M, dtype)
-    elif args.op_type == "innerprod":
+    elif op_type == "innerprod":
         dtype = "int64"
         return upmem_innerprod_factory(M, N, K, dtype)
-    elif args.op_type == "mmtv":
+    elif op_type == "mmtv":
         return upmem_mmtv_factory(M, N, K, dtype)
     else:
-        raise Exception(f"Unknown operator type: {args.type}")
+        raise Exception(f"Unknown operator type: {op_type}")
 
 def tune(op_type, M, N, K, workdir, reuse_cost_model=False):
     target = Target("upmem --num-cores=96")
@@ -46,7 +46,7 @@ def tune(op_type, M, N, K, workdir, reuse_cost_model=False):
     with open(f"./{workdir}/default.txt", "w") as f:
         original_stdout = sys.stdout
         sys.stdout = f
-        mod = get_module(M, N, K, dtype="int32")
+        mod = get_module(op_type, M, N, K, dtype="int32")
 
         cost_model = "xgb"
         if reuse_cost_model and os.path.exists(f"{workdir}.tar"):
@@ -58,8 +58,8 @@ def tune(op_type, M, N, K, workdir, reuse_cost_model=False):
             mod=mod,
             target=target,
             work_dir=f"./{workdir}",
-            max_trials_global=100,
-            num_trials_per_iter=32,
+            max_trials_global=1000,
+            num_trials_per_iter=64,
             # num_tuning_cores=1,  # to prevent dpu allocation error
             cost_model=cost_model,
         )

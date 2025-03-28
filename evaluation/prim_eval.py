@@ -1,23 +1,6 @@
 from prim_util import *
 
 
-def load_search_params(op_type, M, N, K, naive, jsonfile="./reproduced/search_parameters.json"):
-    best_tiling = {}
-    with open(jsonfile, "r") as f:
-        search_params = json.load(f)
-        key = f"{op_type}_{M}_{N}_{K}"
-        prim_key = "prim" if naive else "prim-search"
-        best_tiling = search_params.get(key, {}).get(prim_key, {})
-
-    dpus = best_tiling.get("dpus")
-    if dpus is None:
-        raise ValueError(f"DPUs not found for key: {key}, prim_key: {prim_key} in {jsonfile}")
-    tasklets = best_tiling.get("tasklets", 16)
-    cache_size = best_tiling.get("cache_size", 256)
-    best_tiling = (dpus, tasklets, cache_size)
-    return best_tiling
-
-
 def eval(op_type, M, N, K, tiling):
     instance = instances[op_type]
     dpus, tasklets, cache_size = tiling
@@ -48,8 +31,12 @@ if __name__ == "__main__":
             if not task[0]:
                 results.append((0, 0, 0))
                 continue
-            params = load_search_params(*task, naive)
-            res = eval(*task, params)
+            try:
+                params = load_search_params(*task, naive)
+                res = eval(*task, params)
+            except Exception as e:
+                print(f"Error in {task}: {e}")
+                res = (0, 0, 0)
             results.append(res)
         df_poly.iloc[:, start_col : start_col + 4] = results
         df_poly.to_csv("./reproduced/result_poly.csv", index=False)
@@ -57,8 +44,12 @@ if __name__ == "__main__":
         print(("PrIM" if naive else "PrIM-Search") + " evaluate for GPT-J")
         results = []
         for task in gptj_tasks:
-            params = load_search_params(*task, naive)
-            res = eval(*task, params)
+            try:
+                params = load_search_params(*task, naive)
+                res = eval(*task, params)
+            except Exception as e:
+                print(f"Error in {task}: {e}")
+                res = (0, 0, 0)
             results.append(res)
         df_gptj.iloc[:, start_col : start_col + 4] = results
         df_gptj.to_csv("./reproduced/result_gptj.csv", index=False)

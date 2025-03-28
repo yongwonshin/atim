@@ -86,3 +86,44 @@ def get_total_time(op_type, time_tuple):
         return time_tuple[1] + time_tuple[2]
     else:
         return time_tuple[0] + time_tuple[1] + time_tuple[2]
+
+def save_search_params(
+    op_type, M, N, K, tilings, naive, jsonfile="./reproduced/search_parameters.json"
+):
+    best_dpus, best_tasklets, best_cache = tilings
+    with open(jsonfile, "r") as f:
+        search_params = json.load(f)
+        key = f"{op_type}_{M}_{N}_{K}"
+        tmp = search_params.get(key, {})
+        prim_key = "prim" if naive else "prim-search"
+        tmp[prim_key] = {
+            "dpus": best_dpus,
+            **({"tasklets": best_tasklets, "cache_size": best_cache} if not naive else {}),
+        }
+        search_params[key] = tmp
+        with open(jsonfile, "w") as f:
+            json.dump(search_params, f, indent=4)
+
+def load_search_params(op_type, M, N, K, naive, jsonfile="./reproduced/search_parameters.json"):
+    best_tiling = {}
+    with open(jsonfile, "r") as f:
+        search_params = json.load(f)
+        key = f"{op_type}_{M}_{N}_{K}"
+        prim_key = "prim" if naive else "prim-search"
+        best_tiling = search_params.get(key, {}).get(prim_key, {})
+
+    dpus = best_tiling.get("dpus")
+    if dpus is None:
+        raise ValueError(f"DPUs not found for key: {key}, prim_key: {prim_key} in {jsonfile}")
+    tasklets = best_tiling.get("tasklets", 16)
+    cache_size = best_tiling.get("cache_size", 256)
+    best_tiling = (dpus, tasklets, cache_size)
+    return best_tiling
+
+def search_param_exists(op_type, M, N, K, naive, jsonfile="./reproduced/search_parameters.json"):
+    with open(jsonfile, "r") as f:
+        search_params = json.load(f)
+        key = f"{op_type}_{M}_{N}_{K}"
+        prim_key = "prim" if naive else "prim-search"
+        return prim_key in search_params.get(key, {})
+    return False

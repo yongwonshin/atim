@@ -1,22 +1,5 @@
 from prim_util import *
-
-
-def save_search_params(
-    op_type, M, N, K, tilings, naive, jsonfile="./reproduced/search_parameters.json"
-):
-    best_dpus, best_tasklets, best_cache = tilings
-    with open(jsonfile, "r") as f:
-        search_params = json.load(f)
-        key = f"{op_type}_{M}_{N}_{K}"
-        tmp = search_params.get(key, {})
-        prim_key = "prim" if naive else "prim-search"
-        tmp[prim_key] = {
-            "dpus": best_dpus,
-            **({"tasklets": best_tasklets, "cache_size": best_cache} if not naive else {}),
-        }
-        search_params[key] = tmp
-        with open(jsonfile, "w") as f:
-            json.dump(search_params, f, indent=4)
+import argparse
 
 
 def search(op_type, M, N, K, naive):
@@ -66,12 +49,22 @@ def search(op_type, M, N, K, naive):
 if __name__ == "__main__":
     for naive in [True, False]:
         print(("PrIM" if naive else "PrIM-Search") + " search for Tensor programs")
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--skip_existing", action="store_true", help="Skip tasks where search parameters already exist")
+        args = parser.parse_args()
+
         for task in poly_tasks:
             if not task[0]:
                 continue
+            if args.skip_existing and search_param_exists(*task, naive):
+                continue
+            print(task)
             params = search(*task, naive=naive)
             save_search_params(*task, params, naive)
         print(("PrIM" if naive else "PrIM-Search") + " search for GPT-J")
         for task in gptj_tasks:
+            if args.skip_existing and search_param_exists(*task, naive):
+                continue
+            print(task)
             params = search(*task, naive=naive)
             save_search_params(*task, params, naive)

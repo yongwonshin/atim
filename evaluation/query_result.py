@@ -9,7 +9,7 @@ from bench import *
 from workloads import get_workload
 
 
-def query(workdir: str, only_show: False, only_run: False) -> None:
+def query(workdir: str, only_show=False, only_run=False) -> None:
     target = Target("upmem --num-cores=96")
     parsed = workdir.split("/")[-1].split("_")
     dtype = "int32"

@@ -280,9 +280,7 @@ gallery/how_to/work_with_microtvm/micro_tvmc.py
 
 custom_gemv/
 playground/
-
-pim_test
-custom_gemv
+pim_test/
 
 temp
 temp-*
@@ -297,3 +295,4 @@ evaluation/baseline/**/_*
 !evaluation/reproduced/search_parameters.json
 !evaluation/results/search_parameters.json
 evaluation/results/tuned/**/*
+evaluation/reproduced/tuned/**/*
