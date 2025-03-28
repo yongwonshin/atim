@@ -62,7 +62,7 @@ class VA(UPMEMWorkload):
         pbtype = config["dtype"].upper()
         return f"make clean && NR_DPUS={config['n_b']} NR_TASKLETS={config['n_t']} \
             TYPE={pbtype} BL={bl} make && \
-            ./bin/host_code -i {config['L']} -w {self.warmup} -e {self.repeat}"
+            ./bin/host_code -i {config['M']} -w {self.warmup} -e {self.repeat}"
 
 
 class GEVA(UPMEMWorkload):

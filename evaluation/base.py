@@ -374,43 +374,6 @@ class UPMEMWorkload:
         return (mean_before_kernel, mean_kernel, mean_after_kernel, 0, mean_before_kernel + mean_kernel + mean_after_kernel)
 
 
-    def evaluate_legacy(self):
-        times = []
-        timestamp = tvm._ffi.get_global_func("device_api.upmem.timestamp")
-        elapsed_time = tvm._ffi.get_global_func("device_api.upmem.elapsed_time")
-        if self.verbose >= 1:
-            print("iter\tBK\tK\tAK\tD2H\tTOT")
-            print("------------------------------")
-        for j in range(self.repeat + self.warmup):
-            self.target_device.sync()
-            total_start = time.time()
-            timestamp("start")
-            self.kernel()
-            timestamp("end")
-            total_end = time.time()
-
-            if j >= self.warmup:
-                before_kernel_time = elapsed_time("before_kernel") / 1e6
-                kernel_time = elapsed_time("kernel") / 1e6
-                after_kernel_time = elapsed_time("after_kernel") / 1e6
-                d2h_time = elapsed_time("d2h") / 1e6
-                total_time = (total_end - total_start) * 1e3
-                time_tuple = (
-                    before_kernel_time,
-                    kernel_time,
-                    after_kernel_time,
-                    d2h_time,
-                    total_time,
-                )
-                times.append(time_tuple)
-                if self.verbose >= 1:
-                    print(str(j) + "\t" + "\t".join([f"{x:.3f}" for x in time_tuple]))
-        if self.verbose >= 1:
-            print("------------------------------")
-        time_tuple = np.mean(times, axis=0)
-        return time_tuple
-
-
     def test(self, scheduler, **kwargs):
         ret = "ERROR"
         self.config = {**self.required, **kwargs}
@@ -433,10 +396,7 @@ class UPMEMWorkload:
             if self.perform_h2d:
                 self.h2d()
             self.target_device.sync()
-            if self.use_time_evaluator:
-                time_tuple = self.evaluate_time_evaluator()
-            else:
-                time_tuple = self.evaluate_legacy()
+            time_tuple = self.evaluate_time_evaluator()
             self.recent_time_tuple = time_tuple
             flag = self.is_passed()
             if self.verbose >= 0:

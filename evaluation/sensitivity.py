@@ -2,6 +2,7 @@ import tvm
 import numpy as np
 import math
 
+import pandas as pd
 from workloads import MTV, VA
 from bench import upmem_mtv_factory, upmem_va_factory
 
@@ -52,47 +53,66 @@ def vaTile(M, n_b, n_t, n_c, dtype):
     sch.bind(it, "threadIdx.x")
     return sch
 
+workload_configs = dict(
+    repeat=100,
+    warmup=10,
+    verbose=-1,
+    ignore_wrong=True,
+)
 
-def sens_mtv():
-    shape_expand = [72, 91, 123, 145, 164, 196, 212, 245]
-    shapes = [(m, m) for m in shape_expand]
-    confs = [
-        {
-            "M": m,
-            "K": k,
-            "dtype": "int32",
-            "n_xb": 1,
-            "n_yb": 1,
-            "n_cache": 32,
-            "n_yt": 16,
-            "n_rt": 16,
-        }
-        for m, k in shapes
-    ]
+mtv = MTV(**workload_configs)
+va = VA(**workload_configs)
 
-    mtv = MTV(repeat=1, warmup=5, verbose=-1)
-    for c in confs:
-        # tt = [mtv.benchmark(**c)[1]]
-        tt = []
-        for opt in [0, 1, 2, 4]:
-            mtv.opt_level = opt
-            tt.append(mtv.test(gemvRCTile, **c))
-        print("\t".join([str(t) for t in tt]))
+def sens_mtv(m, k):
+    option = dict(M=m, K=k, dtype="int32", n_xb=1, n_yb=1, n_cache=32, n_yt=16, n_rt=16)
+    prim = mtv.benchmark(**option)
+    res = [float(prim[1])]
+    for opt in [0, 1, 2, 4]:
+        mtv.opt_level = opt
+        t = mtv.test(gemvRCTile, **option)
+        if t == "ERROR" or t == "WRONG":
+            t = 0
+        res.append(max(0.001, float(t)))
+    print(f"{m}\t{k}\t" + "\t".join([f"{t:.4f}" for t in res]))
+    return res
 
 
-def sens_va():
-    shape = [i * 100000 for i in [1, 2, 3, 4, 5, 6, 7, 8]]
-    confs = [{"M": l, "n_b": 32, "n_t": 16, "n_c": 64, "dtype": "int32"} for l in shape]
+def sens_va(l):
+    option = dict(M=l, n_b=32, n_t=16, n_c=64, dtype="int32")
+    prim = va.benchmark(**option)
+    res = [float(prim[1])]
+    for opt in [0, 1, 2, 4]:
+        va.opt_level = opt
+        t = va.test(vaTile, **option)
+        if t == "ERROR" or t == "WRONG":
+            t = 0
+        res.append(max(0.001, float(t)))
+    print(f"{l}\t1\t" + "\t".join([f"{t:.4f}" for t in res]))
+    return res
 
-    va = VA(repeat=1, warmup=5, verbose=-1)
-    for c in confs:
-        print(c["M"])
-        # tt = [va.benchmark(**c)[1]]
-        tt = []
-        for opt in [0, 1, 2, 4]:
-            va.opt_level = opt
-            tt.append(va.test(vaTile, **c))
-        print("\t".join([str(t) for t in tt]))
 
-# sens_mtv()
-sens_va()
+if __name__ == "__main__":
+    df = pd.read_csv("./graph/result_opt_template.csv")
+    mtv_var_dims = [72, 91, 123, 145, 164, 196, 212, 245]
+    mtv_var_dims = [196]
+    va_dims = [i * 100000 for i in [1, 2, 3, 4, 5, 6, 7, 8]]
+
+    print("\nMTV 256 x L\nWorkload\t M\tK\tPrIM\tO0\tO1\tO2\tO4")
+    for i, l in enumerate(mtv_var_dims):
+        df.iloc[i, 2:] = sens_mtv(256, l)
+
+    print("\nMTV L x 256\nM\tK\tPrIM\tO0\tO1\tO2\tO4")
+    for i, l in enumerate(mtv_var_dims):
+        df.iloc[8 + i, 2:] = sens_mtv(l, 256)
+
+    print("\nMTV L x L\nM\tK\tPrIM\tO0\tO1\tO2\tO4")
+    for i, l in enumerate(mtv_var_dims):
+        df.iloc[16 + i, 2:] = sens_mtv(l, l)
+
+    print("\nVA\nL\t-\tPrIM\tO0\tO1\tO2\tO4")
+    for i, l in enumerate(va_dims):
+        df.iloc[24 + i, 2:] = sens_va(l)
+
+    df.to_csv("./graph/result_opt.csv", index=False)
+
+    # 15분
