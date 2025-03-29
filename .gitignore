@@ -294,5 +294,7 @@ evaluation/baseline/**/bin/
 evaluation/baseline/**/_*
 !evaluation/reproduced/prim_parameters.json
 !evaluation/results/prim_parameters.json
+evaluation/results/cpu_tuned/**/*
 evaluation/results/tuned/**/*
+evaluation/reproduced/cpu_tuned/**/*
 evaluation/reproduced/tuned/**/*
