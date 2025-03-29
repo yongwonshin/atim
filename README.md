@@ -37,6 +37,10 @@ Tuning
 Before experiments, we need to perform tuning for CPU-autotuned, PrIM+Search, and ATiM for tensor programs.
 
 ```bash
+# Step 0: prepare for evaluation
+cd evaluation
+python tensor.py
+
 # Step 1: perform autotuning for CPU-autotune
 python cpu_search.py
 
@@ -67,7 +71,7 @@ python atim_branch_opt.py
 Finally, generate graphs corresponding to Fig. 9, Fig. 10, and Fig. 12 in the paper:
 
 ```bash
-cd evaluation/graph
+cd graph
 python plot.py
 ```
 
