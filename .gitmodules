@@ -28,3 +28,7 @@
 [submodule "evaluation/baseline/simplepim"]
 	path = evaluation/baseline/simplepim
 	url = https://github.com/stonerdk/SimplePIM.git
+[submodule "evaluation/tvm_cputest"]
+	paht=evaluation/tvm_cputest
+	url = https://github.com/stonerdk/tvm_cputest.git
+	path = evaluation/tvm_cputest
