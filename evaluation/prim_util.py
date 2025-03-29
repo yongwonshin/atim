@@ -4,8 +4,6 @@ from workloads import VA, RED, MTV, MMTV
 import pandas as pd
 import json
 from tasks import gptj_tasks, poly_tasks
-import argparse
-
 warmup = 1
 rep = 100
 eval_warmup = 100
@@ -87,15 +85,15 @@ def get_total_time(op_type, time_tuple):
     else:
         return time_tuple[0] + time_tuple[1] + time_tuple[2]
 
-def save_search_params(
-    op_type, M, N, K, tilings, naive, jsonfile="./reproduced/search_parameters.json"
-):
+def save_search_params(op_type, M, N, K, tilings, naive, jsonfile):
     best_dpus, best_tasklets, best_cache = tilings
     with open(jsonfile, "r") as f:
         search_params = json.load(f)
         key = f"{op_type}_{M}_{N}_{K}"
         tmp = search_params.get(key, {})
         prim_key = "prim" if naive else "prim-search"
+        if op_type == "mmtv":
+            best_dpus *= M
         tmp[prim_key] = {
             "dpus": best_dpus,
             **({"tasklets": best_tasklets, "cache_size": best_cache} if not naive else {}),
@@ -104,7 +102,7 @@ def save_search_params(
         with open(jsonfile, "w") as f:
             json.dump(search_params, f, indent=4)
 
-def load_search_params(op_type, M, N, K, naive, jsonfile="./reproduced/search_parameters.json"):
+def load_search_params(op_type, M, N, K, naive, jsonfile):
     best_tiling = {}
     with open(jsonfile, "r") as f:
         search_params = json.load(f)
@@ -115,12 +113,14 @@ def load_search_params(op_type, M, N, K, naive, jsonfile="./reproduced/search_pa
     dpus = best_tiling.get("dpus")
     if dpus is None:
         raise ValueError(f"DPUs not found for key: {key}, prim_key: {prim_key} in {jsonfile}")
+    if op_type == "mmtv":
+        dpus = dpus // M
     tasklets = best_tiling.get("tasklets", 16)
     cache_size = best_tiling.get("cache_size", 256)
     best_tiling = (dpus, tasklets, cache_size)
     return best_tiling
 
-def search_param_exists(op_type, M, N, K, naive, jsonfile="./reproduced/search_parameters.json"):
+def search_param_exists(op_type, M, N, K, naive, jsonfile):
     with open(jsonfile, "r") as f:
         search_params = json.load(f)
         key = f"{op_type}_{M}_{N}_{K}"

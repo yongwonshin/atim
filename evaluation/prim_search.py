@@ -27,8 +27,9 @@ def search(op_type, M, N, K, naive):
                 pbar.update(1)
 
     best_dpus, best_tasklets, best_cache = best_tiling
+    best_dpus_str = f"{M}*{best_dpus}" if op_type == "mmtv" else best_dpus
     if naive:
-        print("PrIM", op_type, M, N, K, "naive DPUs: ", best_dpus)
+        print("PrIM", op_type, M, N, K, "naive DPUs: ", best_dpus_str)
     else:
         print(
             "PrIM-Search",
@@ -37,7 +38,7 @@ def search(op_type, M, N, K, naive):
             N,
             K,
             "founded DPUs: ",
-            best_dpus,
+            best_dpus_str,
             "tasklets: ",
             best_tasklets,
             "cache: ",
@@ -47,24 +48,25 @@ def search(op_type, M, N, K, naive):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--skip_existing", action="store_true", help="Skip tasks where search parameters already exist")
+    parser.add_argument("--jsonfile", type=str, default="./reproduced/search_parameters.json")
+    args = parser.parse_args()
+
     for naive in [True, False]:
         print(("PrIM" if naive else "PrIM-Search") + " search for Tensor programs")
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--skip_existing", action="store_true", help="Skip tasks where search parameters already exist")
-        args = parser.parse_args()
-
         for task in poly_tasks:
             if not task[0]:
                 continue
-            if args.skip_existing and search_param_exists(*task, naive):
+            if args.skip_existing and search_param_exists(*task, naive, jsonfile=args.jsonfile):
                 continue
             print(task)
             params = search(*task, naive=naive)
             save_search_params(*task, params, naive)
         print(("PrIM" if naive else "PrIM-Search") + " search for GPT-J")
         for task in gptj_tasks:
-            if args.skip_existing and search_param_exists(*task, naive):
+            if args.skip_existing and search_param_exists(*task, naive, jsonfile=args.jsonfile):
                 continue
             print(task)
             params = search(*task, naive=naive)
-            save_search_params(*task, params, naive)
+            save_search_params(*task, params, naive, jsonfile=args.jsonfile)

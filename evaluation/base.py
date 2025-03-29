@@ -288,18 +288,15 @@ class UPMEMWorkload:
                     raise ValueError("Wrong")
 
             bench_before_kernel_time = re.search("CPU-DPU Time \(ms\): (\d+\.\d+)", result)
-            if not bench_before_kernel_time:
-                raise AttributeError("CPU-DPU Time not found")
-            bench_before_kernel_time = float(bench_before_kernel_time.group(1))
-
             bench_kernel_time = re.search("DPU Kernel Time \(ms\): (\d+\.\d+)", result)
-            if not bench_kernel_time:
-                raise AttributeError("DPU Kernel Time not found")
-            bench_kernel_time = float(bench_kernel_time.group(1))
-
             bench_after_kernel_time = re.search("DPU-CPU Time \(ms\): (\d+\.\d+)", result)
-            if not bench_after_kernel_time:
-                raise AttributeError("DPU-CPU Time not found")
+
+            if not bench_before_kernel_time or not bench_kernel_time or not bench_after_kernel_time:
+                print(result)
+                print(error.decode("utf-8"))
+                raise AttributeError("Failed to fetch result.")
+            bench_before_kernel_time = float(bench_before_kernel_time.group(1))
+            bench_kernel_time = float(bench_kernel_time.group(1))
             bench_after_kernel_time = float(bench_after_kernel_time.group(1))
 
             time_tuple = (
@@ -309,7 +306,7 @@ class UPMEMWorkload:
             )
         except AttributeError as e:
             print(e)
-            return [1000.0, 1000.0, 1000.0]
+            return [0.0, 1000.0, 1000.0]
         self.benchmark_results.append(time_tuple)
         # print("\t".join(map(str, time_tuple)))
         return time_tuple
