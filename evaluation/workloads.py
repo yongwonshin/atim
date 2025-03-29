@@ -14,17 +14,15 @@ def get_workload(op_type):
         return MTV
     elif op_type == "ttv":
         return TTV
-    elif op_type == "poly_gemv1":
-        return GEMV
-    elif op_type == "polygemv1":
+    elif op_type == "gemv":
         return GEMV
     elif op_type == "va":
         return VA
     elif op_type == "ta":
         return TA
-    elif op_type == "poly_va":
+    elif op_type == "geva":
         return GEVA
-    elif op_type == "polyva":
+    elif op_type == "geva":
         return GEVA
     elif op_type == "poly_mixed":
         pass
@@ -68,7 +66,7 @@ class VA(UPMEMWorkload):
 class GEVA(UPMEMWorkload):
     def __init__(self, **kwargs):
         super().__init__(
-            profile="poly",
+            profile="geva",
             required=dict(),
             symbols=["A", "B", "C", "ALPHA", "BETA"],
             output_symbol="C",
@@ -178,7 +176,7 @@ class GEMV(UPMEMWorkload):
     def __init__(self, **kwargs):
         required = dict()
         super().__init__(
-            profile="poly_gemv1",
+            profile="gemv",
             required=required,
             symbols=["A", "B", "C", "ALPHA"],
             output_symbol="C",
