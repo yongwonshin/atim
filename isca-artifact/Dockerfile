@@ -10,7 +10,7 @@ RUN apt-get update \
                     wget \
                     git \
                     sudo \
-                    zlib1g-dev
+                    zlib1g-dev \
     && apt full-upgrade -y
 RUN apt update \
     && wget http://sdk-releases.upmem.com/2021.3.0/ubuntu_20.04/upmem_2021.3.0_amd64.deb \
