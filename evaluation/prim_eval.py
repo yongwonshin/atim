@@ -24,7 +24,7 @@ def eval(op_type, M, N, K, tiling):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--jsonfile", type=str, default="./reproduced/search_parameters.json")
+    parser.add_argument("--jsonfile", type=str, default="./reproduced/prim_parameters.json")
     args = parser.parse_args()
 
     default_tuple = (0, 1000.0, 1000.0, 2000.0)

@@ -50,7 +50,7 @@ def search(op_type, M, N, K, naive):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip_existing", action="store_true", help="Skip tasks where search parameters already exist")
-    parser.add_argument("--jsonfile", type=str, default="./reproduced/search_parameters.json")
+    parser.add_argument("--jsonfile", type=str, default="./reproduced/prim_parameters.json")
     args = parser.parse_args()
 
     for naive in [True, False]:

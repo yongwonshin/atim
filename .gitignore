@@ -292,7 +292,7 @@ evaluation/preliminary/
 evaluation/prim_search_results.txt
 evaluation/baseline/**/bin/
 evaluation/baseline/**/_*
-!evaluation/reproduced/search_parameters.json
-!evaluation/results/search_parameters.json
+!evaluation/reproduced/prim_parameters.json
+!evaluation/results/prim_parameters.json
 evaluation/results/tuned/**/*
 evaluation/reproduced/tuned/**/*

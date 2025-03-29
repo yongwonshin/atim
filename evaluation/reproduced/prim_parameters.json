@@ -1,0 +1,502 @@
+{
+    "va_1048576_1_1": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "red_524288_1_1": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_1024_1_1024": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "ttv_32_64_512": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_32_64_512": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "geva_1048576_1_1": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "gemv_1024_1_1024": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "va_16777216_1_1": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "red_8388608_1_1": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_4096_1_4096": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "ttv_128_256_512": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_128_256_512": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "geva_16777216_1_1": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "gemv_4096_1_4096": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "va_67108864_1_1": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "red_33554432_1_1": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_8192_1_8192": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "ttv_256_512_512": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_256_512_512": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "geva_67108864_1_1": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "gemv_8192_1_8192": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "red_67108864_1_1": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_8192_1_16384": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "ttv_512_512_512": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_512_512_512": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "gemv_8192_1_16384": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_16_64_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_16_128_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_16_256_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_16_512_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_64_64_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_64_128_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_64_256_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_64_512_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_28_64_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_28_128_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_28_256_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_28_512_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_112_64_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_112_128_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_112_256_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mmtv_112_512_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_12288_1_4096": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_16384_1_4096": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_4096_1_16384": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_21504_1_7168": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "_0_0_0": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_7168_1_7168": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_28672_1_7168": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    },
+    "mtv_7168_1_28672": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 256
+        }
+    }
+}
