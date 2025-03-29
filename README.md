@@ -1,53 +1,80 @@
-<!--- Licensed to the Apache Software Foundation (ASF) under one -->
-<!--- or more contributor license agreements.  See the NOTICE file -->
-<!--- distributed with this work for additional information -->
-<!--- regarding copyright ownership.  The ASF licenses this file -->
-<!--- to you under the Apache License, Version 2.0 (the -->
-<!--- "License"); you may not use this file except in compliance -->
-<!--- with the License.  You may obtain a copy of the License at -->
+Prerequisites
+-----
+### Hardware Dependencies
+We recommend using UPMEM systems with at least 16 PIM modules (2048 DPUs) to ensure sufficient inter-DPU parallelism. Our experiments used DDR4-2400 PIM modules, which are currently the only available UPMEM PIM modules.
 
-<!---   http://www.apache.org/licenses/LICENSE-2.0 -->
+### Software Dependencies
+We implemented and tested our codes on the Ubuntu 20.04 x86-64 system with UPMEM SDK version 2021.3.0.
+We assume the server is properly equipped with BIOS and MCU firmware, driver, backends (communication library), and DPU runtime provided by the UPMEM SDK.
 
-<!--- Unless required by applicable law or agreed to in writing, -->
-<!--- software distributed under the License is distributed on an -->
-<!--- "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY -->
-<!--- KIND, either express or implied.  See the License for the -->
-<!--- specific language governing permissions and limitations -->
-<!--- under the License. -->
+The following commands install required Ubuntu packages.
 
-<img src=https://raw.githubusercontent.com/apache/tvm-site/main/images/logo/tvm-logo-small.png width=128/> Open Deep Learning Compiler Stack
-==============================================
-[Documentation](https://tvm.apache.org/docs) |
-[Contributors](CONTRIBUTORS.md) |
-[Community](https://tvm.apache.org/community) |
-[Release Notes](NEWS.md)
+```bash
+sudo apt-get update &&
+sudo apt-get install -y --no-install-recommends \
+                    build-essential \
+                    ninja-build \
+                    wget \
+                    git
+```
 
-[![Build Status](https://ci.tlcpack.ai/buildStatus/icon?job=tvm/main)](https://ci.tlcpack.ai/job/tvm/job/main/)
-[![WinMacBuild](https://github.com/apache/tvm/workflows/WinMacBuild/badge.svg)](https://github.com/apache/tvm/actions?query=workflow%3AWinMacBuild)
+Additionally, we assume conda environment to install additional system and python dependencies.
 
-Apache TVM is a compiler stack for deep learning systems. It is designed to close the gap between the
-productivity-focused deep learning frameworks, and the performance- and efficiency-focused hardware backends.
-TVM works with deep learning frameworks to provide end to end compilation to different backends.
+```bash
+conda env create -f isca-artifact/atim-env.yml
+conda activate atim-venv
+export PYTHONPATH="$(realpath .)/python:$PYTHONPATH"
+```
 
-License
--------
-TVM is licensed under the [Apache-2.0](LICENSE) license.
+Lastly, users should install submodules unless recursively cloning this repository.
 
-Getting Started
----------------
-Check out the [TVM Documentation](https://tvm.apache.org/docs/) site for installation instructions, tutorials, examples, and more.
-The [Getting Started with TVM](https://tvm.apache.org/docs/tutorial/introduction.html) tutorial is a great
-place to start.
+```bash
+git submodule update --init --recursive
+```
 
-Contribute to TVM
------------------
-TVM adopts apache committer model, we aim to create an open source project that is maintained and owned by the community.
-Check out the [Contributor Guide](https://tvm.apache.org/docs/contribute/).
+Tuning
+-----
+Before experiments, we need to perform tuning for CPU-autotuned, PrIM+Search, and ATiM for tensor programs.
 
-Acknowledgement
----------------
-We learned a lot from the following projects when building TVM.
-- [Halide](https://github.com/halide/Halide): Part of TVM's TIR and arithmetic simplification module
-  originates from Halide. We also learned and adapted some part of lowering pipeline from Halide.
-- [Loopy](https://github.com/inducer/loopy): use of integer set analysis and its loop transformation primitives.
-- [Theano](https://github.com/Theano/Theano): the design inspiration of symbolic scan operator for recurrence.
+```bash
+# Step 1: perform autotuning for CPU-autotune
+python cpu_search.py
+
+# Step 2: find optimal parameters for PrIM+Search
+python prim_search.py
+
+# Step 3: perform autotuning for ATiM
+python atim_search.py
+```
+
+Evaluation
+-----
+After completing autotuning, we evaluate the execution times of tensor programs optimized with CPU-autotuned, PrIM/(E), PrIM+Search, SimplePIM, and ATiM.
+We also evaluate different optimization levels of ATiM's PIM-aware strategies to demonstrate their effectiveness.
+
+```bash
+# Evaluate tuned binaries/modules for tensor programs
+python cpu_eval.py
+python prim_eval.py
+python simplepim_eval.py
+python atim_eval.py
+
+# Evaluate ATiM's PIM-aware optimizations
+python atim_branch_opt.py
+\end{minted}
+```
+
+Finally, generate graphs corresponding to Fig. 9, Fig. 10, and Fig. 12 in the paper:
+
+```bash
+cd evaluation/graph
+python plot.py
+```
+
+Experiment customization
+-----
+ATiM supports tuning tensor programs with various workloads and shapes. To test different workload sizes or to add new workloads, users can modify:
+
+- `evaluation/bench.py`: Define new workloads in TIR.
+- `evaluation/tasks.py`: Configure workload sizes.
+- `evaluation/workloads.py`: Register workloads to run experiments.
