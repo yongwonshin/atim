@@ -5,6 +5,7 @@ import re
 import glob
 import time
 import subprocess
+import multiprocessing
 from abc import abstractmethod
 from functools import lru_cache
 import sys
@@ -124,7 +125,7 @@ class UPMEMWorkload:
         self.output_format = output_format
         self.ignore_wrong = ignore_wrong
         # Fixed
-        self.target = tvm.target.Target(target="upmem --num-cores=96", host="llvm")
+        self.target = tvm.target.Target(target=f"upmem --num-cores={multiprocessing.cpu_count()}", host="llvm")
         self.target_device = tvm.device("upmem", 0)
 
         # Internal

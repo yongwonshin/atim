@@ -17,3 +17,5 @@ dependencies:
       - cloudpickle
       - tqdm
       - pandas
+      - Pygments
+      - black

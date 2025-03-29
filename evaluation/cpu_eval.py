@@ -5,7 +5,7 @@ import multiprocessing
 
 import numpy as np
 
-sys.path.insert(0, "/root/dev/tvm-latest/python")
+sys.path.insert(0, "tvm_cputest/python")
 from tvm.target import Target
 from tvm import tir
 import tvm

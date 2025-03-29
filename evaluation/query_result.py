@@ -1,5 +1,6 @@
 import tvm
 import tvm.testing
+import multiprocessing
 from tvm import meta_schedule as ms
 from tvm.target import Target
 from tvm.meta_schedule.database import JSONDatabase
@@ -10,7 +11,7 @@ from workloads import get_workload
 
 
 def query(workdir: str, only_show=False, only_run=False) -> None:
-    target = Target("upmem --num-cores=96")
+    target = Target(f"upmem --num-cores={multiprocessing.cpu_count()}")
     parsed = workdir.split("/")[-1].split("_")
     dtype = "int32"
     if "red" in workdir or "dot" in workdir:

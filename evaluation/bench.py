@@ -3,6 +3,34 @@ from tvm.script import ir as I
 from tvm.script import tir as T
 
 
+def get_base_module(op_type, M, N, K, dtype):
+    if op_type == "mtv":
+        return upmem_mtv_factory(M, K, dtype)
+    elif op_type == "ttv":
+        return upmem_ttv_factory(M, N, K, dtype)
+    elif op_type == "polygemv1":
+        return upmem_poly_gemv1_factory(M, K, dtype)
+    elif op_type == "va":
+        return upmem_va_factory(M, dtype)
+    elif op_type == "ta":
+        return upmem_ta_factory(M, N, K, dtype)
+    elif op_type == "polyva":
+        return upmem_poly_va_factory(M, dtype)
+    elif op_type == "polymixed":
+        return upmem_poly_mixed_factory(M, N, dtype)
+    elif op_type == "dot":
+        dtype = "int64"
+        return upmem_dot_factory(M, dtype)
+    elif op_type == "red":
+        dtype = "int64"
+        return upmem_red_factory(M, dtype)
+    elif op_type == "innerprod":
+        dtype = "int64"
+        return upmem_innerprod_factory(M, N, K, dtype)
+    elif op_type == "mmtv":
+        return upmem_mmtv_factory(M, N, K, dtype)
+    else:
+        raise Exception(f"Unknown operator type: {op_type}")
 # basic kernels
 def upmem_va_factory(M, dtype):
     @tvm.script.ir_module
