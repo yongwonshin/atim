@@ -143,7 +143,8 @@ set(USE_MICRO_STANDALONE_RUNTIME OFF)
 # - OFF: disable llvm, note this will disable CPU codegen
 #        which is needed for most cases
 # - /path/to/llvm-config: enable specific LLVM when multiple llvm-dev is available.
-set(USE_LLVM "llvm-config --ignore-libllvm --link-static")
+# set(USE_LLVM "llvm-config --ignore-libllvm --link-static")
+set(USE_LLVM ON)
 
 #---------------------------------------------
 # Contrib libraries
