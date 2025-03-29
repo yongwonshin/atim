@@ -5,7 +5,7 @@ from tvm import tir
 # from tvm.script import tir as T
 
 @I.ir_module
-class module_atim_polyva_16777216_1_1:
+class module_atim_geva_16777216_1_1:
     @T.prim_func
     def main(A: T.Buffer((16777216,), "int32"), B: T.Buffer((16777216,), "int32"), C: T.Buffer((16777216,), "int32"), ALPHA: T.Buffer((1,), "int32"), BETA: T.Buffer((1,), "int32")):
         T.func_attr({"global_symbol": "main", "pragma_explicit_h2d": ["A", "B"], "tir.noalias": T.bool(True)})
@@ -50,7 +50,7 @@ class module_atim_polyva_16777216_1_1:
                                 T.writes(C[v0])
                                 C[v0] = C_local[v0]
 # from tvm import tir
-def apply_trace_atim_polyva_16777216_1_1(sch: tir.Schedule) -> None:
+def apply_trace_atim_geva_16777216_1_1(sch: tir.Schedule) -> None:
   b0 = sch.get_block(name="C", func_name="main")
   b1 = sch.get_block(name="root", func_name="main")
   sch.annotate(block_or_loop=b0, ann_key="meta_schedule.tiling_structure", ann_val="SSSSS")

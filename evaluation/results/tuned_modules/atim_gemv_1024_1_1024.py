@@ -5,7 +5,7 @@ from tvm import tir
 # from tvm.script import tir as T
 
 @I.ir_module
-class module_atim_polygemv1_1024_1_1024:
+class module_atim_gemv_1024_1_1024:
     @T.prim_func
     def main(A: T.Buffer((1024, 1024), "int32"), B: T.Buffer((1024,), "int32"), C: T.Buffer((1024,), "int32"), ALPHA: T.Buffer((1,), "int32")):
         T.func_attr({"global_symbol": "main", "pragma_explicit_h2d": ["A"], "tir.noalias": T.bool(True)})
@@ -77,7 +77,7 @@ class module_atim_polygemv1_1024_1_1024:
                         T.block_attr({"meta_schedule.meta_schedule_rfactor_consumer_block": T.int64(1), "meta_schedule.random_compute_producer": T.int64(1)})
                         C[v_i] = C[v_i] + C_rf_global[vk_0, v_i]
 # from tvm import tir
-def apply_trace_atim_polygemv1_1024_1_1024(sch: tir.Schedule) -> None:
+def apply_trace_atim_gemv_1024_1_1024(sch: tir.Schedule) -> None:
   b0 = sch.get_block(name="C", func_name="main")
   b1 = sch.get_block(name="root", func_name="main")
   l2, l3 = sch.get_loops(block=b0)
