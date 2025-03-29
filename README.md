@@ -89,7 +89,7 @@ Before experiments, we need to perform tuning for CPU-autotuned, PrIM+Search, an
 # Step 0: prepare for tuning
 export PYTHONPATH="$(realpath .)/python:$PYTHONPATH"
 cd evaluation
-python tensor.py
+./eval_setup.sh
 
 # Step 1: perform autotuning for CPU-autotune
 python cpu_search.py
@@ -114,7 +114,6 @@ python atim_eval.py
 
 # Evaluate ATiM's PIM-aware optimizations
 python atim_branch_opt.py
-\end{minted}
 ```
 
 Finally, generate graphs corresponding to Fig. 9, Fig. 10, and Fig. 12 in the paper:
