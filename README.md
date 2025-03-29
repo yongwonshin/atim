@@ -114,7 +114,6 @@ python atim_eval.py
 
 # Evaluate ATiM's PIM-aware optimizations
 python atim_branch_opt.py
-\end{minted}
 ```
 
 Finally, generate graphs corresponding to Fig. 9, Fig. 10, and Fig. 12 in the paper:
