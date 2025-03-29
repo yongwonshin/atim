@@ -1,5 +1,10 @@
 from prim_search import *
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--skip_existing", action="store_true", help="Skip tasks where search parameters already exist")
+parser.add_argument("--jsonfile", type=str, default="./reproduced/prim_parameters.json")
+args = parser.parse_args()
 
 naive = True
 print(("PrIM" if naive else "PrIM-Search") + " search for Tensor programs")
