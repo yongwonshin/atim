@@ -15,3 +15,5 @@ dependencies:
       - tornado
       - xgboost==1.6.1
       - cloudpickle
+      - Pygment
+      - black

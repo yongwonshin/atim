@@ -9,6 +9,8 @@ RUN apt-get update \
                     ninja-build \
                     wget \
                     git \
+                    sudo \
+                    zlib1g-dev
     && apt full-upgrade -y
 RUN apt update \
     && wget http://sdk-releases.upmem.com/2021.3.0/ubuntu_20.04/upmem_2021.3.0_amd64.deb \
