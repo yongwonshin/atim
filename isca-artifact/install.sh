@@ -11,7 +11,7 @@ ln -s $(which llvm-config-16) /usr/local/bin/llvm-config
 git clone -b artifact https://github.com/yongwonshin/atim.git
 cd atim
 git submodule update --init --recursive
-chmod +x atim/evaluation/eval_setup.sh
+chmod +x evaluation/eval_setup.sh
 
 # Install other dependencies
 source "$(conda info --base)/etc/profile.d/conda.sh"
