@@ -89,7 +89,7 @@ Before experiments, we need to perform tuning for CPU-autotuned, PrIM+Search, an
 # Step 0: prepare for tuning
 export PYTHONPATH="$(realpath .)/python:$PYTHONPATH"
 cd evaluation
-python tensor.py
+./eval_setup.sh
 
 # Step 1: perform autotuning for CPU-autotune
 python cpu_search.py
