@@ -2,17 +2,18 @@ import os
 import subprocess
 import re
 import pandas as pd
+import json
 
-DPUS = [512, 1024, 1536, 2048]
 
 def extract_va_times(output):
+    print(output)
     try:
         map_kernel = float(re.search(r'map function kernel execution time\s*:\s*([0-9.]+)', output).group(1))
         dpu_cpu = float(re.search(r'DPU-CPU Time \(ms\):\s*([0-9.]+)', output).group(1))
         return map_kernel, dpu_cpu
     except Exception as e:
         print("[VA] Failed to extract:", e)
-        return 0, 0
+        return 1000, 1000
 
 def extract_red_times(output):
     try:
@@ -21,7 +22,7 @@ def extract_red_times(output):
         return kernel, host
     except Exception as e:
         print("[RED] Failed to extract:", e)
-        return 0, 0
+        return 1000, 1000
 
 def run_make_and_execute(workload, L, dpus):
     folder = f"./baseline/simplepim/benchmarks/{workload}"
@@ -39,27 +40,6 @@ def run_make_and_execute(workload, L, dpus):
         print(f"[{folder}] Execution failed for {dpus} DPUs:", e)
         return ""
 
-def search(workload, L):
-    best_dpus = None
-    best_times = None
-    best_sum = float("inf")
-
-    extractor = extract_va_times if workload == "va" else extract_red_times
-
-    for dpus in DPUS:
-        print(f"Testing {workload} with L={L}, DPUs={dpus}...")
-        output = run_make_and_execute(workload, L, dpus)
-        times = extractor(output)
-        if times:
-            total = sum(times)
-            print(f"  Extracted times: {times}, total: {total}")
-            if total < best_sum:
-                best_sum = total
-                best_times = times
-                best_dpus = dpus
-
-    return best_dpus, best_times
-
 def main():
     tasks = [
         ("va", 1048576),
@@ -73,30 +53,31 @@ def main():
 
     results = []
 
+    with open("./reproduced/simplepim_parameters.json", "r") as f:
+        jtasks = json.load(f)[0]
+
     for workload, L in tasks:
+        key = f"{workload}_{L}"
+        if key not in jtasks.keys():
+            print(f"Skipping {key} (no parameters found)")
+            continue
         print(f"\n=== Running {workload.upper()} with L={L} ===")
-        best_dpus, best_times = search(workload, L)
-        if best_times:
-            results.append({
-                "type": workload,
-                "L": L,
-                "dpus": best_dpus,
-                "times": best_times
-            })
-        else:
-            print(f"Failed to extract results for {workload} with L={L}")
 
-    print("\n===== Summary =====")
-    for r in results:
-        print(f"[{r['type'].upper()}] L={r['L']} → Best DPUs={r['dpus']}, Times={r['times']}, Total={sum(r['times'])}")
+        best_dpus = jtasks[key]
+        extractor = extract_va_times if workload == "va" else extract_red_times
+        print(workload, L, best_dpus)
+        output = run_make_and_execute(workload, L, best_dpus)
+        times = extractor(output)
+        results.append(times)
+        print(f"  Extracted times: {times}")
 
-    df = pd.read_csv("./graph/result_poly.csv")
+    df = pd.read_csv("./reproduced/result_poly.csv")
     row_sequence = [0, 1, 7, 8, 14, 15, 22]
 
     for i, r in enumerate(results):
-        df.iloc[row_sequence[i], 18] = r["times"][0]
-        df.iloc[row_sequence[i], 19] = r["times"][1]
-    df.to_csv("./graph/result_poly.csv", index=False)
+        df.iloc[row_sequence[i], 18] = r[0]
+        df.iloc[row_sequence[i], 19] = r[1]
+    df.to_csv("./reproduced/result_poly.csv", index=False)
 
 
 if __name__ == "__main__":
