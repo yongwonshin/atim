@@ -92,7 +92,6 @@ def sens_va(l):
 if __name__ == "__main__":
     df = pd.read_csv("./graph/result_opt_template.csv")
     mtv_var_dims = [72, 91, 123, 145, 164, 196, 212, 245]
-    mtv_var_dims = [196]
     va_dims = [i * 100000 for i in [1, 2, 3, 4, 5, 6, 7, 8]]
 
     print("\nMTV 256 x L\nWorkload\t M\tK\tPrIM\tO0\tO1\tO2\tO4")
