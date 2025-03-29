@@ -4,10 +4,13 @@ import importlib.util
 import multiprocessing
 
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, "tvm_cputest/python")
 from tvm.target import Target
 from tvm import tir
+from tvm import meta_schedule as ms
+from tvm.meta_schedule.database import JSONDatabase
 import tvm
 
 from tasks import poly_tasks
@@ -20,15 +23,11 @@ target = Target(f"llvm --num-cores={multiprocessing.cpu_count()}")
 
 def ndarray(size, dtype="int32"):
     arr = np.random.randint(0, 50, size=size, dtype=dtype)
-    ret = tvm.nd.array(arr)
-    # flush.flush_cache_clflush(arr)
-    return ret
+    return tvm.nd.array(arr)
 
 def ndzeros(size, dtype="int32"):
     arr = np.zeros(size, dtype=dtype)
-    ret = tvm.nd.array(arr)
-    # flush.flush_cache_clflush(arr)
-    return ret
+    return tvm.nd.array(arr)
 
 def get_pretuned_schedule(op_type, m, n, k):
     module_name = f"{op_type}_{m}_{n}_{k}"
@@ -41,13 +40,20 @@ def get_pretuned_schedule(op_type, m, n, k):
     ir_mod = getattr(module, full_module_name)
     return ir_mod
 
-def eval_pretuned(op_type, m, n, k):
+def get_reproduced_schedule(op_type, m, n, k):
+    workdir = "./reproduced/cpu_tuned/" + f"{op_type}_{m}_{n}_{k}"
+    database = JSONDatabase(work_dir=workdir)
+    all_records = database.get_all_tuning_records()
+    top_record = sorted(all_records, key=lambda rec: rec.run_secs[0])[0]
+    assert len(top_record.run_secs) == 1
+    mod = top_record.workload.mod
+    sch = ms.tir_integration.compile_tir(database, mod, target)
+    return sch.mod
+
+def eval_mod(mod, op_type, m, n, k):
     print(op_type, m, n, k)
-    mod = get_pretuned_schedule(op_type, m, n, k)
     func = tvm.build(mod, target)
     evaluator = func.time_evaluator(func.entry_name, tvm.cpu(0), number=1, repeat=100, flushing_cache=True)
-
-    times = []
 
     if op_type == "va":
         a = ndarray((m,))
@@ -55,30 +61,30 @@ def eval_pretuned(op_type, m, n, k):
         c = ndzeros((m,))
         t = evaluator(a, b, c)
 
-    if op_type == "mmtv":
+    elif op_type == "mmtv":
         a = ndarray((m, n, k))
         b = ndarray((m, k))
         c = ndzeros((m, n))
         t = evaluator(a, b, c)
 
-    if op_type == "mtv":
+    elif op_type == "mtv":
         a = ndarray((m, k))
         b = ndarray((k,))
         c = ndzeros((m,))
         t = evaluator(a, b, c)
 
-    if op_type == "red":
+    elif op_type == "red":
         a = ndarray((m,), dtype=np.int64)
         c = ndzeros((1,), dtype=np.int64)
         t = evaluator(a, c)
 
-    if op_type == "ttv":
+    elif op_type == "ttv":
         a = ndarray((m, n, k))
         b = ndarray((k,))
         c = ndzeros((m, n))
         t = evaluator(a, b, c)
 
-    if op_type == "geva":
+    elif op_type == "geva":
         a = ndarray((m,))
         b = ndarray((m,))
         alpha = ndarray((1,))
@@ -86,7 +92,7 @@ def eval_pretuned(op_type, m, n, k):
         c = ndzeros((m,))
         t = evaluator(a, b, c, alpha, beta)
 
-    if op_type == "gemv":
+    elif op_type == "gemv":
         a = ndarray((m, k))
         b = ndarray((k,))
         alpha = ndarray((1,))
@@ -94,11 +100,30 @@ def eval_pretuned(op_type, m, n, k):
         t = evaluator(a, b, c, alpha)
 
     else:
-        return
+        raise ValueError(f"Unknown op_type: {op_type}")
 
-    print(f"Elapsed time: {t.median * 1000}")
+    elapsed_time = t.median * 1000
+    print(f"Elapsed time: {elapsed_time}")
+    return elapsed_time
 
 if __name__ == "__main__":
-    if args.pretuned:
-        for task in poly_tasks:
-            eval_pretuned(*task)
+    df_poly = pd.read_csv("./reproduced/result_poly.csv")
+    results = []
+
+    for task in poly_tasks:
+        if not task[0]:
+            results.append(0.0)
+            continue
+        try:
+            if args.pretuned:
+                mod = get_pretuned_schedule(*task)
+            else:
+                mod = get_reproduced_schedule(*task)
+            elapsed_time = eval_mod(mod, *task)
+        except Exception as e:
+            print(f"Error processing task {task} with schedule: {e}")
+            elapsed_time = 0.0
+        results.append(elapsed_time)
+
+    df_poly["CPU-Autotuned"] = results
+    df_poly.to_csv("./reproduced/result_poly.csv", index=False)
