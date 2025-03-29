@@ -16,7 +16,7 @@ for task in poly_tasks:
         continue
     print(task)
     params = search(*task, naive=naive)
-    save_search_params(*task, params, naive)
+    save_search_params(*task, params, naive, jsonfile=args.jsonfile)
 print(("PrIM" if naive else "PrIM-Search") + " search for GPT-J")
 for task in gptj_tasks:
     if args.skip_existing and search_param_exists(*task, naive, jsonfile=args.jsonfile):
