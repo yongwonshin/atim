@@ -86,7 +86,7 @@ ninja
 Before experiments, we need to perform tuning for CPU-autotuned, PrIM+Search, and ATiM for tensor programs.
 
 ```bash
-# Step 0: prepare for evaluation
+# Step 0: prepare for tuning
 export PYTHONPATH="$(realpath .)/python:$PYTHONPATH"
 cd evaluation
 python tensor.py
