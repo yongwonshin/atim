@@ -86,19 +86,25 @@ ninja
 Before experiments, we need to perform tuning for CPU-autotuned, PrIM+Search, and ATiM for tensor programs.
 
 ```bash
-# Step 0: prepare for tuning
+# Step 0: prepare for autotuning
 export PYTHONPATH="$(realpath .)/python:$PYTHONPATH"
 cd evaluation
 ./eval_setup.sh
 
 # Step 1: perform autotuning for CPU-autotune
-python cpu_search.py
+python cpu_autotune.py
 
-# Step 2: find optimal parameters for PrIM+Search
-python prim_search.py
+# Step 2: find optimal parameters for PrIM
+python prim_autotune.py
 
-# Step 3: perform autotuning for ATiM
-python atim_search.py
+# Step 3: find optimal parameters for PrIM+Search
+python prim_search_autotune.py
+
+# Step 4: find optimal parameter for SimplePIM
+python simplepim_autotune.py
+
+# Step 5: perform autotuning for ATiM
+python atim_autotune.py
 ```
 
 # Evaluation
@@ -107,10 +113,10 @@ We also evaluate different optimization levels of ATiM's PIM-aware strategies to
 
 ```bash
 # Evaluate tuned binaries/modules for tensor programs
-python cpu_eval.py
-python prim_eval.py
-python simplepim_eval.py
-python atim_eval.py
+python cpu_eval.py # CPU-autotuned
+python prim_eval.py # PrIM/(E) and PrIM+Search
+python simplepim_eval.py # SimplePIM
+python atim_eval.py # ATiM
 
 # Evaluate ATiM's PIM-aware optimizations
 python atim_branch_opt.py
