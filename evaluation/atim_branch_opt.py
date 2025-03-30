@@ -90,7 +90,7 @@ def sens_va(l):
 
 
 if __name__ == "__main__":
-    df = pd.read_csv("./graph/result_opt_template.csv")
+    df = pd.read_csv("./reproduced/result_opt.csv")
     mtv_var_dims = [72, 91, 123, 145, 164, 196, 212, 245]
     va_dims = [i * 100000 for i in [1, 2, 3, 4, 5, 6, 7, 8]]
 
@@ -110,6 +110,6 @@ if __name__ == "__main__":
     for i, l in enumerate(va_dims):
         df.iloc[24 + i, 2:] = sens_va(l)
 
-    df.to_csv("./graph/result_opt.csv", index=False)
+    df.to_csv("./reproduced/result_opt.csv", index=False)
 
     # 15분

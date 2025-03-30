@@ -53,8 +53,13 @@ def main():
 
     results = []
 
+    jtasks = {}
     with open("./reproduced/simplepim_parameters.json", "r") as f:
-        jtasks = json.load(f)[0]
+        arr = json.load(f)
+        for j in arr:
+            key, value = list(j.items())[0]
+            jtasks[key] = value
+
 
     for workload, L in tasks:
         key = f"{workload}_{L}"
