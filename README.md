@@ -88,6 +88,7 @@ Before experiments, we need to perform tuning for CPU-autotuned, PrIM+Search, an
 ```bash
 # Step 0: prepare for autotuning
 export PYTHONPATH="$(realpath .)/python:$PYTHONPATH"
+conda activate atim-venv
 cd evaluation
 ./eval_setup.sh
 
