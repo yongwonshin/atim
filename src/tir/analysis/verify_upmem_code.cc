@@ -43,6 +43,7 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
    public:
     std::unordered_map<Buffer, PrimExpr, ObjectPtrHash, ObjectPtrEqual> alloca_size_map;
     bool inside_kernel = false;
+    bool inside_branch = false;
     std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> vmap;
     bool noncontiguous_cache = false;
     Var current_loop;
@@ -140,6 +141,13 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
       vmap.erase(op->var);
     }
 
+    void VisitStmt_(const IfThenElseNode* op) {
+      bool prev_inside_branch = inside_branch;
+      inside_branch = true;
+      StmtExprVisitor::VisitStmt_(op);
+      inside_branch = prev_inside_branch;
+    }
+
     void VisitStmt_(const BufferStoreNode* op) {
       if (inside_kernel) {
         if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
@@ -157,6 +165,7 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
               FactorMap host_fac(load->indices[0]), pim_fac(op->global_indices[0]);
               if (!(current_loop.defined() && host_fac.get_factor(current_loop) == 1 &&
                     pim_fac.get_factor(current_loop) == 1)) {
+                if (!inside_branch)
                 noncontiguous_cache = true;
               }
             }
@@ -170,6 +179,7 @@ class UPMEMCodeVerifier : public StmtExprVisitor {
               FactorMap host_fac(op->indices[0]), pim_fac(load->global_indices[0]);
               if (!(current_loop.defined() && host_fac.get_factor(current_loop) == 1 &&
                     pim_fac.get_factor(current_loop) == 1)) {
+                if (!inside_branch)
                 noncontiguous_cache = true;
               }
             }
