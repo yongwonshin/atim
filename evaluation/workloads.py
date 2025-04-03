@@ -45,6 +45,7 @@ class VA(UPMEMWorkload):
             required=dict(),
             symbols=["A", "B", "C"],
             output_symbol="C",
+            ignore_h2d=True,
             **kwargs,
         )
 
@@ -70,6 +71,7 @@ class GEVA(UPMEMWorkload):
             required=dict(),
             symbols=["A", "B", "C", "ALPHA", "BETA"],
             output_symbol="C",
+            ignore_h2d=True,
             **kwargs,
         )
 
@@ -114,8 +116,8 @@ class DOT(UPMEMWorkload):
         )
 
     def fetch_data(self):
-        self.host.A = host_array((self.M, 1), self.dtype, new=True)
-        self.host.B = host_array((1,), self.dtype, new=True)
+        self.host.A = host_array((self.M, 1), self.dtype)
+        self.host.B = host_array((1,), self.dtype)
 
     def host_version(self):
         self.host.B = np.sum(self.host.A)
@@ -132,8 +134,8 @@ class RED(UPMEMWorkload):
         )
 
     def fetch_data(self):
-        self.host.A = host_array((self.M,), self.dtype, new=True)
-        self.host.B = host_array((1,), self.dtype, new=True)
+        self.host.A = host_array((self.M,), self.dtype)
+        self.host.B = host_array((1,), self.dtype)
 
     def h2d(self):
         self.dev.A = tvm.nd.array(self.host.A, self.target_device, symbol="A")

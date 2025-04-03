@@ -81,6 +81,7 @@ class CodeGenUpmem final : public CodeGenC {
   std::unordered_map<std::string, size_t> padded_size_;
 
   std::string uuid;
+  std::string broadcast_folding_stmt;
 };
 
 }  // namespace codegen

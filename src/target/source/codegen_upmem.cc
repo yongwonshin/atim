@@ -78,17 +78,27 @@ void CodeGenUpmem::AddFunction(const PrimFunc& f) {
   Map<String, Array<PrimExpr>> sym_map =
       f->GetAttr<Map<String, Array<PrimExpr>>>("upmem_symbol_map").value_or({});
 
+  std::stringstream broadcast_fold;
+
   for (Var arg : f->params) {
     if (sym_map.count(arg->name_hint)) {
       auto arr = sym_map[arg->name_hint];
       std::string alias = Downcast<StringImm>(arr[0])->value;
+      std::string host_alias = alias;
       DataType dtype = DataType(String2DLDataType(Downcast<StringImm>(arr[1])->value));
       int size = Downcast<IntImm>(arr[2])->value;
       padded_size_[arg->name_hint] = Downcast<IntImm>(arr[3])->value;
+      std::string symbol = Downcast<StringImm>(arr[4])->value;
 
-      this->stream << Downcast<StringImm>(arr[4])->value << " ";  // __mram_noinit or __mram
+      if (symbol == "__host") {
+           broadcast_fold << "  const ";
+        PrintType(dtype, broadcast_fold);
+        host_alias = alias + "_";
+        broadcast_fold << " " << alias << " = " << host_alias << "[0];\n";
+      } // __host bc_[2]; const int bc = bc_[0];
+      this->stream << symbol << " ";
       PrintType(dtype, this->stream);
-      this->stream << " " << alias << "[" << size << "];\n";
+      this->stream << " " << host_alias << "[" << size << "];\n";
       var_idmap_[arg.get()] = alias;
       RegisterHandleType(arg.get(), dtype);
     } else {
@@ -99,6 +109,8 @@ void CodeGenUpmem::AddFunction(const PrimFunc& f) {
       RegisterHandleType(arg.get(), arg->dtype);
     }
   }
+
+  this->broadcast_folding_stmt = broadcast_fold.str();
 
   // reserve keywords
   ReserveKeywordsAsUnique();
@@ -116,8 +128,9 @@ void CodeGenUpmem::PreFunctionBody(const PrimFunc& f) {
   int scope = this->BeginScope();
   stream << "  const int blockIdx_x = blockIdx.x;\n"
          << "  const int blockIdx_y = blockIdx.y;\n"
-         << "  const int blockIdx_z = blockIdx.z;\n\n"
-         << "  unsigned int tasklet_id = me();\n"
+         << "  const int blockIdx_z = blockIdx.z;\n\n";
+  stream << this->broadcast_folding_stmt;
+  stream << "  unsigned int tasklet_id = me();\n"
          << "  if (tasklet_id == 0) mem_reset();\n"
          << "  barrier_wait(&barrier);\n";
   this->EndScope(scope);

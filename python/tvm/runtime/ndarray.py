@@ -646,7 +646,7 @@ def array(arr, device=cpu(0), symbol=None):
             )
             empty_arr = None
             if padded_size == 0:
-                empty_arr = empty(arr.shape, arr.dtype, cpu(0), mem_scope)
+                empty_arr = empty(arr.shape, arr.dtype, cpu(0))
             else:
                 empty_arr = tvm._ffi.get_global_func("runtime.TVMCPUAllocArrayPadded")(
                     tvm.runtime.ShapeTuple([int(dim) for dim in arr.shape]),

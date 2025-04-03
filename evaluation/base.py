@@ -97,6 +97,7 @@ class UPMEMWorkload:
         use_time_evaluator=True,
         output_format="all",
         ignore_wrong=False,
+        ignore_h2d=False
     ):
         self.profile = profile
         self.scheduler = None
@@ -124,6 +125,7 @@ class UPMEMWorkload:
         self.use_time_evaluator = use_time_evaluator
         self.output_format = output_format
         self.ignore_wrong = ignore_wrong
+        self.ignore_h2d = ignore_h2d
         # Fixed
         self.target = tvm.target.Target(target=f"upmem --num-cores={multiprocessing.cpu_count()}", host="llvm")
         self.target_device = tvm.device("upmem", 0)
@@ -377,6 +379,8 @@ class UPMEMWorkload:
             kernel.append(costs[3 * i + 1])
             after_kernel.append(costs[3 * i + 2])
         mean_before_kernel = np.mean(before_kernel) * 1e3
+        if self.ignore_h2d:
+            mean_before_kernel = 0.0
         mean_kernel = np.mean(kernel) * 1e3
         mean_after_kernel = np.mean(after_kernel) * 1e3
         return (mean_before_kernel, mean_kernel, mean_after_kernel, 0, mean_before_kernel + mean_kernel + mean_after_kernel)

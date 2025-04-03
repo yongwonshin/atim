@@ -60,6 +60,7 @@ class PimKernelFinder : public StmtExprVisitor {
       consumed_after_buffer;
   Map<Buffer, PrimExpr> alloca_size_map;
   Map<Buffer, PrimExpr> padded_size_map;
+  Map<Buffer, String> broadcast_let_map;
   Map<String, Array<PrimExpr>> symbol_map;
   Map<Var, PrimExpr> vmap;
   bool before_kernel = true, inside_kernel = false, after_kernel = false;
@@ -90,8 +91,19 @@ class PimKernelFinder : public StmtExprVisitor {
   }
 
   Stmt GetAllocateStmt(Var var) {
-    auto symbol_arr = symbol_map[var->name_hint];
+    std::string vname = var->name_hint;
+    bool is_broadcast = false;
+    for (auto& kv: broadcast_let_map) {
+      if (kv.first->name == var->name_hint) {
+        vname = kv.second;
+        is_broadcast = true;
+      }
+    }
+    auto symbol_arr = symbol_map[vname];
     StringImm var_name = Downcast<StringImm>(symbol_arr[0]);
+    if (is_broadcast) {
+      var_name = var_name->value + "_";
+    }
     StringImm type_str = Downcast<StringImm>(symbol_arr[1]);
     PrimExpr size = symbol_arr[2];
     return Evaluate(Call(DataType::Int(32), builtin::pim_allocate_memory(),
@@ -174,6 +186,13 @@ class PimKernelFinder : public StmtExprVisitor {
         symbol_map.Set(kv.first->data->name_hint,
                        {StringImm(var_name), StringImm(DLDataType2String(kv.first->dtype)),
                         kv.second, padded_size_map[kv.first], symbol});
+      }
+
+      for (auto& kv : broadcast_let_map) {
+        StringImm symbol("__host");
+        auto padded_size = 8 / kv.first->dtype.bytes();
+        symbol_map.Set(kv.second, {StringImm(kv.second), // key is not FIRST!
+            StringImm(DLDataType2String(kv.first->dtype)), padded_size, padded_size, symbol});
       }
       kernel_body = AttrStmt(symbol_map, "upmem_symbol_map", 0, kernel_body);
       kernel_bodies.push_back(kernel_body);
@@ -262,6 +281,21 @@ class PimKernelFinder : public StmtExprVisitor {
 
   void VisitStmt_(const LetStmtNode* op) {
     vmap.Set(op->var, op->value);
+
+    if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
+      std::string lscope = GetPtrStorageScope(load->buffer->data);
+      if (lscope == "" || lscope == "global") {
+        if (is_zero(load->indices[0])) {
+          if (is_single_kernel && std::find(h2d_explicit_attr.begin(), h2d_explicit_attr.end(), load->buffer->name) != h2d_explicit_attr.end()) {
+            h2d_explicit.push_back(load->buffer);
+          } else {
+            h2d_implicit.push_back(load->buffer);
+          }
+          broadcast_let_map.Set(load->buffer, op->var->name_hint);
+        }
+      }
+    }
+
     StmtExprVisitor::VisitStmt_(op);
   }
 
@@ -334,6 +368,13 @@ class ScheduleExtractor : public StmtExprVisitor {
 
   void VisitStmt_(const LetStmtNode* op) {
     vmap.Set(op->var, op->value);
+    if (const BufferLoadNode* load = op->value.as<BufferLoadNode>()) {
+      std::string lscope = GetPtrStorageScope(load->buffer->data);
+      if (load->buffer->data.get() == target_buffer_->data.get()) {
+        auto size = 8 / load->buffer->dtype.bytes();
+        res_stmt = Evaluate(Call(DataType::Int(32), builtin::pim_broadcast(), { load->buffer->data, 0, size }));
+      }
+    }
     StmtExprVisitor::VisitStmt_(op);
     vmap.erase(op->var);
   }

@@ -10,14 +10,14 @@ We assume the server is properly equipped with BIOS and MCU firmware, driver, ba
 To set up the full environment quickly, run the following commands. After executing the installation script, proceed directly to the Tuning section:
 
 ```bash
-docker run -it --privileged --rm yongwonshin/atim:v0.1
+docker run -it --privileged yongwonshin/atim:v0.1
 ./install.sh
 ```
 ### Building the Docker Image Manually
 If you prefer to build the Docker image yourself, use the Dockerfile provided:
 ```bash
 docker build -t atim -f isca-artifact/Dockerfile isca-artifact
-docker run -it --privileged --rm atim
+docker run -it --privileged atim
 ./install.sh
 ```
 
