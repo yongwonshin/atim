@@ -431,7 +431,7 @@ class UPMEMWorkload:
             with open(f"./{self.log_dir}/{self.fname}/error.txt", "w") as f:
                 print(traceback.format_exc(), file=f)
             print("an error occured while running: ", self.fname)
-                ret = "ERROR"
+            ret = "ERROR"
         finally:
             if self.perform_free:
                 self.target_device.free()

@@ -2,7 +2,7 @@ import os
 import subprocess
 from simplepim_eval import extract_va_times, extract_red_times, run_make_and_execute
 import json
-
+import argparse
 
 DPUS = [512, 1024, 1536, 2048]
 
@@ -22,6 +22,9 @@ DPUS = [512, 1024, 1536, 2048]
 #         print(f"[{folder}] Execution failed for {dpus} DPUs:", e)
 #         return ""
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--kick-the-tires", action="store_true", help="Run CPU autotune with single workload for AE kick-the-tires.")
+args = parser.parse_args()
 
 def search(workload, L):
     best_dpus = None
@@ -51,6 +54,9 @@ tasks = [
     ("red", 34554432),
     ("red", 67108864),
 ]
+
+if args.kick_the_tires:
+    tasks = [("red", 8388608)]
 
 results = []
 

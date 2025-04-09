@@ -8,7 +8,7 @@ import pandas as pd
 from save_csv import PolySaver
 
 env = os.environ.copy()
-env["PYTHONPATH"] = f"{os.path.abspath('.')}/tvm_cputest/python:{env['PYTHONPATH']}"
+env["PYTHONPATH"] = f"{os.path.abspath('.')}/tvm_cputest/python:{env.get('PYTHONPATH', '')}"
 
 sys.path.insert(0, "tvm_cputest/python")
 from tvm.target import Target

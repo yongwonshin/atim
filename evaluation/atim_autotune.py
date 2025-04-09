@@ -9,7 +9,11 @@ from tvm.target import Target
 
 from bench import get_base_module
 
-from tasks import poly_tasks, gptj_tasks
+from tasks import get_tasks
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--kick-the-tires", action="store_true", help="Run CPU autotune with single workload for AE kick-the-tires.")
+args = parser.parse_args()
 
 def tune(op_type, M, N, K, workdir, reuse_cost_model=False):
     target = Target(f"upmem --num-cores={multiprocessing.cpu_count()}")
@@ -56,5 +60,5 @@ def tune_group(tasks):
             print(e)
             continue
 
-tune_group(gptj_tasks)
-tune_group(poly_tasks)
+tune_group(get_tasks("poly", args.kick_the_tires))
+tune_group(get_tasks("gptj", args.kick_the_tires))
