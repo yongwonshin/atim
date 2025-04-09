@@ -7,11 +7,7 @@ import numpy as np
 import pandas as pd
 
 env = os.environ.copy()
-tvm_dir = os.path.abspath("..") + "/python"
-new_tvm_dir = tvm_dir[:-7] + "/evaluation/tvm_cputest/python"
-python_path = env["PYTHONPATH"]
-python_path = python_path.replace(tvm_dir, new_tvm_dir)
-env["PYTHONPATH"] = python_path
+env["PYTHONPATH"] = f"{os.path.abspath('.')}/tvm_cputest/python:{env['PYTHONPATH']}"
 
 sys.path.insert(0, "tvm_cputest/python")
 from tvm.target import Target

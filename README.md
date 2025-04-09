@@ -12,6 +12,7 @@ To set up the full environment quickly, run the following commands. After execut
 ```bash
 docker run -it --privileged yongwonshin/atim:v0.1
 ./install.sh
+cd atim
 ```
 ### Building the Docker Image Manually
 If you prefer to build the Docker image yourself, use the Dockerfile provided:
