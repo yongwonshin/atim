@@ -1,5 +1,4 @@
 import tvm
-import tvm.testing
 import multiprocessing
 from tvm import meta_schedule as ms
 from tvm.target import Target

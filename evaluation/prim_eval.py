@@ -1,8 +1,10 @@
 from prim_util import *
+from save_csv import GPTJSaver, PolySaver
 import argparse
-
+# import random
 
 def eval(op_type, M, N, K, tiling):
+    # return (random.random() * 10, random.random() * 10, random.random() * 10, random.random() * 10)
     instance = instances[op_type]
     dpus, tasklets, cache_size = tiling
 
@@ -27,37 +29,42 @@ if __name__ == "__main__":
     parser.add_argument("--jsonfile", type=str, default="./reproduced/prim_parameters.json")
     args = parser.parse_args()
 
-    default_tuple = (0, 1000.0, 1000.0, 2000.0)
-    df_gptj = pd.read_csv("./reproduced/result_gptj.csv")
-    df_poly = pd.read_csv("./reproduced/result_poly.csv")
+    default_tuple = (0, 0, 0, 0)
+    csv_gptj = GPTJSaver()
+    csv_poly = PolySaver()
+
     for naive in [True, False]:
         start_col = 5 if naive else 9
         print(("PrIM" if naive else "PrIM-Search") + " evaluate for Tensor programs")
-        results = []
         for task in poly_tasks:
+            res = default_tuple
             if not task[0]:
-                results.append(default_tuple)
                 continue
             try:
                 params = load_search_params(*task, naive, jsonfile=args.jsonfile)
+                print("Evaluate task", task)
                 res = eval(*task, params)
+                print(f"H2D: {res[0]:.3f} ms, Kernel: {res[1]:.3f} ms, D2H: {res[2]:.3f} ms, Total: {res[3]:.3f} ms")
+            except FileNotFoundError as e:
+                print(e)
             except Exception as e:
                 print(f"Error in {task}: {e}")
-                res = default_tuple
-            results.append(res)
-
-        df_poly.iloc[:, start_col : start_col + 4] = results
-        df_poly.to_csv("./reproduced/result_poly.csv", index=False)
+            csv_poly.set_prim(task, *res, search=not naive)
+            csv_poly.commit()
+        print()
 
         print(("PrIM" if naive else "PrIM-Search") + " evaluate for GPT-J")
-        results = []
         for task in gptj_tasks:
+            res = default_tuple
             try:
                 params = load_search_params(*task, naive, jsonfile=args.jsonfile)
+                print("Evaluate task", task)
                 res = eval(*task, params)
+                print(f"H2D: {res[0]:.3f} ms, Kernel: {res[1]:.3f} ms, D2H: {res[2]:.3f} ms, Total: {res[3]:.3f} ms")
+            except FileNotFoundError as e:
+                print(e)
             except Exception as e:
                 print(f"Error in {task}: {e}")
-                res = default_tuple
-            results.append(res)
-        df_gptj.iloc[:, start_col : start_col + 4] = results
-        df_gptj.to_csv("./reproduced/result_gptj.csv", index=False)
+            csv_gptj.set_prim(task, *res, search=not naive)
+            csv_gptj.commit()
+        print()

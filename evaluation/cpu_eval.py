@@ -5,9 +5,10 @@ import multiprocessing
 import os
 import numpy as np
 import pandas as pd
+from save_csv import PolySaver
 
 env = os.environ.copy()
-env["PYTHONPATH"] = f"{os.path.abspath('.')}/tvm_cputest/python:{env['PYTHONPATH']}"
+env["PYTHONPATH"] = f"{os.path.abspath('.')}/tvm_cputest/python:{env.get('PYTHONPATH', '')}"
 
 sys.path.insert(0, "tvm_cputest/python")
 from tvm.target import Target
@@ -45,6 +46,8 @@ def get_pretuned_schedule(op_type, m, n, k):
 
 def get_reproduced_schedule(op_type, m, n, k):
     workdir = "./reproduced/cpu_tuned/" + f"{op_type}_{m}_{n}_{k}"
+    if not os.path.exists(os.path.join(workdir, "database_workload.json")):
+        return None
     database = JSONDatabase(work_dir=workdir)
     all_records = database.get_all_tuning_records()
     top_record = sorted(all_records, key=lambda rec: rec.run_secs[0])[0]
@@ -110,23 +113,25 @@ def eval_mod(mod, op_type, m, n, k):
     return elapsed_time
 
 if __name__ == "__main__":
-    df_poly = pd.read_csv("./reproduced/result_poly.csv")
-    results = []
+    csv_poly = PolySaver()
 
     for task in poly_tasks:
+        elapsed_time = 0.0
         if not task[0]:
-            results.append(0.0)
             continue
         try:
             if args.pretuned:
                 mod = get_pretuned_schedule(*task)
             else:
                 mod = get_reproduced_schedule(*task)
+                if not mod:
+                    raise FileNotFoundError(f"CPU-autotuned module not found for task {task}")
+            print(f"Evaluating cpu-autotuned task {task}")
             elapsed_time = eval_mod(mod, *task)
+            print("Elapsed time: ", elapsed_time, " ms")
+        except FileNotFoundError as e:
+            print(e)
         except Exception as e:
             print(f"Error processing task {task} with schedule: {e}")
-            elapsed_time = 0.0
-        results.append(elapsed_time)
-
-    df_poly["CPU-Autotuned"] = results
-    df_poly.to_csv("./reproduced/result_poly.csv", index=False)
+        csv_poly.set_cpu_autotuned(task, elapsed_time)
+        csv_poly.commit()

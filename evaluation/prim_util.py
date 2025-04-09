@@ -112,7 +112,7 @@ def load_search_params(op_type, M, N, K, naive, jsonfile):
 
     dpus = best_tiling.get("dpus")
     if dpus is None:
-        raise ValueError(f"DPUs not found for key: {key}, prim_key: {prim_key} in {jsonfile}")
+        raise FileNotFoundError(f"{prim_key} configuration not found for task {key} in {jsonfile}")
     if op_type == "mmtv":
         dpus = dpus // M
     tasklets = best_tiling.get("tasklets", 16)

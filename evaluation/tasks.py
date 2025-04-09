@@ -60,3 +60,16 @@ gptj_tasks = [
     ("mtv", 28672, 1, 7168),
     ("mtv", 7168, 1, 28672)
 ]
+
+def get_tasks(type, kick_the_tires):
+    if kick_the_tires:
+        if type == "poly":
+            yield ("red", 8388608, 1, 1)
+            yield ("mtv", 4096, 1, 4096)
+        elif type == "gptj":
+            return
+    else:
+        if type == "poly":
+            yield from poly_tasks
+        elif type == "gptj":
+            yield from gptj_tasks
