@@ -283,7 +283,7 @@ std::string DPUClangCompile(const std::string& code, int tasklet_num, std::strin
       LOG(FATAL) << "Failed to compile code for upmem.";
     }
   }
-  command += " -";
+  command += " - > /dev/null 2>&1";
   FILE* pipe = popen(command.c_str(), "w");
 
   if (pipe) {
