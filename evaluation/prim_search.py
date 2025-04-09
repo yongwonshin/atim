@@ -45,28 +45,3 @@ def search(op_type, M, N, K, naive):
             best_cache,
         )
     return best_tiling
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--skip_existing", action="store_true", help="Skip tasks where search parameters already exist")
-    parser.add_argument("--jsonfile", type=str, default="./reproduced/prim_parameters.json")
-    args = parser.parse_args()
-
-    for naive in [True, False]:
-        print(("PrIM" if naive else "PrIM-Search") + " search for Tensor programs")
-        for task in poly_tasks:
-            if not task[0]:
-                continue
-            if args.skip_existing and search_param_exists(*task, naive, jsonfile=args.jsonfile):
-                continue
-            print(task)
-            params = search(*task, naive=naive)
-            save_search_params(*task, params, naive)
-        print(("PrIM" if naive else "PrIM-Search") + " search for GPT-J")
-        for task in gptj_tasks:
-            if args.skip_existing and search_param_exists(*task, naive, jsonfile=args.jsonfile):
-                continue
-            print(task)
-            params = search(*task, naive=naive)
-            save_search_params(*task, params, naive, jsonfile=args.jsonfile)

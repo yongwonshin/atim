@@ -295,9 +295,10 @@ class UPMEMWorkload:
             bench_after_kernel_time = re.search("DPU-CPU Time \(ms\): (\d+\.\d+)", result)
 
             if not bench_before_kernel_time or not bench_kernel_time or not bench_after_kernel_time:
-                print(result)
-                print(error.decode("utf-8"))
-                raise AttributeError("Failed to fetch result.")
+                if self.verbose >= 1:
+                    print(result)
+                    print(error.decode("utf-8"))
+                raise AttributeError("Invalid configuration")
             bench_before_kernel_time = float(bench_before_kernel_time.group(1))
             bench_kernel_time = float(bench_kernel_time.group(1))
             bench_after_kernel_time = float(bench_after_kernel_time.group(1))
@@ -307,8 +308,9 @@ class UPMEMWorkload:
                 bench_kernel_time,
                 bench_after_kernel_time,
             )
-        except AttributeError as e:
-            print(e)
+        except Exception as e:
+            if self.verbose >= 1:
+                print(e)
             return [0.0, 1000.0, 1000.0]
         self.benchmark_results.append(time_tuple)
         # print("\t".join(map(str, time_tuple)))
