@@ -4,7 +4,7 @@ import pandas as pd
 class CSVSaver:
     def __init__(self, csv_path):
         self.csv_path = csv_path
-        self.df = pd.read_csv(csv_path)
+        self.df = pd.read_csv(csv_path, dtype={col: float for col in range(5, 21)})
 
     def get_row(self, task):
         try:

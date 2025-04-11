@@ -65,7 +65,7 @@ def plot_gpt(src_df, filename):
         hconf = dict(ha="right", va="top", transform=ax.get_xaxis_transform(), fontsize=fontsize - 0.5)
 
         if is_mmtv:
-            M_labels = df_subset['M'].values
+            M_labels = df_subset['N'].values
             ax.text(-0.54, ypos(0), 'Token', **hconf)
             ax.text(-0.54, ypos(1), 'Batch', **hconf)
             for i, label in enumerate(M_labels):
@@ -82,7 +82,7 @@ def plot_gpt(src_df, filename):
         else:
             ax.text(-0.54, ypos(0), 'Row', **hconf)
             ax.text(-0.54, ypos(1), 'Col', **hconf)
-            M_labels = df_subset['N'].values
+            M_labels = df_subset['M'].values
             K_labels = df_subset['K'].values
             for i, label in enumerate(M_labels):
                 ax.text(x[i], ypos(0), label, **cconf)

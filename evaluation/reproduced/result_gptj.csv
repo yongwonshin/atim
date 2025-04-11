@@ -1,4 +1,4 @@
-Category,Workload,N,M,K,PrIM-H2D,PrIM-Kernel,PrIM-After,PrIM-Total,PS-H2D,PS-Kernel,PS-After,PS-Total,ATiM-H2D,ATiM-Kernel,ATiM-After,ATiM-Total,SimplePIM-H2D,SimplePIM-Kernel,SimplePIM-After,CPU-Autotuned
+Category,Workload,M,N,K,PrIM-H2D,PrIM-Kernel,PrIM-After,PrIM-Total,PS-H2D,PS-Kernel,PS-After,PS-Total,ATiM-H2D,ATiM-Kernel,ATiM-After,ATiM-Total,SimplePIM-H2D,SimplePIM-Kernel,SimplePIM-After,CPU-Autotuned
 GPT 6B,mmtv,16,64,256,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 ,mmtv,16,128,256,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 ,mmtv,16,256,256,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0

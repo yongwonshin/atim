@@ -13,7 +13,7 @@ def extract_va_times(output):
         return map_kernel, dpu_cpu
     except Exception as e:
         print("[VA] Failed to extract:", e)
-        return 1000, 1000
+        return 0.0, 0.0
 
 def extract_red_times(output):
     try:
@@ -22,7 +22,7 @@ def extract_red_times(output):
         return kernel, host
     except Exception as e:
         print("[RED] Failed to extract:", e)
-        return 1000, 1000
+        return 0.0, 0.0
 
 def run_make_and_execute(workload, L, dpus):
     folder = f"./baseline/simplepim/benchmarks/{workload}"
@@ -42,16 +42,14 @@ def run_make_and_execute(workload, L, dpus):
 
 def main():
     tasks = [
-        ("va", 1048576),
-        ("red", 524288),
-        ("va", 16777216),
-        ("red", 8388608),
-        ("va", 67108864),
-        ("red", 34554432),
-        ("red", 67108864),
+        ("va", 1048576, 0),
+        ("red", 524288, 1),
+        ("va", 16777216, 7),
+        ("red", 8388608, 8),
+        ("va", 67108864, 14),
+        ("red", 34554432, 15),
+        ("red", 67108864, 22),
     ]
-
-    results = []
 
     jtasks = {}
     with open("./reproduced/simplepim_parameters.json", "r") as f:
@@ -61,7 +59,7 @@ def main():
             jtasks[key] = value
 
 
-    for workload, L in tasks:
+    for workload, L, row in tasks:
         key = f"{workload}_{L}"
         if key not in jtasks.keys():
             print(f"Skipping {key} (no parameters found)")
@@ -73,16 +71,15 @@ def main():
         print(workload, L, best_dpus)
         output = run_make_and_execute(workload, L, best_dpus)
         times = extractor(output)
-        results.append(times)
+
+        df = pd.read_csv("./reproduced/result_poly.csv")
+        df.iloc[row, 18] = times[0]
+        df.iloc[row, 19] = times[1]
+        df.to_csv("./reproduced/result_poly.csv", index=False)
+
         print(f"  Extracted times: {times}")
 
-    df = pd.read_csv("./reproduced/result_poly.csv")
-    row_sequence = [0, 1, 7, 8, 14, 15, 22]
 
-    for i, r in enumerate(results):
-        df.iloc[row_sequence[i], 18] = r[0]
-        df.iloc[row_sequence[i], 19] = r[1]
-    df.to_csv("./reproduced/result_poly.csv", index=False)
 
 
 if __name__ == "__main__":
