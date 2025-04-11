@@ -131,6 +131,11 @@ cd graph
 python plot.py
 ```
 
+Once the plot is generated, you can find the output at:
+ - `reproduced/plot_gpt.pdf`
+ - `reproduced/plot_polybench.pdf`
+ - `reproduced/plot_branch_opt.pdf`
+
 ## Experiment customization
 ATiM supports tuning tensor programs with various workloads and shapes. To test different workload sizes or to add new workloads, users can modify:
 
