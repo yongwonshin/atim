@@ -90,26 +90,26 @@ def sens_va(l):
 
 
 if __name__ == "__main__":
-    df = pd.read_csv("./reproduced/result_opt.csv")
+    df = pd.read_csv("./reproduced/result_opt.csv", dtype={col: float for col in range(2, 7)})
     mtv_var_dims = [72, 91, 123, 145, 164, 196, 212, 245]
     va_dims = [i * 100000 for i in [1, 2, 3, 4, 5, 6, 7, 8]]
 
     print("\nMTV 256 x L\nWorkload\t M\tK\tPrIM\tO0\tO1\tO2\tO4")
     for i, l in enumerate(mtv_var_dims):
         df.iloc[i, 2:] = sens_mtv(256, l)
+        df.to_csv("./reproduced/result_opt.csv", index=False)
 
     print("\nMTV L x 256\nM\tK\tPrIM\tO0\tO1\tO2\tO4")
     for i, l in enumerate(mtv_var_dims):
         df.iloc[8 + i, 2:] = sens_mtv(l, 256)
+        df.to_csv("./reproduced/result_opt.csv", index=False)
 
     print("\nMTV L x L\nM\tK\tPrIM\tO0\tO1\tO2\tO4")
     for i, l in enumerate(mtv_var_dims):
         df.iloc[16 + i, 2:] = sens_mtv(l, l)
+        df.to_csv("./reproduced/result_opt.csv", index=False)
 
     print("\nVA\nL\t-\tPrIM\tO0\tO1\tO2\tO4")
     for i, l in enumerate(va_dims):
         df.iloc[24 + i, 2:] = sens_va(l)
-
-    df.to_csv("./reproduced/result_opt.csv", index=False)
-
-    # 15분
+        df.to_csv("./reproduced/result_opt.csv", index=False)
