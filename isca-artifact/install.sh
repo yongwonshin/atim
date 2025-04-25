@@ -12,6 +12,11 @@ git clone -b artifact https://github.com/yongwonshin/atim.git
 cd atim
 git submodule update --init --recursive
 chmod +x evaluation/eval_setup.sh
+cd evaluation
+./eval_setup.sh
+cd ..
+echo "export PYTHONPATH=$pwd/python:$PYTHONPATH" >> ~/.bashrc
+export PYTHONPATH=$pwd/python:$PYTHONPATH
 
 # Install other dependencies
 source "$(conda info --base)/etc/profile.d/conda.sh"

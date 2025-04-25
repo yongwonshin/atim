@@ -81,6 +81,17 @@ mkdir build && cd build
 cp ../cmake/config.cmake .
 cmake .. -G Ninja
 ninja
+cd ..
+```
+
+#### 6. Prepare for experiments
+
+Before tuning and evaluation, we need to build CPU-version TVM submodule and set TVM python path.
+```bash
+export PYTHONPATH="$(realpath .)/python:$PYTHONPATH"
+conda activate atim-venv
+cd evaluation
+./eval_setup.sh
 ```
 
 # Tuning
@@ -88,10 +99,8 @@ Before experiments, we need to perform tuning for CPU-autotuned, PrIM+Search, an
 
 ```bash
 # Step 0: prepare for autotuning
-export PYTHONPATH="$(realpath .)/python:$PYTHONPATH"
+cd <path-to-atim>/evaluation
 conda activate atim-venv
-cd evaluation
-./eval_setup.sh
 
 # Step 1: perform autotuning for CPU-autotune
 python cpu_autotune.py
@@ -127,7 +136,6 @@ python atim_branch_opt.py
 Finally, generate graphs corresponding to Fig. 9, Fig. 10, and Fig. 12 in the paper:
 
 ```bash
-cd graph
 python plot.py
 ```
 
