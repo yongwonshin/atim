@@ -5,7 +5,7 @@ import multiprocessing
 import os
 import numpy as np
 import pandas as pd
-from save_csv import PolySaver
+from save_csv import PolySaver, GPTJSaver
 
 env = os.environ.copy()
 env["PYTHONPATH"] = f"{os.path.abspath('.')}/tvm_cputest/python:{env.get('PYTHONPATH', '')}"
@@ -17,7 +17,7 @@ from tvm import meta_schedule as ms
 from tvm.meta_schedule.database import JSONDatabase
 import tvm
 
-from tasks import poly_tasks
+from tasks import poly_tasks, gptj_tasks
 
 argparser = argparse.ArgumentParser(description='Evaluate CPU performance')
 argparser.add_argument('--pretuned', action='store_true', help='Use pretuned parameters')
@@ -59,7 +59,7 @@ def get_reproduced_schedule(op_type, m, n, k):
 def eval_mod(mod, op_type, m, n, k):
     print(op_type, m, n, k)
     func = tvm.build(mod, target)
-    evaluator = func.time_evaluator(func.entry_name, tvm.cpu(0), number=1, repeat=100, flushing_cache=True)
+    evaluator = func.time_evaluator(func.entry_name, tvm.cpu(0), number=1, repeat=1, flushing_cache=True)
 
     if op_type == "va":
         a = ndarray((m,))
@@ -114,6 +114,7 @@ def eval_mod(mod, op_type, m, n, k):
 
 if __name__ == "__main__":
     csv_poly = PolySaver()
+    csv_gptj = GPTJSaver()
 
     for task in poly_tasks:
         elapsed_time = 0.0
@@ -135,3 +136,24 @@ if __name__ == "__main__":
             print(f"Error processing task {task} with schedule: {e}")
         csv_poly.set_cpu_autotuned(task, elapsed_time)
         csv_poly.commit()
+
+    for task in gptj_tasks:
+        elapsed_time = 0.0
+        if not task[0]:
+            continue
+        try:
+            if args.pretuned:
+                mod = get_pretuned_schedule(*task)
+            else:
+                mod = get_reproduced_schedule(*task)
+                if not mod:
+                    raise FileNotFoundError(f"CPU-autotuned module not found for task {task}")
+            print(f"Evaluating cpu-autotuned task {task}")
+            elapsed_time = eval_mod(mod, *task)
+            print("Elapsed time: ", elapsed_time, " ms")
+        except FileNotFoundError as e:
+            print(e)
+        except Exception as e:
+            print(f"Error processing task {task} with schedule: {e}")
+        csv_gptj.set_cpu_autotuned(task, elapsed_time)
+        csv_gptj.commit()

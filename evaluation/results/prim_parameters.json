@@ -79,6 +79,46 @@
             "cache_size": 16
         }
     },
+    "mmtv_256_64_256": {
+        "prim": {
+            "dpus": 512
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 8,
+            "cache_size": 16
+        }
+    },
+    "mmtv_256_128_256": {
+        "prim": {
+            "dpus": 1024
+        },
+        "prim-search": {
+            "dpus": 1024,
+            "tasklets": 16,
+            "cache_size": 16
+        }
+    },
+    "mmtv_256_256_256": {
+        "prim": {
+            "dpus": 2048
+        },
+        "prim-search": {
+            "dpus": 2048,
+            "tasklets": 16,
+            "cache_size": 16
+        }
+    },
+    "mmtv_256_512_256": {
+        "prim": {
+            "dpus": 2048
+        },
+        "prim-search": {
+            "dpus": 2048,
+            "tasklets": 16,
+            "cache_size": 16
+        }
+    },
     "mmtv_28_64_256": {
         "prim": {
             "dpus": 56
@@ -150,6 +190,36 @@
         }
     },
     "mmtv_112_512_256": {
+        "prim": {
+            "dpus": 1792
+        },
+        "prim-search": {
+            "dpus": 1792,
+            "tasklets": 16,
+            "cache_size": 16
+        }
+    },
+    "mmtv_448_128_256": {
+        "prim": {
+            "dpus": 1792
+        },
+        "prim-search": {
+            "dpus": 1792,
+            "tasklets": 16,
+            "cache_size": 16
+        }
+    },
+    "mmtv_448_256_256": {
+        "prim": {
+            "dpus": 1792
+        },
+        "prim-search": {
+            "dpus": 1792,
+            "tasklets": 16,
+            "cache_size": 16
+        }
+    },
+    "mmtv_448_512_256": {
         "prim": {
             "dpus": 1792
         },
