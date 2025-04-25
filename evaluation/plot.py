@@ -4,8 +4,11 @@ from plot_gpt import plot_gpt
 from plot_polybench import plot_polybench
 from plot_branch_opt import plot_branch_opt
 import argparse
+import matplotlib.font_manager as fm
 
-plt.rcParams.update({'font.family':'Arial'})
+path = "/usr/share/fonts/Arial.TTF"
+arial_font = fm.FontProperties(fname=path)
+plt.rc('font', family=arial_font.get_name())
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--dir", type=str, default="../reproduced")

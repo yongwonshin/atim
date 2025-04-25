@@ -27,7 +27,7 @@ class CSVSaver:
         if not task[0]:
             return
         row = self.get_row(task)
-        if not row:
+        if row is None:
             return
         self.df.loc[row, "CPU-Autotuned"] = value
 
@@ -35,7 +35,7 @@ class CSVSaver:
         if not task[0]:
             return
         row = self.get_row(task)
-        if not row:
+        if row is None:
             return
         self.df.iloc[row, start_col:start_col + 4] = [h2d, kernel, d2h, total]
 

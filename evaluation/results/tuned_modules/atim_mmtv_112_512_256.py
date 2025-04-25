@@ -16,7 +16,7 @@ class module_atim_mmtv_112_512_256:
             C_local = T.alloc_buffer((112, 512), "int32", scope="local")
             A_local = T.alloc_buffer((112, 512, 256), "int32", scope="local")
             B_local = T.alloc_buffer((112, 256), "int32", scope="local")
-            for i_0 in T.thread_binding(112, thread="blockIdx.x", annotations={"bank": T.int64(1), "pragma_auto_unroll_max_step": T.int64(512), "pragma_unroll_explicit": T.int64(0)}):
+            for i_0 in T.thread_binding(112, thread="blockIdx.x", annotations={"bank": T.int64(1), "pragma_auto_unroll_max_step": T.int64(16), "pragma_unroll_explicit": T.int64(0)}):
                 for j_0 in T.thread_binding(16, thread="blockIdx.y", annotations={"bank": T.int64(1)}):
                     for j_1 in T.thread_binding(16, thread="threadIdx.x"):
                         for i_1, i_2, j_2 in T.grid(1, 1, 1):
@@ -28,29 +28,29 @@ class module_atim_mmtv_112_512_256:
                                     T.writes(C_local[v_i, v_j])
                                     T.block_attr({"meta_schedule.tiling_structure": "SSSRSRSR"})
                                     C_local[v_i, v_j] = 0
-                            for k_0, i_3, j_3, k_1 in T.grid(4, 1, 1, 1):
-                                for ax0, ax1, ax2 in T.grid(1, 2, 64):
+                            for k_0 in range(16):
+                                for ax0, ax1, ax2 in T.grid(1, 2, 16):
                                     with T.block("A_local"):
                                         v0 = T.axis.spatial(112, i_0 + ax0)
                                         v1 = T.axis.spatial(512, j_0 * 32 + j_1 * 2 + ax1)
-                                        v2 = T.axis.spatial(256, k_0 * 64 + ax2)
+                                        v2 = T.axis.spatial(256, k_0 * 16 + ax2)
                                         T.reads(A[v0, v1, v2])
                                         T.writes(A_local[v0, v1, v2])
                                         T.block_attr({"meta_schedule.cooperative_fetch": 1})
                                         A_local[v0, v1, v2] = A[v0, v1, v2]
-                                for ax0, ax1 in T.grid(1, 64):
+                                for ax0, ax1 in T.grid(1, 16):
                                     with T.block("B_local"):
                                         v0 = T.axis.spatial(112, i_0 + ax0)
-                                        v1 = T.axis.spatial(256, k_0 * 64 + ax1)
+                                        v1 = T.axis.spatial(256, k_0 * 16 + ax1)
                                         T.reads(B[v0, v1])
                                         T.writes(B_local[v0, v1])
                                         T.block_attr({"meta_schedule.cooperative_fetch": 1})
                                         B_local[v0, v1] = B[v0, v1]
-                                for i_4, j_4, k_2 in T.grid(1, 2, 64):
+                                for i_3, j_3, k_1, i_4, j_4, k_2 in T.grid(1, 1, 1, 1, 2, 16):
                                     with T.block("C_update"):
                                         v_i = T.axis.spatial(112, i_0 + i_1 + i_2 + i_3 + i_4)
                                         v_j = T.axis.spatial(512, j_0 * 32 + j_1 * 2 + j_2 * 2 + j_3 * 2 + j_4)
-                                        v_k = T.axis.reduce(256, k_0 * 64 + k_1 * 64 + k_2)
+                                        v_k = T.axis.reduce(256, k_0 * 16 + k_1 * 16 + k_2)
                                         T.reads(C_local[v_i, v_j], A_local[v_i, v_j, v_k], B_local[v_i, v_k])
                                         T.writes(C_local[v_i, v_j])
                                         T.block_attr({"meta_schedule.tiling_structure": "SSSRSRSR"})
@@ -72,7 +72,7 @@ def apply_trace_atim_mmtv_112_512_256(sch: tir.Schedule) -> None:
   l10, l11, l12, l13, l14 = sch.split(loop=l2, factors=[v5, v6, v7, v8, v9], preserve_unit_iters=True)
   v15, v16, v17, v18, v19 = sch.sample_perfect_tile(loop=l3, n=5, max_innermost_factor=256, min_innermost_factor=1, decision=[16, 16, 1, 1, 2])
   l20, l21, l22, l23, l24 = sch.split(loop=l3, factors=[v15, v16, v17, v18, v19], preserve_unit_iters=True)
-  v25, v26, v27 = sch.sample_perfect_tile(loop=l4, n=3, max_innermost_factor=256, min_innermost_factor=1, decision=[4, 1, 64])
+  v25, v26, v27 = sch.sample_perfect_tile(loop=l4, n=3, max_innermost_factor=256, min_innermost_factor=1, decision=[16, 1, 16])
   l28, l29, l30 = sch.split(loop=l4, factors=[v25, v26, v27], preserve_unit_iters=True)
   sch.reorder(l10, l20, l11, l21, l12, l22, l28, l13, l23, l29, l14, l24, l30)
   sch.bind(loop=l10, thread_axis="blockIdx.x")
@@ -84,14 +84,14 @@ def apply_trace_atim_mmtv_112_512_256(sch: tir.Schedule) -> None:
   b31 = sch.cache_write(block=b1, write_buffer_index=0, storage_scope="local")
   sch.reverse_compute_at(block=b31, loop=l22, preserve_unit_loops=True, index=-1)
   b32 = sch.cache_read(block=b1, read_buffer_index=0, storage_scope="local", consumer_blocks=[b1])
-  sch.compute_at(block=b32, loop=l29, preserve_unit_loops=True, index=-1)
+  sch.compute_at(block=b32, loop=l28, preserve_unit_loops=True, index=-1)
   v33 = sch.sample_categorical(candidates=[1], probs=[1], decision=0)
   sch.annotate(block_or_loop=b32, ann_key="meta_schedule.cooperative_fetch", ann_val=v33)
   b34 = sch.cache_read(block=b1, read_buffer_index=1, storage_scope="local", consumer_blocks=[b1])
-  sch.compute_at(block=b34, loop=l29, preserve_unit_loops=True, index=-1)
+  sch.compute_at(block=b34, loop=l28, preserve_unit_loops=True, index=-1)
   v35 = sch.sample_categorical(candidates=[1], probs=[1], decision=0)
   sch.annotate(block_or_loop=b34, ann_key="meta_schedule.cooperative_fetch", ann_val=v35)
-  v36 = sch.sample_categorical(candidates=[0, 16, 64, 512], probs=[0.25, 0.25, 0.25, 0.25], decision=3)
+  v36 = sch.sample_categorical(candidates=[0, 16, 64, 512], probs=[0.25, 0.25, 0.25, 0.25], decision=1)
   sch.annotate(block_or_loop=b0, ann_key="meta_schedule.unroll_implicit", ann_val=v36)
   b37 = sch.get_block(name="root", func_name="main")
   sch.annotate(block_or_loop=b37, ann_key="meta_schedule.optimization_level", ann_val=4)
@@ -99,12 +99,18 @@ def apply_trace_atim_mmtv_112_512_256(sch: tir.Schedule) -> None:
   b38 = sch.get_block(name="root", func_name="main")
   sch.unannotate(block_or_loop=b38, ann_key="meta_schedule.unroll_implicit")
   b39, b40, b41, b42 = sch.get_child_blocks(b38)
-  l43, l44, l45, l46, l47, l48, l49, l50, l51, l52, l53, l54, l55 = sch.get_loops(block=b39)
-  l56, l57, l58, l59, l60, l61, l62, l63, l64, l65, l66, l67 = sch.get_loops(block=b40)
-  l68, l69, l70, l71, l72, l73, l74, l75, l76, l77, l78, l79, l80 = sch.get_loops(block=b41)
-  sch.annotate(block_or_loop=l68, ann_key="pragma_auto_unroll_max_step", ann_val=512)
-  sch.annotate(block_or_loop=l68, ann_key="pragma_unroll_explicit", ann_val=0)
-  l81, l82, l83, l84, l85, l86, l87, l88 = sch.get_loops(block=b42)
-  b89 = sch.get_block(name="C", func_name="main")
-  l90, l91, l92, l93, l94, l95, l96, l97, l98, l99, l100, l101, l102 = sch.get_loops(block=b89)
-  b103 = sch.decompose_reduction(block=b89, loop=l96)
+  l43, l44, l45, l46, l47, l48, l49, l50, l51, l52 = sch.get_loops(block=b39)
+  sch.annotate(block_or_loop=l43, ann_key="pragma_auto_unroll_max_step", ann_val=16)
+  sch.annotate(block_or_loop=l43, ann_key="pragma_unroll_explicit", ann_val=0)
+  l53, l54, l55, l56, l57, l58, l59, l60, l61 = sch.get_loops(block=b40)
+  sch.annotate(block_or_loop=l53, ann_key="pragma_auto_unroll_max_step", ann_val=16)
+  sch.annotate(block_or_loop=l53, ann_key="pragma_unroll_explicit", ann_val=0)
+  l62, l63, l64, l65, l66, l67, l68, l69, l70, l71, l72, l73, l74 = sch.get_loops(block=b41)
+  sch.annotate(block_or_loop=l62, ann_key="pragma_auto_unroll_max_step", ann_val=16)
+  sch.annotate(block_or_loop=l62, ann_key="pragma_unroll_explicit", ann_val=0)
+  l75, l76, l77, l78, l79, l80, l81, l82 = sch.get_loops(block=b42)
+  sch.annotate(block_or_loop=l75, ann_key="pragma_auto_unroll_max_step", ann_val=16)
+  sch.annotate(block_or_loop=l75, ann_key="pragma_unroll_explicit", ann_val=0)
+  b83 = sch.get_block(name="C", func_name="main")
+  l84, l85, l86, l87, l88, l89, l90, l91, l92, l93, l94, l95, l96 = sch.get_loops(block=b83)
+  b97 = sch.decompose_reduction(block=b83, loop=l90)
