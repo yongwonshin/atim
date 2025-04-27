@@ -1,29 +1,23 @@
 import sys
+import os
 import argparse
 import importlib.util
 import multiprocessing
-import os
-import numpy as np
-import pandas as pd
-from save_csv import PolySaver, GPTJSaver
 
 env = os.environ.copy()
 env["PYTHONPATH"] = f"{os.path.abspath('.')}/tvm_cputest/python:{env.get('PYTHONPATH', '')}"
-
 sys.path.insert(0, "tvm_cputest/python")
+
+import numpy as np
+import pandas as pd
 from tvm.target import Target
 from tvm import tir
 from tvm import meta_schedule as ms
 from tvm.meta_schedule.database import JSONDatabase
 import tvm
 
-from tasks import poly_tasks, gptj_tasks
-
-argparser = argparse.ArgumentParser(description='Evaluate CPU performance')
-argparser.add_argument('--pretuned', action='store_true', help='Use pretuned parameters')
-args = argparser.parse_args()
-
-target = Target(f"llvm --num-cores={multiprocessing.cpu_count()}")
+from parser_utils import get_tune_parser, args_to_tasks
+from save_csv import CSVSaver
 
 def ndarray(size, dtype="int32"):
     arr = np.random.randint(0, 50, size=size, dtype=dtype)
@@ -44,8 +38,8 @@ def get_pretuned_schedule(op_type, m, n, k):
     ir_mod = getattr(module, full_module_name)
     return ir_mod
 
-def get_reproduced_schedule(op_type, m, n, k):
-    workdir = "./reproduced/cpu_tuned/" + f"{op_type}_{m}_{n}_{k}"
+def get_reproduced_schedule(op_type, m, n, k, target, workdir):
+    workdir = f"./{workdir}/{op_type}_{m}_{n}_{k}"
     if not os.path.exists(os.path.join(workdir, "database_workload.json")):
         return None
     database = JSONDatabase(work_dir=workdir)
@@ -107,16 +101,22 @@ def eval_mod(mod, op_type, m, n, k):
 
     else:
         raise ValueError(f"Unknown op_type: {op_type}")
-
     elapsed_time = t.median * 1000
-    print(f"Elapsed time: {elapsed_time}")
     return elapsed_time
 
 if __name__ == "__main__":
-    csv_poly = PolySaver()
-    csv_gptj = GPTJSaver()
+    parser = get_tune_parser()
+    parser.add_argument("--num-cores", type=int, default=multiprocessing.cpu_count(), help="Number of CPU cores to use")
+    parser.add_argument("--workdir", type=str, default=f"./reproduced/cpu_tuned", help="Directory to save the tuning results")
+    parser.add_argument('--pretuned', action='store_true', help='Use pretuned parameters')
+    args = parser.parse_args()
 
-    for task in poly_tasks:
+    tasks = args_to_tasks(args)
+    target = Target(f"llvm --num-cores={args.num_cores}")
+
+    csv = CSVSaver()
+
+    for task in tasks:
         elapsed_time = 0.0
         if not task[0]:
             continue
@@ -124,7 +124,7 @@ if __name__ == "__main__":
             if args.pretuned:
                 mod = get_pretuned_schedule(*task)
             else:
-                mod = get_reproduced_schedule(*task)
+                mod = get_reproduced_schedule(*task, target, args.workdir)
                 if not mod:
                     raise FileNotFoundError(f"CPU-autotuned module not found for task {task}")
             print(f"Evaluating cpu-autotuned task {task}")
@@ -134,26 +134,5 @@ if __name__ == "__main__":
             print(e)
         except Exception as e:
             print(f"Error processing task {task} with schedule: {e}")
-        csv_poly.set_cpu_autotuned(task, elapsed_time)
-        csv_poly.commit()
-
-    for task in gptj_tasks:
-        elapsed_time = 0.0
-        if not task[0]:
-            continue
-        try:
-            if args.pretuned:
-                mod = get_pretuned_schedule(*task)
-            else:
-                mod = get_reproduced_schedule(*task)
-                if not mod:
-                    raise FileNotFoundError(f"CPU-autotuned module not found for task {task}")
-            print(f"Evaluating cpu-autotuned task {task}")
-            elapsed_time = eval_mod(mod, *task)
-            print("Elapsed time: ", elapsed_time, " ms")
-        except FileNotFoundError as e:
-            print(e)
-        except Exception as e:
-            print(f"Error processing task {task} with schedule: {e}")
-        csv_gptj.set_cpu_autotuned(task, elapsed_time)
-        csv_gptj.commit()
+        csv.set_cpu_autotuned(task, elapsed_time)
+        csv.commit()

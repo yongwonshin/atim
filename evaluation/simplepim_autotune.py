@@ -4,33 +4,11 @@ from simplepim_eval import extract_va_times, extract_red_times, run_make_and_exe
 import json
 import argparse
 
-DPUS = [512, 1024, 1536, 2048]
-
-# def run_make_and_execute(workload, L, dpus):
-#     folder = f"./baseline/simplepim/benchmarks/{workload}"
-#     env = os.environ.copy()
-#     env["NR_DPUS"] = str(dpus)
-#     env["NR_ELEMENTS"] = str(L)
-
-#     subprocess.run(["rm", "-rf", "bin"], cwd=folder)
-#     subprocess.run(["make"], cwd=folder, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-#     try:
-#         result = subprocess.run(["./bin/host"], cwd=folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
-#         return result.stdout.decode()
-#     except Exception as e:
-#         print(f"[{folder}] Execution failed for {dpus} DPUs:", e)
-#         return ""
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--kick-the-tires", action="store_true", help="Run CPU autotune with single workload for AE kick-the-tires.")
-args = parser.parse_args()
 
 def search(workload, L):
     best_dpus = None
     best_times = None
     best_sum = float("inf")
-
     extractor = extract_va_times if workload == "va" else extract_red_times
 
     for dpus in DPUS:
@@ -45,6 +23,16 @@ def search(workload, L):
                 best_dpus = dpus
     return best_dpus
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--kick-the-tires", action="store_true", help="Run CPU autotune with single workload for AE kick-the-tires.")
+parser.add_argument("--workload", type=str, help="Specify a single workload in [va, red, mtv, mmtv, ttv, gemv, geva]")
+parser.add_argument("--m", type=int, default=1, help="M dimension")
+parser.add_argument("--n", type=int, default=1, help="N dimension")
+parser.add_argument("--k", type=int, default=1, help="K dimension")
+parser.add_argument("--jsonfile", type=str, default="./reproduced/simplepim_parameters.json")
+args = parser.parse_args()
+
+DPUS = [512, 1024, 1536, 2048]
 tasks = [
     ("va", 1048576),
     ("red", 524288),
@@ -55,8 +43,22 @@ tasks = [
     ("red", 67108864),
 ]
 
+if args.workload:
+    if args.kick_the_tires:
+        raise ValueError("Cannot specify --workload with --kick-the-tires.")
+    if args.workload not in ["va", "red"]:
+        raise ValueError(f"Invalid workload: {args.workload}. Must be one of [va, red] in SimplePIM.")
+    if args.m <= 0:
+        raise ValueError("M, N, and K must be positive integers.")
+    if (args.workload, args.m) not in tasks:
+        print(f"Warning: {args.workload}, {args.m} is not in the list of tasks.")
+    tasks = [(args.workload, args.m)]
 if args.kick_the_tires:
+    if args.m != 1:
+        print("Warning: Kick-the-tires is set, ignore M.")
     tasks = [("red", 8388608)]
+if args.n != 1 or args.k != 1:
+    print("Warning: For workloads supported by SimplePIM, N and K values are always 1. Ignoring.")
 
 results = []
 
@@ -66,10 +68,9 @@ for workload, L in tasks:
     key = f"{workload}_{L}"
     results.append({key: best_dpus})
 
-    output_path = "./reproduced/simplepim_parameters.json"
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(args.jsonpath), exist_ok=True)
 
-    with open(output_path, "w") as f:
+    with open(args.jsonpath, "w") as f:
         json.dump(results, f, indent=4)
 
-    print(f"Results saved to {output_path}")
+    print(f"Results saved to {args.jsonpath}")

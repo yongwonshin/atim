@@ -10,18 +10,22 @@ from tvm import meta_schedule as ms
 from tvm.target import Target
 
 from bench import get_base_module
-from tasks import get_tasks
+from parser_utils import get_tune_parser, args_to_tasks
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--kick-the-tires", action="store_true", help="Run CPU autotune with single workload for AE kick-the-tires.")
-args = parser.parse_args()
 
-def tune(op_type, M, N, K, workdir, reuse_cost_model=False):
-    target = Target(f"llvm --num-cores={multiprocessing.cpu_count()}")
+def tune(op_type, M, N, K, workdir,
+        reuse_cost_model=False,
+        skip_existing=False,
+        max_trials_global=1000,
+        num_trials_per_iter=64,
+        num_cores=multiprocessing.cpu_count()):
+    if skip_existing and os.path.exists(f"{workdir}.tar"):
+        print(f"Skipping {op_type}_{m}_{n}_{k} - existing module found")
+        return
+    target = Target(f"llvm --num-cores={num_cores}")
     os.system(f"mkdir -p ./{workdir}")
 
     start = time.time()
-
     mod = get_base_module(op_type, M, N, K, dtype="int32")
     cost_model = "xgb"
     if reuse_cost_model and os.path.exists(f"{workdir}.tar"):
@@ -33,9 +37,9 @@ def tune(op_type, M, N, K, workdir, reuse_cost_model=False):
         mod=mod,
         target=target,
         work_dir=f"./{workdir}",
-        max_trials_global=1000,
-        num_trials_per_iter=64,
-        num_tuning_cores=multiprocessing.cpu_count(),
+        max_trials_global=max_trials_global,
+        num_trials_per_iter=num_trials_per_iter,
+        num_tuning_cores=num_cores,
         cost_model=cost_model,
     )
     sch = ms.tir_integration.compile_tir(database, mod, target)
@@ -48,12 +52,30 @@ def tune(op_type, M, N, K, workdir, reuse_cost_model=False):
     end = time.time()
     print(f"DONE {op_type} {M} {N} {K} in {end - start} seconds")
 
-for op_type, m, n, k in get_tasks("poly", args.kick_the_tires):
-    if not op_type:
-        continue
-    try:
-        tune(op_type, m, n, k, f"./reproduced/cpu_tuned/{op_type}_{m}_{n}_{k}", reuse_cost_model=False)
-    except Exception as e:
-        print(f"Error: {op_type}, {m}, {n}, {k}")
-        print(e)
-        continue
+if __name__ == "__main__":
+    parser = get_tune_parser()
+    parser.add_argument("--num-cores", type=int, default=multiprocessing.cpu_count(), help="Number of CPU cores to use")
+    parser.add_argument("--workdir", type=str, default=f"./reproduced/cpu_tuned", help="Directory to save the tuning results")
+    parser.add_argument("--max-trials-global", type=int, default=1000, help="Maximum number of trials")
+    parser.add_argument("--num-trials-per-iter", type=int, default=64, help="Number of trials per iteration")
+    parser.add_argument("--skip-existing", action="store_true", help="Skip tasks where search parameters already exist")
+    parser.add_argument("--reuse-cost-model", action="store_true", help="Reuse the cost model if it exists")
+    args = parser.parse_args()
+    tasks = args_to_tasks(args)
+
+    for op_type, m, n, k in tasks:
+        if not op_type:
+            continue
+        try:
+            tune(op_type, m, n, k,
+                 f"./{args.workdir}/{op_type}_{m}_{n}_{k}",
+                 reuse_cost_model=args.reuse_cost_model,
+                 skip_existing=args.skip_existing,
+                 max_trials_global=args.max_trials_global,
+                 num_trials_per_iter=args.num_trials_per_iter,
+                 num_cores=args.num_cores
+                )
+        except Exception as e:
+            print(f"Error: {op_type}, {m}, {n}, {k}")
+            print(e)
+            continue
