@@ -1,6 +1,6 @@
 from prim_util import *
-from save_csv import GPTJSaver, PolySaver
-import argparse
+from save_csv import CSVSaver
+from parser_utils import get_tune_parser, args_to_tasks
 # import random
 
 def eval(op_type, M, N, K, tiling):
@@ -25,17 +25,16 @@ def eval(op_type, M, N, K, tiling):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = get_tune_parser()
     parser.add_argument("--jsonfile", type=str, default="./reproduced/prim_parameters.json")
     args = parser.parse_args()
+    tasks = args_to_tasks(args)
 
     default_tuple = (0, 0, 0, 0)
-    csv_gptj = GPTJSaver()
-    csv_poly = PolySaver()
+    csv = CSVSaver()
 
     for naive in [True, False]:
-        start_col = 5 if naive else 9
-        print(("PrIM" if naive else "PrIM-Search") + " evaluate for Tensor programs")
+        print(("PrIM" if naive else "PrIM-Search"))
         for task in poly_tasks:
             res = default_tuple
             if not task[0]:
@@ -49,22 +48,6 @@ if __name__ == "__main__":
                 print(e)
             except Exception as e:
                 print(f"Error in {task}: {e}")
-            csv_poly.set_prim(task, *res, search=not naive)
-            csv_poly.commit()
-        print()
-
-        print(("PrIM" if naive else "PrIM-Search") + " evaluate for GPT-J")
-        for task in gptj_tasks:
-            res = default_tuple
-            try:
-                params = load_search_params(*task, naive, jsonfile=args.jsonfile)
-                print("Evaluate task", task)
-                res = eval(*task, params)
-                print(f"H2D: {res[0]:.3f} ms, Kernel: {res[1]:.3f} ms, D2H: {res[2]:.3f} ms, Total: {res[3]:.3f} ms")
-            except FileNotFoundError as e:
-                print(e)
-            except Exception as e:
-                print(f"Error in {task}: {e}")
-            csv_gptj.set_prim(task, *res, search=not naive)
-            csv_gptj.commit()
+            csv.set_prim(task, *res, search=not naive)
+            csv.commit()
         print()

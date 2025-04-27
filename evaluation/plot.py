@@ -11,7 +11,7 @@ arial_font = fm.FontProperties(fname=path)
 plt.rc('font', family=arial_font.get_name())
 
 argparser = argparse.ArgumentParser()
-argparser.add_argument("--dir", type=str, default="../reproduced")
+argparser.add_argument("--dir", type=str, default="./reproduced")
 args = argparser.parse_args()
 
 df_gptj = pd.read_csv(f"{args.dir}/result_gptj.csv")

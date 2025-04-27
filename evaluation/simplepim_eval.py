@@ -3,6 +3,7 @@ import subprocess
 import re
 import pandas as pd
 import json
+import argparse
 
 
 def extract_va_times(output):
@@ -41,6 +42,15 @@ def run_make_and_execute(workload, L, dpus):
         return ""
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--kick-the-tires", action="store_true", help="Run CPU autotune with single workload for AE kick-the-tires.")
+    parser.add_argument("--workload", type=str, help="Specify a single workload in [va, red, mtv, mmtv, ttv, gemv, geva]")
+    parser.add_argument("--m", type=int, default=1, help="M dimension")
+    parser.add_argument("--n", type=int, default=1, help="N dimension")
+    parser.add_argument("--k", type=int, default=1, help="K dimension")
+    parser.add_argument("--jsonfile", type=str, default="./reproduced/simplepim_parameters.json")
+    args = parser.parse_args()
+
     tasks = [
         ("va", 1048576, 0),
         ("red", 524288, 1),
@@ -51,13 +61,29 @@ def main():
         ("red", 67108864, 22),
     ]
 
+    if args.workload:
+        if args.kick_the_tires:
+            raise ValueError("Cannot specify --workload with --kick-the-tires.")
+        if args.workload not in ["va", "red"]:
+            raise ValueError(f"Invalid workload: {args.workload}. Must be one of [va, red] in SimplePIM.")
+        if args.m <= 0:
+            raise ValueError("M, N, and K must be positive integers.")
+        if (args.workload, args.m) not in tasks:
+            print(f"Warning: {args.workload}, {args.m} is not in the list of tasks.")
+        tasks = [(args.workload, args.m)]
+    if args.kick_the_tires:
+        if args.m != 1:
+            print("Warning: Kick-the-tires is set, ignore M.")
+        tasks = [("red", 8388608)]
+    if args.n != 1 or args.k != 1:
+        print("Warning: For workloads supported by SimplePIM, N and K values are always 1. Ignoring.")
+
     jtasks = {}
-    with open("./reproduced/simplepim_parameters.json", "r") as f:
+    with open(args.jsonfile, "r") as f:
         arr = json.load(f)
         for j in arr:
             key, value = list(j.items())[0]
             jtasks[key] = value
-
 
     for workload, L, row in tasks:
         key = f"{workload}_{L}"
@@ -72,6 +98,7 @@ def main():
         output = run_make_and_execute(workload, L, best_dpus)
         times = extractor(output)
 
+        # hardcoded for now
         df = pd.read_csv("./reproduced/result_poly.csv")
         df.iloc[row, 18] = times[0]
         df.iloc[row, 19] = times[1]

@@ -14,9 +14,9 @@ from tvm import tir
 import tvm
 from workloads import get_workload
 # import random
-from save_csv import PolySaver, GPTJSaver
+from parser_utils import get_tune_parser, args_to_tasks
+from save_csv import CSVSaver
 
-target = Target(f"upmem --num-cores={multiprocessing.cpu_count()}")
 
 def get_pretuned_schedule(op_type, m, n, k):
     module_name = f"{op_type}_{m}_{n}_{k}"
@@ -29,8 +29,8 @@ def get_pretuned_schedule(op_type, m, n, k):
     ir_mod = getattr(module, full_module_name)
     return tir.Schedule(ir_mod)
 
-def get_reproduced_schedule(op_type, m, n, k):
-    workdir = f"./reproduced/tuned/{op_type}_{m}_{n}_{k}"
+def get_reproduced_schedule(op_type, m, n, k, target, workdir):
+    workdir = f"./{workdir}/{op_type}_{m}_{n}_{k}"
     if not os.path.exists(os.path.join(workdir, "database_workload.json")):
         return None
     database = JSONDatabase(work_dir=workdir)
@@ -67,11 +67,19 @@ def eval_mod(sch, op_type, m, n, k):
     )
     return workload.recent_time_tuple
 
-argparser = argparse.ArgumentParser(description='Evaluate CPU performance')
-argparser.add_argument('--pretuned', action='store_true', help='Use pretuned parameters')
-args = argparser.parse_args()
 
-def eval_group(saver, tasks):
+if __name__ == "__main__":
+    parser = get_tune_parser()
+    parser.add_argument("--num-cores", type=int, default=multiprocessing.cpu_count(), help="Number of CPU cores to use")
+    parser.add_argument("--workdir", type=str, default=f"./reproduced/tuned", help="Directory to save the tuning results")
+    parser.add_argument('--pretuned', action='store_true', help='Use pretuned parameters')
+    args = parser.parse_args()
+
+    tasks = args_to_tasks(args)
+    target = Target(f"upmem --num-cores={args.num_cores}")
+
+    csv = CSVSaver()
+
     for task in tasks:
         if not task[0]:
             continue
@@ -80,9 +88,9 @@ def eval_group(saver, tasks):
             if args.pretuned:
                 sch = get_pretuned_schedule(*task)
             else:
-                sch = get_reproduced_schedule(*task)
+                sch = get_reproduced_schedule(*task, target, args.workdir)
                 if not sch:
-                    raise FileNotFoundError(f"CPU-autotuned module not found for task {task}")
+                    raise FileNotFoundError(f"ATiM-autotuned module not found for task {task}")
             print(f"Evaluating ATiM task {task}")
             time = eval_mod(sch, *task)
             time_tuple = (time[0], time[1], time[2], time[4])
@@ -91,12 +99,5 @@ def eval_group(saver, tasks):
             print(e)
         except Exception as e:
             print(f"Error processing task {task} with schedule: {e}")
-        saver.set_atim(task, *time_tuple)
-        saver.commit()
-
-if __name__ == "__main__":
-    csv_gptj = GPTJSaver()
-    csv_poly = PolySaver()
-
-    eval_group(csv_gptj, gptj_tasks)
-    eval_group(csv_poly, poly_tasks)
+        csv.set_atim(task, *time_tuple)
+        csv.commit()
