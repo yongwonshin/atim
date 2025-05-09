@@ -94,7 +94,7 @@ cd evaluation
 ./eval_setup.sh
 ```
 
-# Tuning
+# Autotuning
 Before experiments, we need to perform tuning for CPU-autotuned, PrIM+Search, and ATiM for tensor programs.
 
 ```bash
