@@ -12,7 +12,7 @@ arial_font = fm.FontProperties(fname=path)
 plt.rc('font', family=arial_font.get_name())
 
 argparser = argparse.ArgumentParser()
-argparser.add_argument("--dir", type=str, default="./results")
+argparser.add_argument("--dir", type=str, default="./reproduced")
 
 args = argparser.parse_args()
 directory = os.path.join(os.path.dirname(__file__), args.dir)
