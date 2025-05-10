@@ -94,7 +94,7 @@ cd evaluation
 ./eval_setup.sh
 ```
 
-# Tuning
+# Autotuning
 Before experiments, we need to perform tuning for CPU-autotuned, PrIM+Search, and ATiM for tensor programs.
 
 ```bash
@@ -146,17 +146,19 @@ Once the plot is generated, you can find the output at:
  - `reproduced/plot_branch_opt.pdf`
 
 ## Experiment customization
-ATiM supports tuning tensor programs with various workloads and shapes. To test different workload sizes or to add new workloads, users can modify:
+ATiM supports autotuning tensor programs with various workloads and shapes. To test different workload sizes or to add new workloads, users can modify:
 
 - `evaluation/bench.py`: Define new workloads in TIR.
 - `evaluation/tasks.py`: Configure workload sizes.
 - `evaluation/workloads.py`: Register workloads to run experiments.
 
-By default, invoking autotuning and evaluation scripts above conduct all workloads in `tasks.py`.
+By default, invoking autotuning and evaluation scripts above conducts all workloads in `tasks.py`.
 - Note that SimplePIM scripts only perform for VA and RED workloads.
 
-You may also specify single workload to either tune or measure. For example,
+You may also specify a single workload to either autotune or measure. For example,
 ```
 python atim_autotune.py --workload=mmtv --m=256 --n=512 --k=256
+
+python atim_eval.py --workload=mmtv --m=256 --n=512 --k=256
 ```
-Above script perform ATiM autotuning for only MMTV workload with tensor shape of 256x512x256.
+The above script performs autotuning and evaluation of the tuned modules of ATiM for only MMTV workload with a tensor shape of 256x512x256.
