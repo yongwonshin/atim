@@ -6,8 +6,8 @@ colors = {
  'PS': '#ff8100',
  "SimplePIM": '#3daa8a',
  "ATiM": '#3b88ff',
- "CPU": "#aaabab",
- "CPU-Autotuned": "#aaabab",
+ "CPU": "#f30190",
+ "CPU-Autotuned": "#f30190",
  "CPU-PrIM": "#a0b0e0"
 }
 

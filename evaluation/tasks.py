@@ -72,7 +72,7 @@ gptj_tasks = [
 def get_tasks(kick_the_tires=False):
     if kick_the_tires:
         return [
-            ("red", 8388608, 1, 1)
+            ("red", 8388608, 1, 1),
             ("mtv", 4096, 1, 4096)
         ]
     else:
