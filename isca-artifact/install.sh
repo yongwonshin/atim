@@ -15,8 +15,8 @@ chmod +x evaluation/eval_setup.sh
 cd evaluation
 ./eval_setup.sh
 cd ..
-echo "export PYTHONPATH=$pwd/python:$PYTHONPATH" >> ~/.bashrc
-export PYTHONPATH=$pwd/python:$PYTHONPATH
+echo "export PYTHONPATH=$(realpath .)/python:$PYTHONPATH" >> ~/.bashrc
+export PYTHONPATH=$(realpath .)/python:$PYTHONPATH
 
 # Install other dependencies
 source "$(conda info --base)/etc/profile.d/conda.sh"

@@ -21,7 +21,7 @@ def plot_gpt(src_df, filename):
     ylabel_offset = 0.05
     ylabel_interval = 0.19
     y_params = 1.11
-    latency_label = "Normalized latency  "
+    latency_label = "Normalized latency      "
 
     threshold = 3.2 # 상위 12행
     interval = 0.5
@@ -99,7 +99,7 @@ def plot_gpt(src_df, filename):
         ax_twin.axhline(1, color=colors["CPU"], lw=0.8, linestyle="--")
 
         ax.set_ylabel(latency_label, fontsize=fontsize - 0.2, labelpad=8 if is_mmtv else 5)
-        ax_twin.set_ylabel("Speedup over CPU   ", fontsize=fontsize - 0.2)
+        ax_twin.set_ylabel("Speedup over CPU       ", fontsize=fontsize - 0.2, labelpad=4)
 
         ypos = lambda x: -ylabel_offset - ylabel_interval * x
         cconf = dict(ha="center", va="top", transform=ax.get_xaxis_transform(), fontsize=fontsize - 0.5)
@@ -108,8 +108,8 @@ def plot_gpt(src_df, filename):
         if is_mmtv:
             B_labels = df_subset["N"].values
             M_labels = df_subset['M'].values
-            ax.text(-0.5 - 0.37, -ylabel_offset, 'Batch', ha='center', va='top', transform=ax.get_xaxis_transform(), fontsize=fontsize)
-            ax.text(-0.5 - 0.37, -ylabel_offset - ylabel_interval, 'Token', ha='center', va='top', transform=ax.get_xaxis_transform(), fontsize=fontsize)
+            ax.text(-0.5 - 0.38, -ylabel_offset, 'Batch', ha='center', va='top', transform=ax.get_xaxis_transform(), fontsize=fontsize)
+            ax.text(-0.5 - 0.38, -ylabel_offset - ylabel_interval, 'Token', ha='center', va='top', transform=ax.get_xaxis_transform(), fontsize=fontsize)
             for i, label in enumerate(B_labels):
                 if label == 16 or label == 28:
                     batch = 1
@@ -172,19 +172,19 @@ def plot_gpt(src_df, filename):
             ax.text(0.5, -0.44, caption, ha='center', va='top',
                     transform=ax.transAxes, fontsize=8, fontname='Times New Roman')
 
-    fig = plt.figure(figsize=(7.48, (height* 2 + 2) / 2.54), dpi=300, constrained_layout=True)
+    fig = plt.figure(figsize=(7.48, (height* 2 + 1) / 2.54), dpi=300, constrained_layout=True)
     gs = gridspec.GridSpec(2, 2, width_ratios=[width_mmtv, width_mtv], wspace=0.05, hspace=0.03, figure=fig)
     axs = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[0, 1]), fig.add_subplot(gs[1, 1])]
 
-    create_plot(axs[0], src_df.iloc[:12], width_mmtv, threshold=1.1, interval=0.2,
+    create_plot(axs[0], src_df.iloc[:12], width_mmtv, threshold=1.01, interval=0.2,
                 bar_width=bar_width, colors=colors, hatches=hatches, caption="(a) MMTV in GPT-J 6B.", batch_unit=16)
-    create_plot(axs[1], src_df.iloc[12:24], width_mmtv, threshold=1.1, interval=0.2,
+    create_plot(axs[1], src_df.iloc[12:24], width_mmtv, threshold=1.01, interval=0.2,
                 bar_width=bar_width, colors=colors, hatches=hatches, caption="(c) MMTV in GPT-J 30B.", batch_unit=28)
     mtv_1 = pd.concat([src_df.iloc[25:26], src_df.iloc[24:25], src_df.iloc[26:28]])
-    create_plot(axs[2], mtv_1, width_mtv, threshold=1.1, interval=0.2,
+    create_plot(axs[2], mtv_1, width_mtv, threshold=1.01, interval=0.2,
                 bar_width=bar_width, colors=colors, hatches=hatches, caption="(b) MTV in GPT-J 6B.")
     mtv_2 = pd.concat([src_df.iloc[29:30], src_df.iloc[28:29], src_df.iloc[30:32]])
-    create_plot(axs[3], mtv_2, width_mtv, threshold=1.1, interval=0.2,
+    create_plot(axs[3], mtv_2, width_mtv, threshold=1.01, interval=0.2,
                 bar_width=bar_width, colors=colors, hatches=hatches, caption="(d) MTV in GPT-J 30B.")
 
     handles = [
@@ -195,11 +195,11 @@ def plot_gpt(src_df, filename):
 
         Rectangle((0, 0.1), 1, 1, facecolor='#444444', label='H2D', edgecolor="white", hatch=hatches["H2D"]),
         Rectangle((0, 0.1), 1, 1, facecolor='#444444', label='Kernel', edgecolor="white"),
-        Rectangle((0, 0.1), 1, 1, facecolor='#444444', label='After Kernel', edgecolor="white", hatch=hatches["After"]),
-        Line2D([0], [0], color=colors["CPU"], marker='o', linestyle='-', label='ATiM\'s Speedup over CPU-autotuned', linewidth=1.4, markersize=4),
+        Rectangle((0, 0.1), 1, 1, facecolor='#444444', label='D2H+reduction', edgecolor="white", hatch=hatches["After"]),
+        Line2D([0], [0], color=colors["CPU"], marker='o', linestyle='-', label='ATiM\'s speedup over CPU-autotuned', linewidth=1.4, markersize=4),
     ]
 
     fig.legend(handles=handles, loc='upper center', ncol=8, fontsize=fontsize - 1, bbox_to_anchor=(0.5, 1.09),
-               borderpad=0.6, handlelength=1.5, handletextpad=0.6, columnspacing=1.6)
+               borderpad=0.4, handlelength=1.5, handletextpad=0.6, columnspacing=1.6)
 
     fig.savefig(filename, format="pdf", dpi=300, bbox_inches="tight")

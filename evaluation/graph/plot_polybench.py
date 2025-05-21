@@ -30,7 +30,7 @@ def plot_polybench(src_df, filename):
     captions = ["VA.", "GEVA.", "RED.", "MTV.", "GEMV.", "TTV (M×N×512).", "MMTV (M×N×512)."]
     permutation = [0, 5, 1, 2, 6, 3, 4]
     fusion = [[0, 2], [2, 3], [3, 5], [5, 7]]
-    shape_labels = ["Length", "Length", "M, N", "M, N"]
+    shape_labels = ["Length", "Length", "M, K", "M, N"]
 
     shapes_info = {
         "va": ["1048576", "16777216", "67108864"],
@@ -227,8 +227,8 @@ def plot_polybench(src_df, filename):
         Rectangle((0, 0.1), 1, 0.8, facecolor=colors["ATiM"], label='ATiM'),
         Rectangle((0, 0.1), 1, 0.8, facecolor='#444444', label='H2D', edgecolor="white", hatch=hatches["H2D"]),
         Rectangle((0, 0.1), 1, 0.8, facecolor='#444444', label='Kernel', edgecolor="white"),
-        Rectangle((0, 0.1), 1, 0.8, facecolor='#444444', label='After Kernel', edgecolor="white", hatch=hatches["After"]),
-        Line2D([0], [0], color=colors["CPU"], marker='o', linestyle='-', label='ATiM\'s\nSpeedup over\nCPU-autotuned', linewidth=1.4, markersize=4),
+        Rectangle((0, 0.1), 1, 0.8, facecolor='#444444', label='D2H+reduction', edgecolor="white", hatch=hatches["After"]),
+        Line2D([0], [0], color=colors["CPU"], marker='o', linestyle='-', label='ATiM\'s\nspeedup over\nCPU-autotuned', linewidth=1.4, markersize=4),
     ]
 
     fig.legend(handles=handles, loc='upper center', ncol=2, fontsize=fontsize - 1, bbox_to_anchor=(0.895, 0.91),
